@@ -27,6 +27,6 @@ class ChapterListView(ListAPIView):
         subject = get_object_or_404(Subject, pk=subject_id)
         
         # Order by chapter_order ascending, placing NULLs at the end
-        return Chapter.objects.filter(subject=subject).order_by(
+        return Chapter.objects.filter(subject_id=subject_id).order_by(
             F('chapter_order').asc(nulls_last=True)
         )

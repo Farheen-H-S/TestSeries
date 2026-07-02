@@ -4,14 +4,19 @@ class Subject(models.Model):
     """
     Represents a subject in the syllabus, categorized by exam level.
     """
+    class ExamLevel(models.TextChoices):
+        FOUNDATION = "Foundation", "Foundation"
+        INTERMEDIATE = "Intermediate", "Intermediate"
+        FINAL = "Final", "Final"
+
     subject_id = models.BigAutoField(primary_key=True)
-    name = models.CharField(max_length=150, unique=True, null=False)
-    exam_level = models.CharField(max_length=30, null=False)
+    name = models.CharField(max_length=150, unique=True)
+    exam_level = models.CharField(
+        max_length=30, 
+        choices=ExamLevel.choices
+    )
     is_active = models.BooleanField(default=True)
     created_at = models.DateTimeField(auto_now_add=True)
-
-    class Meta:
-        ordering = ['name']
 
     def __str__(self):
         return self.name
@@ -40,4 +45,4 @@ class Chapter(models.Model):
         ]
 
     def __str__(self):
-        return f"{self.subject.name} - {self.chapter_name}"
+        return self.chapter_name
