@@ -1,0 +1,46 @@
+# ==========================
+# Django Framework
+# ==========================
+Django>=5.2,<6.0
+djangorestframework>=3.16
+django-cors-headers>=4.7
+djangorestframework-simplejwt>=5.5
+
+# ==========================
+# Database
+# ==========================
+psycopg[binary]>=3.2
+
+# ==========================
+# PDF Processing
+# ==========================
+PyMuPDF>=1.26
+pdfplumber>=0.11
+
+# ==========================
+# OCR (for scanned PDFs)
+# ==========================
+pytesseract>=0.3
+Pillow>=11.0
+opencv-python>=4.12
+
+# ==========================
+# HTML Processing
+# ==========================
+beautifulsoup4>=4.13
+lxml>=6.0
+
+# ==========================
+# PDF Generation
+# ==========================
+WeasyPrint>=66.0
+
+# ==========================
+# Environment Variables
+# ==========================
+python-dotenv>=1.1
+
+# ==========================
+# Utilities
+# ==========================
+tqdm>=4.67
