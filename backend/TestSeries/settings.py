@@ -42,7 +42,8 @@ INSTALLED_APPS = [
     'apps.documents',
     'apps.extraction',
     'apps.papers',
-    'apps.common'
+    'apps.common',
+    'rest_framework',
 ]
 
 MIDDLEWARE = [
@@ -127,3 +128,10 @@ STATIC_URL = 'static/'
 # https://docs.djangoproject.com/en/4.2/ref/settings/#default-auto-field
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
+
+# Media files
+MEDIA_URL = '/media/'
+MEDIA_ROOT = BASE_DIR / 'media'
+
+# Upload settings
+MAX_UPLOAD_SIZE = 100 * 1024 * 1024  # 100MB
