@@ -16,7 +16,6 @@ class Document(models.Model):
 
     document_id = models.BigAutoField(primary_key=True)
     
-    # TODO: Replace with apps.accounts.User once implemented
     user = models.ForeignKey(
         settings.AUTH_USER_MODEL, 
         on_delete=models.CASCADE,
@@ -38,7 +37,7 @@ class Document(models.Model):
         null=True, 
         blank=True
     )
-    storage_path = models.TextField()
+    storage_path = models.TextField(editable=False)
     total_pages = models.PositiveIntegerField(null=True, blank=True)
     extraction_status = models.CharField(
         max_length=20,

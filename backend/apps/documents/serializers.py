@@ -36,17 +36,12 @@ class DocumentUploadSerializer(serializers.ModelSerializer):
         return value
 
     def validate_paper_year(self, value):
-        # paper_year cannot be negative
-        if value < 0:
-            raise serializers.ValidationError("Paper year cannot be negative.")
-            
         current_year = timezone.now().year
-        if value > current_year + 1:
-            raise serializers.ValidationError(f"Paper year cannot be more than {current_year + 1}.")
-            
-        # Optional: Add minimum year check if needed, e.g., 1900 as per previous instructions
-        if value < 1900:
-            raise serializers.ValidationError("Paper year must be 1900 or later.")
+        
+        if not (1900 <= value <= current_year + 1):
+            raise serializers.ValidationError(
+                f"Paper year must be between 1900 and {current_year + 1}."
+            )
             
         return value
 
