@@ -13,6 +13,6 @@ class DocumentAdmin(admin.ModelAdmin):
         'extraction_status',
         'uploaded_at'
     )
-    search_fields = ('title', 'paper_year')
+    search_fields = ('title',)
     list_filter = ('subject', 'document_type', 'extraction_status')
     readonly_fields = ('uploaded_at',)

@@ -4,7 +4,6 @@ from rest_framework.parsers import MultiPartParser, FormParser
 from rest_framework.response import Response
 from rest_framework import status
 from django.core.files.storage import default_storage
-from django.contrib.auth.models import User
 from .models import Document
 from .serializers import DocumentUploadSerializer, DocumentListSerializer
 
@@ -18,14 +17,14 @@ class DocumentUploadView(generics.CreateAPIView):
         file_obj = self.request.FILES.get('file')
         
         # Save file using Django's storage system
-        # This will save to MEDIA_ROOT/documents/
         file_path = default_storage.save(f'documents/{file_obj.name}', file_obj)
         
-        # Assign user (placeholder until auth is implemented)
+        # TODO: Integrate with JWT authentication
         user = self.request.user
         if not user.is_authenticated:
-            # For development, use the first available user if not authenticated
-            user = User.objects.first()
+            # Until authentication is implemented, we do not assign random users
+            from rest_framework.exceptions import ValidationError
+            raise ValidationError({"detail": "User must be authenticated to upload documents."})
         
         # Save document record with business logic fields
         serializer.save(

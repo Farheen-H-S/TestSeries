@@ -1,5 +1,5 @@
 from django.db import models
-from django.contrib.auth.models import User
+from django.conf import settings
 from apps.syllabus.models import Subject
 
 class Document(models.Model):
@@ -15,8 +15,10 @@ class Document(models.Model):
         FAILED = "FAILED", "FAILED"
 
     document_id = models.BigAutoField(primary_key=True)
+    
+    # TODO: Replace with apps.accounts.User once implemented
     user = models.ForeignKey(
-        User, 
+        settings.AUTH_USER_MODEL, 
         on_delete=models.CASCADE,
         related_name="documents"
     )
@@ -36,7 +38,7 @@ class Document(models.Model):
         null=True, 
         blank=True
     )
-    storage_path = models.CharField(max_length=500)
+    storage_path = models.TextField()
     total_pages = models.PositiveIntegerField(null=True, blank=True)
     extraction_status = models.CharField(
         max_length=20,
