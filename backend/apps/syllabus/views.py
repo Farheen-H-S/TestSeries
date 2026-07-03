@@ -27,7 +27,7 @@ class ChapterListView(ListAPIView):
         subject_id = self.kwargs["subject_id"]
 
         # Ensure the subject exists, otherwise return 404.
-        get_object_or_404(Subject, pk=subject_id)
+        get_object_or_404(Subject, pk=subject_id, is_active=True)
 
         return Chapter.objects.filter(subject_id=subject_id).order_by(
             F("chapter_order").asc(nulls_last=True)
