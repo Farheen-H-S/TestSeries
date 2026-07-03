@@ -26,6 +26,7 @@ urlpatterns = [
     path('api/v1/', include([
         path('', include("apps.syllabus.urls")),
         path('', include("apps.documents.urls")),
+        path("", include("apps.extraction.urls")),
     ])),
 ]
 
