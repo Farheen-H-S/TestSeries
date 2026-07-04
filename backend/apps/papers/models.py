@@ -40,8 +40,8 @@ class Question(models.Model):
         default="UNIDENTIFIED"
     )
     
-    marks = models.IntegerField(null=True, blank=True)
-    source_page = models.IntegerField(null=True, blank=True)
+    marks = models.PositiveIntegerField(null=True, blank=True)
+    source_page = models.PositiveIntegerField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
@@ -91,7 +91,7 @@ class GeneratedPaper(models.Model):
         max_length=20,
         choices=PaperType.choices
     )
-    total_questions = models.IntegerField()
+    total_questions = models.PositiveIntegerField()
     generated_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
@@ -118,7 +118,7 @@ class GeneratedPaperQuestion(models.Model):
         on_delete=models.PROTECT,
         related_name="paper_mappings"
     )
-    question_order = models.IntegerField()
+    question_order = models.PositiveIntegerField()
 
     class Meta:
         constraints = [

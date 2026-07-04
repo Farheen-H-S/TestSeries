@@ -20,6 +20,7 @@ class QuestionAdmin(admin.ModelAdmin):
 class GeneratedPaperAdmin(admin.ModelAdmin):
     list_display = ('paper_id', 'user', 'subject', 'chapter', 'paper_type', 'generated_at')
     list_filter = ('paper_type', 'subject', 'chapter')
+    # TODO: Update search_fields to ('user__full_name', 'user__email') when custom User model is introduced
     search_fields = ('user__username', 'user__email')
     readonly_fields = ('generated_at',)
 
