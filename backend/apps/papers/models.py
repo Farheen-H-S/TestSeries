@@ -34,7 +34,11 @@ class Question(models.Model):
     
     # Store question_type as a normal CharField without TextChoices.
     # Choices are intentionally not used because supported types are expected to evolve.
-    question_type = models.CharField(max_length=30)
+    # Default is "UNIDENTIFIED", used when the extraction pipeline cannot determine the type.
+    question_type = models.CharField(
+        max_length=30,
+        default="UNIDENTIFIED"
+    )
     
     marks = models.IntegerField(null=True, blank=True)
     source_page = models.IntegerField(null=True, blank=True)
@@ -96,7 +100,7 @@ class GeneratedPaper(models.Model):
         ]
 
     def __str__(self):
-        return f"Paper #{self.paper_id}"
+        return f"{self.paper_type} Paper #{self.paper_id}"
 
 
 class GeneratedPaperQuestion(models.Model):
@@ -125,4 +129,4 @@ class GeneratedPaperQuestion(models.Model):
         ]
 
     def __str__(self):
-        return f"Paper {self.paper_id} - Question {self.question_order}"
+        return f"Paper {self.paper.paper_id} - Q{self.question_order}"

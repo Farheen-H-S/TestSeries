@@ -27,4 +27,4 @@ class GeneratedPaperAdmin(admin.ModelAdmin):
 class GeneratedPaperQuestionAdmin(admin.ModelAdmin):
     list_display = ('generated_paper_question_id', 'paper', 'question', 'question_order')
     list_filter = ('paper',)
-    search_fields = ('paper__paper_id', 'question__question_number')
+    search_fields = ('question__question_number', 'question__question_text')

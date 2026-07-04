@@ -8,7 +8,7 @@ class QuestionListView(generics.ListAPIView):
     API view to list all questions.
     Ordered by question_id ascending.
     """
-    queryset = Question.objects.all().order_by('question_id')
+    queryset = Question.objects.all().order_by('document', 'source_page', 'question_number')
     serializer_class = QuestionSerializer
     permission_classes = [AllowAny]
 
