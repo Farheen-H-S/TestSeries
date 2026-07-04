@@ -27,6 +27,7 @@ urlpatterns = [
         path('', include("apps.syllabus.urls")),
         path('', include("apps.documents.urls")),
         path("", include("apps.extraction.urls")),
+        path("", include("apps.papers.urls")),
     ])),
 ]
 
