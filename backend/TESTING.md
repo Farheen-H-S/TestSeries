@@ -48,3 +48,10 @@ Document and all associated ExtractionLog records were deleted successfully.
 
 Status:
 PASS
+
+## Papers app
+- migrations successfull
+- admin working - correct
+- GET http://127.0.0.1:8000/api/v1/questions/ - correct
+- GET http://127.0.0.1:8000/api/v1/generated-papers/ - correct
+- GET http://127.0.0.1:8000/api/v1/generated-paper-questions/
