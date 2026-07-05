@@ -45,10 +45,10 @@ def parse_questions(pages: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
                     current_q["question_text"] += "\n" + pre_text
             
             # Start a new question
-            # We initialize with the header itself
+            # We explicitly exclude the header (match.group(0)) from the text
             current_q = {
                 "question_number": match.group(1),
-                "question_text": text[match.start():match.end()].strip(),
+                "question_text": "",
                 "source_page": page_num
             }
             
@@ -56,7 +56,7 @@ def parse_questions(pages: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
             next_start = matches[i+1].start() if i + 1 < len(matches) else len(text)
             content = text[match.end():next_start].strip()
             if content:
-                current_q["question_text"] += " " + content
+                current_q["question_text"] = content
                 
             all_questions.append(current_q)
             

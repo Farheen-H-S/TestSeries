@@ -34,7 +34,7 @@ def extract_document(document: Document):
     """
     # 1. Initialize Status and Log
     document.extraction_status = Document.ExtractionStatus.PROCESSING
-    document.save()
+    document.save(update_fields=["extraction_status"])
     
     log = ExtractionLog.objects.create(
         document=document,
@@ -50,11 +50,14 @@ def extract_document(document: Document):
         with transaction.atomic():
             # Update document page count
             document.total_pages = len(pages_data)
-            document.save()
+            document.save(update_fields=["total_pages"])
             
             # Parse questions
             questions_data = parse_questions(pages_data)
             
+            # TODO: Reprocessing the same document will currently violate the 
+            # unique_question_per_document constraint. This will be handled in 
+            # a later phase (e.g., delete existing questions or implement update logic).
             # Create Question records
             for q_data in questions_data:
                 Question.objects.create(
@@ -72,19 +75,19 @@ def extract_document(document: Document):
             
         # 4. Finalize Success
         document.extraction_status = Document.ExtractionStatus.COMPLETED
-        document.save()
+        document.save(update_fields=["extraction_status"])
         
         log.status = ExtractionLog.Status.COMPLETED
-        log.save()
+        log.save(update_fields=["status"])
         
     except Exception as e:
         # 5. Handle Failures
         document.extraction_status = Document.ExtractionStatus.FAILED
-        document.save()
+        document.save(update_fields=["extraction_status"])
         
         log.status = ExtractionLog.Status.FAILED
         log.message = str(e)
-        log.save()
+        log.save(update_fields=["status", "message"])
         
         # Re-raise to allow caller to handle if needed
-        raise e
+        raise
