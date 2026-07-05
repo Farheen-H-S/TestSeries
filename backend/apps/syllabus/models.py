@@ -54,22 +54,14 @@ class ChapterKeyword(models.Model):
     One record per chapter. Store keywords one per line.
     """
     chapter_keyword_id = models.BigAutoField(primary_key=True)
-    chapter = models.ForeignKey(
+    chapter = models.OneToOneField(
         Chapter,
         on_delete=models.CASCADE,
-        related_name="keyword_records"
+        related_name="keyword_record"
     )
     keywords = models.TextField()
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
-
-    class Meta:
-        constraints = [
-            models.UniqueConstraint(
-                fields=['chapter'],
-                name='unique_chapter_keyword_record'
-            )
-        ]
 
     def __str__(self):
         return f"Keywords for {self.chapter.chapter_name}"

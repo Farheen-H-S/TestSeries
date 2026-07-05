@@ -7,7 +7,7 @@ from .pdf_loader import load_pdf
 from .text_extractor import extract_text
 from .question_parser import parse_questions
 from .html_formatter import text_to_html
-from .chapter_mapper import map_question_to_chapter
+from .chapter_mapper import map_question_to_chapter, get_prepared_chapters
 
 def run_extraction_pipeline(file_path: str) -> List[Dict[str, Any]]:
     """
@@ -56,19 +56,26 @@ def extract_document(document: Document):
             # Parse questions
             questions_data = parse_questions(pages_data)
             
-            # TODO: Reprocessing the same document will currently violate the 
-            # unique_question_per_document constraint. This will be handled in 
-            # a later phase (e.g., delete existing questions or implement update logic).
-            # Create Question records
+            # 3.2 Prepare mapping data once per document to avoid N+1 queries
+            mapping_data = get_prepared_chapters(document.subject)
+            
+            # 3.3 Create Question records
             for q_data in questions_data:
                 # Deterministically map question to chapter
-                # Any failure in mapping is internally handled to return None, 
-                # ensuring the pipeline continues.
-                matched_chapter = map_question_to_chapter(
-                    q_data["question_text"],
-                    document.subject
-                )
-                
+                matched_chapter = None
+                try:
+                    # Any failure in mapping is internally handled to return None, 
+                    # ensuring the pipeline continues.
+                    matched_chapter = map_question_to_chapter(
+                        q_data["question_text"],
+                        document.subject,
+                        prepared_data=mapping_data
+                    )
+                except Exception:
+                    # Requirement: Mapping failures must NEVER fail extraction.
+                    # We fall back to None and continue gracefully.
+                    matched_chapter = None
+
                 Question.objects.create(
                     document=document,
                     chapter=matched_chapter,
