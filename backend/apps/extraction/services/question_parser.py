@@ -46,8 +46,9 @@ def parse_questions(pages: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
             
             # Start a new question
             # We explicitly exclude the header (match.group(0)) from the text
+            # normalizing question_number to remove leading zeros
             current_q = {
-                "question_number": match.group(1),
+                "question_number": str(int(match.group(1))),
                 "question_text": "",
                 "source_page": page_num
             }
