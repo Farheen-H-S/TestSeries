@@ -1,3 +1,4 @@
+import logging
 from typing import List, Dict, Any
 from django.db import transaction
 from apps.documents.models import Document
@@ -8,6 +9,9 @@ from .text_extractor import extract_text
 from .question_parser import parse_questions
 from .html_formatter import text_to_html
 from .chapter_mapper import map_question_to_chapter, get_prepared_chapters
+
+# Initialize logger
+logger = logging.getLogger(__name__)
 
 def run_extraction_pipeline(file_path: str) -> List[Dict[str, Any]]:
     """
@@ -57,23 +61,21 @@ def extract_document(document: Document):
             questions_data = parse_questions(pages_data)
             
             # 3.2 Prepare mapping data once per document to avoid N+1 queries
-            mapping_data = get_prepared_chapters(document.subject)
+            prepared_chapters = get_prepared_chapters(document.subject)
             
             # 3.3 Create Question records
             for q_data in questions_data:
                 # Deterministically map question to chapter
                 matched_chapter = None
                 try:
-                    # Any failure in mapping is internally handled to return None, 
-                    # ensuring the pipeline continues.
                     matched_chapter = map_question_to_chapter(
                         q_data["question_text"],
-                        document.subject,
-                        prepared_data=mapping_data
+                        prepared_chapters=prepared_chapters
                     )
-                except Exception:
+                except Exception as e:
                     # Requirement: Mapping failures must NEVER fail extraction.
-                    # We fall back to None and continue gracefully.
+                    # We log the error for debugging but fall back to None and continue.
+                    logger.error(f"Chapter mapping failed for question {q_data.get('question_number')}: {str(e)}")
                     matched_chapter = None
 
                 Question.objects.create(
