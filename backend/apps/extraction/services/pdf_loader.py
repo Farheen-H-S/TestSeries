@@ -25,7 +25,7 @@ def load_pdf(file_path: str) -> fitz.Document:
             doc.close()
             raise PDFLoadError(f"File at {file_path} is not a valid PDF.")
         return doc
+    except PDFLoadError:
+        raise
     except Exception as e:
-        if isinstance(e, PDFLoadError):
-            raise
-        raise PDFLoadError(f"Failed to load PDF from {file_path}: {str(e)}")
+        raise PDFLoadError(f"Failed to load PDF from {file_path}: {str(e)}") from e

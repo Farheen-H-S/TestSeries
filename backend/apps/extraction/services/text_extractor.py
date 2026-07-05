@@ -17,7 +17,7 @@ def extract_text(doc: fitz.Document) -> List[Dict[str, Any]]:
     for page in doc:
         page_content = {
             "page_number": page.number + 1,
-            "text": page.get_text().strip()
+            "text": page.get_text()
         }
         extracted_pages.append(page_content)
 

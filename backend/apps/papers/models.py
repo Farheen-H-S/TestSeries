@@ -23,7 +23,9 @@ class Question(models.Model):
     chapter = models.ForeignKey(
         Chapter,
         on_delete=models.PROTECT,
-        related_name="questions"
+        related_name="questions",
+        null=True,
+        blank=True
     )
     question_number = models.CharField(max_length=20)
     sub_question_label = models.CharField(max_length=10, null=True, blank=True)

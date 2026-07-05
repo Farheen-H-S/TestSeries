@@ -1,4 +1,5 @@
 import html
+import re
 
 def escape_html(text: str) -> str:
     """
@@ -13,8 +14,8 @@ def preserve_paragraphs(text: str) -> str:
     if not text.strip():
         return ""
     
-    # Split by double or more newlines to identify paragraphs
-    paragraphs = [p.strip() for p in text.split('\n\n') if p.strip()]
+    # Split by double or more newlines to identify paragraphs, handling spaces
+    paragraphs = [p.strip() for p in re.split(r"\n\s*\n", text) if p.strip()]
     
     # Wrap each paragraph in <p> tags
     formatted_html = "\n".join([f"<p>{p}</p>" for p in paragraphs])
