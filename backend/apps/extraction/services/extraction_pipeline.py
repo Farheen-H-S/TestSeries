@@ -72,10 +72,13 @@ def extract_document(document: Document):
                         q_data["question_text"],
                         prepared_chapters=prepared_chapters
                     )
-                except Exception as e:
+                except Exception:
                     # Requirement: Mapping failures must NEVER fail extraction.
-                    # We log the error for debugging but fall back to None and continue.
-                    logger.error(f"Chapter mapping failed for question {q_data.get('question_number')}: {str(e)}")
+                    # We use logger.exception to capture the full traceback for debugging.
+                    logger.exception(
+                        "Chapter mapping failed for question %s",
+                        q_data.get("question_number")
+                    )
                     matched_chapter = None
 
                 Question.objects.create(
