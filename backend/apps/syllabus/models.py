@@ -46,3 +46,30 @@ class Chapter(models.Model):
 
     def __str__(self):
         return self.chapter_name
+
+
+class ChapterKeyword(models.Model):
+    """
+    Stores deterministic keywords for a chapter used during extraction mapping.
+    One record per chapter. Store keywords one per line.
+    """
+    chapter_keyword_id = models.BigAutoField(primary_key=True)
+    chapter = models.ForeignKey(
+        Chapter,
+        on_delete=models.CASCADE,
+        related_name="keyword_records"
+    )
+    keywords = models.TextField()
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=['chapter'],
+                name='unique_chapter_keyword_record'
+            )
+        ]
+
+    def __str__(self):
+        return f"Keywords for {self.chapter.chapter_name}"

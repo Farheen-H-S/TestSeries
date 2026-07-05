@@ -7,6 +7,7 @@ from .pdf_loader import load_pdf
 from .text_extractor import extract_text
 from .question_parser import parse_questions
 from .html_formatter import text_to_html
+from .chapter_mapper import map_question_to_chapter
 
 def run_extraction_pipeline(file_path: str) -> List[Dict[str, Any]]:
     """
@@ -60,9 +61,17 @@ def extract_document(document: Document):
             # a later phase (e.g., delete existing questions or implement update logic).
             # Create Question records
             for q_data in questions_data:
+                # Deterministically map question to chapter
+                # Any failure in mapping is internally handled to return None, 
+                # ensuring the pipeline continues.
+                matched_chapter = map_question_to_chapter(
+                    q_data["question_text"],
+                    document.subject
+                )
+                
                 Question.objects.create(
                     document=document,
-                    chapter=None,  # Not implemented in Phase 3B
+                    chapter=matched_chapter,
                     question_number=q_data["question_number"],
                     question_text=q_data["question_text"],
                     question_content=text_to_html(q_data["question_text"]),
