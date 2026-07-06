@@ -1,7 +1,7 @@
 import re
 import bisect
 from typing import List, Optional, Dict, Any, Tuple
-from .types import ParsedQuestion, QuestionLevel, ParserConfig, ParsingDiagnostics
+from .types import ParsedQuestion, QuestionLevel, ParserConfig, ParsingDiagnostics, QuestionParseResult
 from .normalizer import Normalizer
 from .header_validator import HeaderValidator
 from .hierarchy_utils import HierarchyUtils
@@ -118,6 +118,21 @@ class QuestionParser:
             ))
             
         return parsed_questions
+
+    def parse_with_diagnostics(
+        self,
+        text: str,
+        page_offsets: List[Tuple[int, int]],
+        base_offset: int = 0,
+    ) -> QuestionParseResult:
+        """
+        Same as parse() but returns a QuestionParseResult that bundles the
+        questions list with the diagnostics from this run.  Prefer this method
+        when the caller needs to inspect rejected headers or match counts
+        without accessing mutable parser instance state.
+        """
+        questions = self.parse(text, page_offsets, base_offset)
+        return QuestionParseResult(questions=questions, diagnostics=self.diagnostics)
 
     def _get_level(self, path: List[str]) -> QuestionLevel:
         if len(path) >= 3: return QuestionLevel.SUB_SUB

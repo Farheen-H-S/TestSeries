@@ -25,22 +25,33 @@ class AnswerParser:
             for match in regex.finditer(text):
                 raw_matches.append((match, p_idx))
             
-        # Resolve overlapping matches: Prefer longer span or higher priority pattern
+        # Resolve overlapping matches: prefer longer span; break ties by lower pattern index (higher priority).
+        # Same deterministic algorithm used by QuestionParser.
         raw_matches.sort(key=lambda x: x[0].start())
-        resolved_matches: List[re.Match] = []
-        
+        resolved_matches: List[Tuple[re.Match, int]] = []
+
         for match, p_idx in raw_matches:
-            is_valid_overlap = True
-            for other_match in resolved_matches:
+            is_accepted = True
+            to_remove = []
+
+            for j, (other_match, other_p_idx) in enumerate(resolved_matches):
                 if match.start() < other_match.end() and other_match.start() < match.end():
-                    # Simplified logic for answers: current regex match span often fixed
-                    # If we already have a match covering this start, skip.
-                    is_valid_overlap = False
-                    break
-            if is_valid_overlap:
-                resolved_matches.append(match)
-                
-        all_potential_matches = sorted(resolved_matches, key=lambda x: x.start())
+                    # Overlapping: compare by length then pattern priority
+                    match_len = match.end() - match.start()
+                    other_len = other_match.end() - other_match.start()
+                    if match_len > other_len or (match_len == other_len and p_idx < other_p_idx):
+                        to_remove.append(j)
+                    else:
+                        is_accepted = False
+                        break
+
+            if is_accepted:
+                for idx in sorted(to_remove, reverse=True):
+                    resolved_matches.pop(idx)
+                resolved_matches.append((match, p_idx))
+
+        all_potential_matches = sorted([m for m, _ in resolved_matches], key=lambda x: x.start())
+
 
         if not all_potential_matches:
             return []

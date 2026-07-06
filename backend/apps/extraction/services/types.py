@@ -47,6 +47,17 @@ class ParsingDiagnostics:
     rejected_headers: List[Dict[str, str]] = field(default_factory=list) # {"header": str, "reason": str}
 
 @dataclass
+class QuestionParseResult:
+    """
+    Wraps the list of parsed questions together with the diagnostics from
+    that parse run.  Use parse_with_diagnostics() instead of parse() when
+    you need to inspect rejected headers or match statistics without relying
+    on mutable parser instance state.
+    """
+    questions: List['ParsedQuestion']
+    diagnostics: 'ParsingDiagnostics'
+
+@dataclass
 class MatchingDiagnostics:
     matched_count: int = 0
     unmatched_questions: List[str] = field(default_factory=list)
