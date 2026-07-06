@@ -1,12 +1,4 @@
-import re
 from typing import List, Optional, Tuple
-from .extraction_patterns import MARKS_PATTERNS, MARKS_EXCLUSION_PATTERNS
-
-class MarksExtractor:
-    """
-    Tiered regex-based marks extraction with strict exclusions.
-    """
-    
 from .types import ParserConfig
 
 class MarksExtractor:

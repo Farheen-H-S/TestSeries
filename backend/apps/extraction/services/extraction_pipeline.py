@@ -196,8 +196,19 @@ def extract_document(document: Document):
         document.extraction_status = Document.ExtractionStatus.COMPLETED
         document.save(update_fields=["extraction_status"])
         
+        # Build diagnostic summary for the log
+        reject_summary = ""
+        if q_parser.diagnostics.rejected_headers:
+            reasons = {}
+            for r in q_parser.diagnostics.rejected_headers:
+                reasons[r["reason"]] = reasons.get(r["reason"], 0) + 1
+            reject_summary = " Rejections: " + ", ".join([f"{k} ({v})" for k, v in reasons.items()])
+
         log.status = ExtractionLog.Status.COMPLETED
-        log.message = f"Extracted {len(parsed_questions)} questions in {time.time() - start_time:.2f}s."
+        log.message = (
+            f"Extracted {len(parsed_questions)} questions in {time.time() - start_time:.2f}s."
+            f" Matches: {diag.matched_count}.{reject_summary}"
+        )
         log.save(update_fields=["status", "message"])
         
     except Exception as e:

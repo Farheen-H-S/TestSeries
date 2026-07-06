@@ -1,12 +1,3 @@
-import re
-from .types import LayoutType, LayoutResult
-from .extraction_patterns import ANSWER_SECTION_DELIMITERS, QUESTION_HEADER_PATTERNS, ANSWER_HEADER_PATTERNS
-
-class DocumentLayoutDetector:
-    """
-    Decision tree to identify document layout: SECTION_WISE, INTERLEAVED, or UNKNOWN.
-    """
-    
 from .types import LayoutType, LayoutResult, ParserConfig
 
 class DocumentLayoutDetector:

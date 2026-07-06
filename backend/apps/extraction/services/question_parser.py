@@ -4,6 +4,7 @@ from typing import List, Optional, Dict, Any, Tuple
 from .types import ParsedQuestion, QuestionLevel, ParserConfig, ParsingDiagnostics
 from .normalizer import Normalizer
 from .header_validator import HeaderValidator
+from .hierarchy_utils import HierarchyUtils
 
 class QuestionParser:
     """
@@ -22,22 +23,50 @@ class QuestionParser:
         Parses text into a list of hierarchical questions with strict validation and offset correction.
         """
         # Collect all potential matches from all patterns
+        # We also track the pattern index to resolve overlaps by pattern priority
         raw_matches = []
-        for regex in self.config.question_header_patterns:
-            raw_matches.extend(list(regex.finditer(text)))
+        for p_idx, regex in enumerate(self.config.question_header_patterns):
+            for match in regex.finditer(text):
+                raw_matches.append((match, p_idx))
         
-        # Deduplicate matches by span (start, end)
-        unique_matches = {}
-        for m in raw_matches:
-            span = (m.start(), m.end())
-            if span not in unique_matches:
-                unique_matches[span] = m
+        # Resolve overlapping matches: Keep the match with longer span or higher priority pattern
+        raw_matches.sort(key=lambda x: x[0].start())
+        resolved_matches: List[Tuple[re.Match, int]] = []
         
-        all_potential_matches = sorted(unique_matches.values(), key=lambda x: x.start())
+        for match, p_idx in raw_matches:
+            is_valid_overlap = True
+            matches_to_remove = []
+            
+            for j, (other_match, other_p_idx) in enumerate(resolved_matches):
+                # Check for overlap
+                if match.start() < other_match.end() and other_match.start() < match.end():
+                    # Priority: 1. Longer match | 2. Higher pattern priority (lower p_idx)
+                    match_len = match.end() - match.start()
+                    other_len = other_match.end() - other_match.start()
+                    
+                    if match_len > other_len:
+                        matches_to_remove.append(j)
+                    elif match_len == other_len and p_idx < other_p_idx:
+                        matches_to_remove.append(j)
+                    else:
+                        is_valid_overlap = False
+                        break
+            
+            if is_valid_overlap:
+                # Remove overlapping matches that this new match beats
+                # We do it by index in reverse to avoid shifting
+                for idx in sorted(matches_to_remove, reverse=True):
+                    resolved_matches.pop(idx)
+                resolved_matches.append((match, p_idx))
+        
+        all_potential_matches = sorted([m for m, _ in resolved_matches], key=lambda x: x.start())
         self.diagnostics = ParsingDiagnostics(total_matches=len(all_potential_matches))
         
         if not all_potential_matches:
             return []
+
+        # Precompute page keys for true O(log n) lookup
+        page_keys = [x[0] for x in page_offsets] if page_offsets else []
 
         parsed_questions = []
         hierarchy_stack: List[str] = []
@@ -47,24 +76,23 @@ class QuestionParser:
             raw_header = match.group(0)
             path = self.normalizer.normalize_header(raw_header)
             
-            # Simple rejection check (should have path)
-            if not path:
-                self.diagnostics.rejected_headers.append({"header": raw_header, "reason": "No valid identifier found"})
-                continue
-
-            if self.validator.is_valid(match, path, hierarchy_stack, text):
+            result = self.validator.is_valid(match, path, hierarchy_stack, text)
+            if result.is_valid:
                 # Update stack to get the full hierarchical path for this question
-                self._update_hierarchy_stack(hierarchy_stack, path)
+                HierarchyUtils.update_hierarchy_stack(hierarchy_stack, path)
                 # Capture current stack state as the path for this question
                 validated_matches.append((match, list(hierarchy_stack)))
             else:
-                self.diagnostics.rejected_headers.append({"header": raw_header, "reason": "Structural or hierarchy rejection"})
+                self.diagnostics.rejected_headers.append({
+                    "header": raw_header, 
+                    "reason": result.reason or "Unknown rejection"
+                })
 
         self.diagnostics.validated_count = len(validated_matches)
         if not validated_matches:
             return []
 
-        for i, (match, path) in enumerate(validated_matches):
+        for i, (match, h_path) in enumerate(validated_matches):
             raw_header = match.group(0)
             start_offset = base_offset + match.start()
             
@@ -73,15 +101,13 @@ class QuestionParser:
             
             block_text = text[match.end():next_match_start].strip()
             
-            # Use the augmented path from the stack state
-            level = self._get_level(path)
+            level = self._get_level(h_path)
             
-            # Use binary search for page lookup
-            start_page = self._get_page_num_fast(match.start(), page_offsets)
-            end_page = self._get_page_num_fast(next_match_start - 1, page_offsets)
+            start_page = self._get_page_num_fast(match.start(), page_offsets, page_keys)
+            end_page = self._get_page_num_fast(next_match_start - 1, page_offsets, page_keys)
             
             parsed_questions.append(ParsedQuestion(
-                hierarchy_path=path,
+                hierarchy_path=h_path,
                 raw_header=raw_header,
                 text=block_text,
                 start_offset=start_offset,
@@ -98,34 +124,10 @@ class QuestionParser:
         if len(path) == 2: return QuestionLevel.SUB
         return QuestionLevel.MAIN
 
-    def _update_hierarchy_stack(self, stack: List[str], new_path: List[str]):
+    def _get_page_num_fast(self, offset: int, page_offsets: List[Tuple[int, int]], page_keys: List[int]) -> int:
         """
-        Updates the stateful stack based on the new path.
+        Finds the page number for a given character offset using binary search on precomputed keys.
         """
-        if not new_path: return
-
-        main, alpha, roman = self.validator._decompose_path(new_path)
-
-        if main:
-            stack.clear()
-            stack.append(main)
-            if alpha: stack.append(alpha)
-            if roman: stack.append(roman)
-        elif alpha:
-            while len(stack) > 1: stack.pop()
-            stack.append(alpha)
-            if roman: stack.append(roman)
-        elif roman:
-            while len(stack) > 2: stack.pop()
-            stack.append(roman)
-
-    def _get_page_num_fast(self, offset: int, page_offsets: List[Tuple[int, int]]) -> int:
-        """
-        Finds the page number for a given character offset using binary search.
-        """
-        if not page_offsets: return 1
-        # Extract offsets for bisect
-        keys = [x[0] for x in page_offsets]
-        idx = bisect.bisect_right(keys, offset) - 1
+        if not page_keys: return 1
+        idx = bisect.bisect_right(page_keys, offset) - 1
         return page_offsets[max(0, idx)][1]
-

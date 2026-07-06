@@ -1,6 +1,6 @@
 import re
 from dataclasses import dataclass, field
-from typing import List, Optional, Tuple
+from typing import List, Optional, Dict, Any, Tuple
 from enum import Enum
 
 class LayoutType(Enum):

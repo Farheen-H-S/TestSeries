@@ -3,6 +3,7 @@ import bisect
 from typing import List, Tuple, Optional
 from .types import ParsedAnswer, ParserConfig
 from .normalizer import Normalizer
+from .hierarchy_utils import HierarchyUtils
 
 class AnswerParser:
     """
@@ -18,20 +19,34 @@ class AnswerParser:
         """
         Parses text into a list of answers with stateful path resolution and absolute offsets.
         """
+        # Collect all potential matches from all patterns
         raw_matches = []
-        for regex in self.config.answer_header_patterns:
-            raw_matches.extend(list(regex.finditer(text)))
+        for p_idx, regex in enumerate(self.config.answer_header_patterns):
+            for match in regex.finditer(text):
+                raw_matches.append((match, p_idx))
             
-        unique_matches = {}
-        for m in raw_matches:
-            span = (m.start(), m.end())
-            if span not in unique_matches:
-                unique_matches[span] = m
+        # Resolve overlapping matches: Prefer longer span or higher priority pattern
+        raw_matches.sort(key=lambda x: x[0].start())
+        resolved_matches: List[re.Match] = []
+        
+        for match, p_idx in raw_matches:
+            is_valid_overlap = True
+            for other_match in resolved_matches:
+                if match.start() < other_match.end() and other_match.start() < match.end():
+                    # Simplified logic for answers: current regex match span often fixed
+                    # If we already have a match covering this start, skip.
+                    is_valid_overlap = False
+                    break
+            if is_valid_overlap:
+                resolved_matches.append(match)
                 
-        all_potential_matches = sorted(unique_matches.values(), key=lambda x: x.start())
+        all_potential_matches = sorted(resolved_matches, key=lambda x: x.start())
 
         if not all_potential_matches:
             return []
+
+        # Precompute page keys for true O(log n) lookup
+        page_keys = [x[0] for x in page_offsets] if page_offsets else []
 
         parsed_answers = []
         hierarchy_stack: List[str] = []
@@ -46,10 +61,11 @@ class AnswerParser:
             block_text = text[match.end():next_match_start].strip()
             
             path = self.normalizer.normalize_header(raw_header)
-            self._update_hierarchy_stack(hierarchy_stack, path)
+            # Use shared hierarchy logic
+            HierarchyUtils.update_hierarchy_stack(hierarchy_stack, path)
             
-            start_page = self._get_page_num_fast(match.start(), page_offsets)
-            end_page = self._get_page_num_fast(next_match_start - 1, page_offsets)
+            start_page = self._get_page_num_fast(match.start(), page_offsets, page_keys)
+            end_page = self._get_page_num_fast(next_match_start - 1, page_offsets, page_keys)
             
             parsed_answers.append(ParsedAnswer(
                 hierarchy_path=list(hierarchy_stack),
@@ -63,38 +79,10 @@ class AnswerParser:
             
         return parsed_answers
 
-    def _update_hierarchy_stack(self, stack: List[str], new_path: List[str]):
-        if not new_path: return
-        
-        # We reuse the logic from question parser via decomposition if possible,
-        # but answers are often simpler.
-        main = new_path[0] if new_path[0].isdigit() else None
-        alpha = None
-        roman = None
-        
-        # Explicit Roman check for consistency
-        ROMAN_REGEX = re.compile(r'^(i|ii|iii|iv|v|vi|vii|viii|ix|x|xi|xii|xiii|xiv|xv)$', re.IGNORECASE)
-        
-        for p in new_path:
-            if p.isdigit(): main = p
-            elif ROMAN_REGEX.match(p): roman = p
-            elif len(p) == 1 and p.isalpha(): alpha = p
-
-        if main:
-            stack.clear()
-            stack.append(main)
-            if alpha: stack.append(alpha)
-            if roman: stack.append(roman)
-        elif alpha:
-            while len(stack) > 1: stack.pop()
-            stack.append(alpha)
-            if roman: stack.append(roman)
-        elif roman:
-            while len(stack) > 2: stack.pop()
-            stack.append(roman)
-
-    def _get_page_num_fast(self, offset: int, page_offsets: List[Tuple[int, int]]) -> int:
-        if not page_offsets: return 1
-        keys = [x[0] for x in page_offsets]
-        idx = bisect.bisect_right(keys, offset) - 1
+    def _get_page_num_fast(self, offset: int, page_offsets: List[Tuple[int, int]], page_keys: List[int]) -> int:
+        """
+        Finds the page number for a given character offset using binary search on precomputed keys.
+        """
+        if not page_keys: return 1
+        idx = bisect.bisect_right(page_keys, offset) - 1
         return page_offsets[max(0, idx)][1]

@@ -1,5 +1,10 @@
 import re
-from typing import List, Optional
+from typing import List, Optional, NamedTuple
+from .hierarchy_utils import HierarchyUtils
+
+class ValidationResult(NamedTuple):
+    is_valid: bool
+    reason: Optional[str] = None
 
 class HeaderValidator:
     """
@@ -7,14 +12,13 @@ class HeaderValidator:
     for potential question and answer headers.
     """
     
-    ROMAN_REGEX = re.compile(r'^(i|ii|iii|iv|v|vi|vii|viii|ix|x|xi|xii|xiii|xiv|xv)$', re.IGNORECASE)
-
-    def is_valid(self, match: re.Match, path: List[str], current_stack: List[str], full_text: str) -> bool:
+    def is_valid(self, match: re.Match, path: List[str], current_stack: List[str], full_text: str) -> ValidationResult:
         """
         Validates if a potential header is structurally sound and logically follows the current hierarchy.
+        Returns ValidationResult with a detailed reason for rejection.
         """
         if not path:
-            return False
+            return ValidationResult(False, "failed OCR normalization / no identifier found")
             
         raw_header = match.group(0)
         start_idx = match.start()
@@ -23,83 +27,62 @@ class HeaderValidator:
         if not self._is_start_of_line(start_idx, full_text):
             # Only allow if it's a "strong" header (e.g. "Question 1")
             if not self._is_strong_header(raw_header):
-                return False
+                return ValidationResult(False, "not start of line")
 
         # 2. Hierarchy Validation
-        if not self._is_logical_transition(path, current_stack):
-            return False
-
-        return True
+        return self._check_logical_transition(path, current_stack)
 
     def _is_start_of_line(self, idx: int, text: str) -> bool:
         if idx == 0:
             return True
-        # Check backward for newline, allowing leading whitespace/tabs
+        # Check backward for newline, allowing leading horizontal whitespace
         check_idx = idx - 1
         while check_idx >= 0:
             char = text[check_idx]
             if char == '\n':
                 return True
-            if char not in (' ', '\t', '\r', '\f'):
+            if char not in (' ', '\t'):
                 return False
             check_idx -= 1
         return True
 
     def _is_strong_header(self, raw_header: str) -> bool:
         upper = raw_header.upper()
+        # Strong markers that can appear without being at start of line (rare)
         return "QUESTION" in upper or "ANS" in upper or "SOL" in upper or "Q." in upper
 
-    def _is_logical_transition(self, new_path: List[str], current_stack: List[str]) -> bool:
+    def _check_logical_transition(self, new_path: List[str], current_stack: List[str]) -> ValidationResult:
         """
-        Enforces legal hierarchy transitions.
-        Allowed:
-        1 -> 2
-        1 -> 1(a)
-        1(a) -> 1(b)
-        1(a) -> 1(a)(i)
-        Reject:
-        1 -> (i)
-        (c) -> (a)
+        Strict hierarchy enforcement. 
+        Deterministic rule: 
+        - Main follows Main (or starts)
+        - Alpha MUST follow Main (cannot start unless explicitly allowed)
+        - Roman MUST follow Alpha (cannot directly follow Main)
         """
-        if not current_stack:
-            # We assume the first thing MUST be a main question number (digit)
-            # OR a sub-question if it's (a) - some documents start with (a)
-            return new_path[0].isdigit() or new_path[0] == 'a'
+        main, alpha, roman = HierarchyUtils.decompose_path(new_path)
+        c_main, c_alpha, c_roman = HierarchyUtils.decompose_path(current_stack)
 
-        # Decompose the new path
-        main, alpha, roman = self._decompose_path(new_path)
-        c_main, c_alpha, c_roman = self._decompose_path(current_stack)
+        if not current_stack:
+            # Paper start
+            if main: return ValidationResult(True)
+            if alpha == 'a': return ValidationResult(True) # Some starts with (a)
+            return ValidationResult(False, "invalid starting numbering sequence")
 
         if main:
-            # Transitioning to a new MAIN question (e.g. 1 -> 2)
-            # We allow non-sequential digits because OCR might miss one or paper might skip
-            return True 
+            # 1 -> 2 (ALLOWED)
+            return ValidationResult(True)
         
         if alpha and not roman:
-            # Transitioning to a SUB question (e.g. (a) -> (b) or 1 -> (a))
-            if not c_main: return False # Impossible
-            # If we already have a sub, check if it's sequential or nested?
-            # Actually, alpha follows main. 
-            return True # Lenient for now, but avoids (i) -> (a)
+            # 1 -> (a) (ALLOWED)
+            if not c_main:
+                return ValidationResult(False, "alpha label found without parent main number")
+            return ValidationResult(True)
             
         if roman:
-            # Transitioning to SUB_SUB (e.g. (i) -> (ii) or (a) -> (i))
-            if not c_alpha: 
-                # (i) cannot follow 1 without (a) or similar intermediate level in most ICAI papers
-                # However, some papers do 1 -> (i). We'll allow it if main exists.
-                return c_main is not None
-            return True
+            # 1 -> (a) -> (i) (ALLOWED)
+            # 1 -> (i) (REJECTED by strict rule)
+            if not c_alpha:
+                return ValidationResult(False, "illegal hierarchy transition: roman must follow alpha")
+            return ValidationResult(True)
 
-        return False
-
-    def _decompose_path(self, path: List[str]):
-        main = path[0] if path[0].isdigit() else None
-        alpha = None
-        roman = None
-        
-        for p in path:
-            if p.isdigit(): main = p
-            elif self.ROMAN_REGEX.match(p): roman = p
-            elif len(p) == 1 and p.isalpha(): alpha = p
-            
-        return main, alpha, roman
+        return ValidationResult(False, "unknown numbering pattern")

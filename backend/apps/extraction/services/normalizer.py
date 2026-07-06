@@ -10,7 +10,7 @@ class Normalizer:
     def ocr_correct(text: str) -> str:
         """
         Applies deterministic OCR correction for common mistakes in numeric contexts.
-        Targets markers like S->5, B->8, Z->2 only when context suggests numeric code.
+        Corrects markers like S->5, B->8, Z->2 when in a header-like context.
         """
         if not text:
             return ""
@@ -20,15 +20,25 @@ class Normalizer:
         text = re.sub(r'\b[lI|]\b', '1', text)
         
         # 2. Handle O -> 0, S -> 5, B -> 8, Z -> 2 in numeric context
-        # Only if surrounded by digits or common header markers
+        # Case A: Surrounded by digits
         text = re.sub(r'(?<=\d)O|O(?=\d)', '0', text)
         text = re.sub(r'(?<=\d)S|S(?=\d)', '5', text)
         text = re.sub(r'(?<=\d)B|B(?=\d)', '8', text)
         text = re.sub(r'(?<=\d)Z|Z(?=\d)', '2', text)
         
-        # Specific bracketed fixes (a common pattern for ICAI sub-questions)
-        text = re.sub(r'\(S\)', '(5)', text)
-        text = re.sub(r'\(B\)', '(8)', text)
+        # Case B: After a common header marker (e.g. Question S, Q. B)
+        # Python's 're' module requires fixed-width look-behind.
+        text = re.sub(r'(?i)(?<=Question\s)S\b', '5', text)
+        text = re.sub(r'(?i)(?<=Question\s)B\b', '8', text)
+        text = re.sub(r'(?i)(?<=Question\s)Z\b', '2', text)
+        text = re.sub(r'(?i)(?<=Q\.\s)S\b', '5', text)
+        text = re.sub(r'(?i)(?<=Q\.\s)B\b', '8', text)
+        text = re.sub(r'(?i)(?<=Q\s)S\b', '5', text)
+        text = re.sub(r'(?i)(?<=Q\s)B\b', '8', text)
+        
+        # NOTE: We deliberately do NOT apply (S)->(5), (B)->(8) bracket corrections here.
+        # Sub-question brackets only contain letters or roman numerals in ICAI documents.
+        # Those corrections belong in the MarksExtractor context, not here.
         
         return text
 
