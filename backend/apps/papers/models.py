@@ -41,6 +41,11 @@ class Question(models.Model):
         max_length=30,
         default="UNIDENTIFIED"
     )
+    instruction_type = models.CharField(
+        max_length=30,
+        null=True,
+        blank=True
+    )
     
     marks = models.PositiveIntegerField(null=True, blank=True)
     source_page = models.PositiveIntegerField(null=True, blank=True)

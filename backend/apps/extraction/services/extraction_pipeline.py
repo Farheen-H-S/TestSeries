@@ -1,43 +1,33 @@
 import logging
-from typing import List, Dict, Any
+import time
+from typing import List, Dict, Any, Tuple, Optional
 from django.db import transaction
 from apps.documents.models import Document
 from apps.extraction.models import ExtractionLog
 from apps.papers.models import Question
 from .pdf_loader import load_pdf
 from .text_extractor import extract_text
-from .question_parser import parse_questions
 from .html_formatter import text_to_html
 from .chapter_mapper import map_question_to_chapter, get_prepared_chapters
+
+# Phase 3D Services
+from .types import LayoutType, QuestionLevel
+from .layout_detector import DocumentLayoutDetector
+from .section_splitter import SectionSplitter
+from .question_parser import QuestionParser
+from .answer_parser import AnswerParser
+from .answer_matcher import AnswerMatcher
+from .marks_extractor import MarksExtractor
+from .question_classifier import QuestionClassifier
+from .instruction_detector import InstructionDetector
 
 # Initialize logger
 logger = logging.getLogger(__name__)
 
-def run_extraction_pipeline(file_path: str) -> List[Dict[str, Any]]:
-    """
-    Orchestrate the extraction of text from a PDF file.
-    
-    Args:
-        file_path: The absolute path to the PDF file.
-
-    Returns:
-        A list of dictionaries containing page number and extracted text.
-    """
-    doc = load_pdf(file_path)
-    
-    try:
-        pages = extract_text(doc)
-        return pages
-    finally:
-        doc.close()
-
 def extract_document(document: Document):
     """
-    Full pipeline to process a Document: extract text, parse questions, and persist to DB.
-    
-    This function handles status updates, logging, and database transactions.
+    Full Phase 3D pipeline to process a Document.
     """
-    # 1. Initialize Status and Log
     document.extraction_status = Document.ExtractionStatus.PROCESSING
     document.save(update_fields=["extraction_status"])
     
@@ -46,69 +36,156 @@ def extract_document(document: Document):
         status=ExtractionLog.Status.PROCESSING
     )
     
+    start_time = time.time()
+    
     try:
-        # 2. Run Python Extraction Logic
-        # We perform extraction outside the transaction to minimize lock time
-        pages_data = run_extraction_pipeline(document.storage_path)
+        # 1. Load and Extract Raw Text
+        pdf_doc = load_pdf(document.storage_path)
+        try:
+            pages_data = extract_text(pdf_doc)
+        finally:
+            pdf_doc.close()
+
+        # Prepare full text and page offsets for the parsers
+        full_text = ""
+        page_offsets: List[Tuple[int, int]] = []
+        current_offset = 0
+        for p in pages_data:
+            page_offsets.append((current_offset, p["page_number"]))
+            full_text += p["text"] + "\n"
+            current_offset += len(p["text"]) + 1
+
+        # 2. Layout Detection
+        detector = DocumentLayoutDetector()
+        layout_res = detector.detect_layout(full_text)
+        logger.info("Detected layout: %s. Reason: %s", layout_res.layout, layout_res.reason)
+
+        # 3. Text Slicing (if SECTION_WISE)
+        splitter = SectionSplitter()
+        if layout_res.layout == LayoutType.SECTION_WISE:
+            q_part, a_part = splitter.split(full_text, layout_res.boundary_position)
+        else:
+            q_part, a_part = full_text, full_text
+
+        # 4. Parsing
+        q_parser = QuestionParser()
+        a_parser = AnswerParser()
         
-        # 3. Persistence inside a transaction
+        parsed_questions = q_parser.parse(q_part, page_offsets)
+        
+        # Best-effort Answer Parsing
+        parsed_answers = []
+        if layout_res.layout != LayoutType.UNKNOWN or "ANSWER" in a_part.upper():
+            parsed_answers = a_parser.parse(a_part, page_offsets)
+
+        # 5. Matching
+        matcher = AnswerMatcher()
+        match_res = matcher.match(parsed_questions, parsed_answers)
+        
+        # Log diagnostics
+        diag = match_res.diagnostics
+        logger.info(
+            "Matching complete: %d matched, %d unmatched Q, %d unmatched A. Time: %.2fms",
+            diag.matched_count, len(diag.unmatched_questions), 
+            len(diag.unmatched_answers), diag.processing_time_ms
+        )
+
+        # 6. Enrichment Hooks
+        marks_ext = MarksExtractor()
+        classifier = QuestionClassifier()
+        instr_det = InstructionDetector()
+        
+        # Build lookup for matched answers
+        answer_lookup = {id(q): a for q, a in match_res.matches}
+
+        # 7. Persistence inside a transaction
         with transaction.atomic():
-            # Update document page count
             document.total_pages = len(pages_data)
             document.save(update_fields=["total_pages"])
             
-            # Parse questions
-            questions_data = parse_questions(pages_data)
-            
-            # 3.2 Prepare mapping data once per document to avoid N+1 queries
             prepared_chapters = get_prepared_chapters(document.subject)
             
-            # 3.3 Create Question records
-            for q_data in questions_data:
-                # Deterministically map question to chapter
+            # hierarchy_map: tuple(path) -> Question object
+            hierarchy_map = {}
+
+            for pq in parsed_questions:
+                # 7.1 Enrichment
+                marks = None
+                try:
+                    marks = marks_ext.extract(pq.text)
+                except Exception:
+                    logger.exception("Marks extraction failed for %s", pq.raw_header)
+                
+                q_type = "UNIDENTIFIED"
+                try:
+                    q_type = classifier.classify(pq.text)
+                except Exception:
+                    logger.exception("Classification failed for %s", pq.raw_header)
+                
+                instr = None
+                try:
+                    instr = instr_det.detect(pq.text)
+                except Exception:
+                    logger.exception("Instruction detection failed for %s", pq.raw_header)
+                
+                # Answer Matching
+                ans = answer_lookup.get(id(pq))
+                ans_text = ans.text if ans else ""
+                
+                # HTML Formatting
+                q_content = text_to_html(pq.text)
+                a_content = text_to_html(ans_text) if ans_text else ""
+                
+                # Chapter Mapping
                 matched_chapter = None
                 try:
                     matched_chapter = map_question_to_chapter(
-                        q_data["question_text"],
+                        pq.text,
                         prepared_chapters=prepared_chapters
                     )
                 except Exception:
-                    # Requirement: Mapping failures must NEVER fail extraction.
-                    # We use logger.exception to capture the full traceback for debugging.
-                    logger.exception(
-                        "Chapter mapping failed for question %s",
-                        q_data.get("question_number")
-                    )
-                    matched_chapter = None
+                    logger.exception("Chapter mapping failed for %s", pq.raw_header)
 
-                Question.objects.create(
+                # 7.2 Resolve Parent
+                parent_q = None
+                if len(pq.hierarchy_path) > 1:
+                    parent_path = tuple(pq.hierarchy_path[:-1])
+                    parent_q = hierarchy_map.get(parent_path)
+
+                # 7.3 Create Record
+                q_obj = Question.objects.create(
                     document=document,
+                    parent_question=parent_q,
                     chapter=matched_chapter,
-                    question_number=q_data["question_number"],
-                    question_text=q_data["question_text"],
-                    question_content=text_to_html(q_data["question_text"]),
-                    source_page=q_data["source_page"],
-                    question_type="UNIDENTIFIED",
-                    answer_text="",
-                    answer_content="",
-                    marks=None
+                    question_number=pq.hierarchy_path[0],
+                    sub_question_label=pq.hierarchy_path[1] if len(pq.hierarchy_path) > 1 else None,
+                    question_text=pq.text,
+                    question_content=q_content,
+                    answer_text=ans_text,
+                    answer_content=a_content,
+                    question_type=q_type,
+                    instruction_type=instr,
+                    marks=marks,
+                    source_page=pq.start_page
                 )
-            
-        # 4. Finalize Success
+                
+                # Keep track for hierarchy
+                hierarchy_map[tuple(pq.hierarchy_path)] = q_obj
+
+        # 8. Finalize Success
         document.extraction_status = Document.ExtractionStatus.COMPLETED
         document.save(update_fields=["extraction_status"])
         
         log.status = ExtractionLog.Status.COMPLETED
-        log.save(update_fields=["status"])
+        log.message = f"Extracted {len(parsed_questions)} questions in {time.time() - start_time:.2f}s"
+        log.save(update_fields=["status", "message"])
         
     except Exception as e:
-        # 5. Handle Failures
+        logger.exception("Extraction failed for document %s", document.document_id)
         document.extraction_status = Document.ExtractionStatus.FAILED
         document.save(update_fields=["extraction_status"])
         
         log.status = ExtractionLog.Status.FAILED
         log.message = str(e)
         log.save(update_fields=["status", "message"])
-        
-        # Re-raise to allow caller to handle if needed
         raise
