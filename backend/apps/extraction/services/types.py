@@ -9,7 +9,6 @@ class LayoutType(Enum):
     UNKNOWN = "UNKNOWN"
 
 class QuestionLevel(Enum):
-    ROOT = "ROOT"
     MAIN = "MAIN"
     SUB = "SUB"
     SUB_SUB = "SUB_SUB"
@@ -25,8 +24,8 @@ class ParsedQuestion:
     hierarchy_path: List[str]
     raw_header: str
     text: str
-    start_offset: int
-    end_offset: int
+    start_offset: int  # Absolute offset in original document
+    end_offset: int    # Absolute offset in original document
     start_page: int
     end_page: int
     level: QuestionLevel = QuestionLevel.MAIN
@@ -36,8 +35,8 @@ class ParsedAnswer:
     hierarchy_path: List[str]
     raw_header: str
     text: str
-    start_offset: int
-    end_offset: int
+    start_offset: int  # Absolute offset in original document
+    end_offset: int    # Absolute offset in original document
     start_page: int
     end_page: int
 
@@ -58,14 +57,14 @@ class MatchingResult:
 
 @dataclass
 class ParserConfig:
-    # Delimiters for SECTION_WISE layout
-    section_delimiters: List[str]
-    # Header patterns for Questions and Answers
-    question_header_patterns: List[str]
-    answer_header_patterns: List[str]
+    # Compiled delimiters for SECTION_WISE layout
+    section_delimiters: List[re.Pattern]
+    # Compiled header patterns for Questions and Answers
+    question_header_patterns: List[re.Pattern]
+    answer_header_patterns: List[re.Pattern]
     # Specific keywords for classification
     case_study_keywords: List[str]
     instruction_priority: List[str]
-    # Marks patterns
-    marks_patterns: List[str]
-    marks_exclusion_patterns: List[str]
+    # Compiled marks patterns
+    marks_patterns: List[re.Pattern]
+    marks_exclusion_patterns: List[re.Pattern]

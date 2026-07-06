@@ -27,38 +27,39 @@ class Normalizer:
         return text
 
     @staticmethod
-    def normalize_header(raw_header: str) -> Tuple[int, Optional[str], Optional[str]]:
+    def normalize_header(raw_header: str) -> List[str]:
         """
-        Converts a raw header into a canonical (number, label, sub_label) tuple.
-        Examples:
-        "Question 1(a)(i)" -> (1, "a", "i")
-        "1." -> (1, None, None)
+        Converts a raw header into a canonical hierarchy path [main, sub, sub_sub].
+        Uses tokenisation to ensure 1(a)(i) is parsed in order.
         """
-        # First OCR correct
+        # OCR correct ONLY for identification
         header = Normalizer.ocr_correct(raw_header.strip())
         
-        # Greedy extraction of digits for the main number
-        num_match = re.search(r'(\d+)', header)
-        main_number = int(num_match.group(1)) if num_match else 0
+        # Tokenisation using regex to split into components: 1, (a), (i)
+        # We look for digits followed by optional bracketed labels
+        path = []
         
-        # Extract alpha label (a), (b)
-        alpha_match = re.search(r'\(([a-z])\)', header, re.IGNORECASE)
-        alpha_label = alpha_match.group(1).lower() if alpha_match else None
-        
-        # Extract roman label (i), (ii)
-        roman_match = re.search(r'\(([ivxIVX]+)\)', header)
-        roman_label = roman_match.group(1).lower() if roman_match else None
-        
-        return main_number, alpha_label, roman_label
+        # 1. Main Number
+        main_match = re.search(r'(\d+)', header)
+        if main_number_str := (main_match.group(1) if main_match else None):
+            path.append(main_number_str)
+            current_pos = main_match.end()
+        else:
+            current_pos = 0
+            
+        # 2. Sequential bracketed labels: (a), (i)
+        # We search from where the main number ended to keep order
+        label_regex = re.compile(r'\(([^)]+)\)')
+        for match in label_regex.finditer(header, current_pos):
+            label = match.group(1).strip().lower()
+            if label:
+                path.append(label)
+                
+        # If no path found (e.g. just "a."), try a fallback for simple labels
+        if not path:
+            fallback_match = re.match(r'^([a-zA-Z1-9]|[ivxIVX]+)[.)]', header)
+            if fallback_match:
+                label = fallback_match.group(1).lower()
+                path.append(label)
 
-    @staticmethod
-    def get_hierarchy_path(main_number: int, alpha_label: Optional[str] = None, roman_label: Optional[str] = None) -> List[str]:
-        """
-        Returns a canonical hierarchy path as strings.
-        """
-        path = [str(main_number)]
-        if alpha_label:
-            path.append(alpha_label)
-        if roman_label:
-            path.append(roman_label)
         return path

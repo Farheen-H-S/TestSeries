@@ -7,61 +7,75 @@ class DocumentLayoutDetector:
     Decision tree to identify document layout: SECTION_WISE, INTERLEAVED, or UNKNOWN.
     """
     
-    def __init__(self, delimiters=None, q_patterns=None, a_patterns=None):
-        self.delimiters = delimiters or ANSWER_SECTION_DELIMITERS
-        self.q_patterns = q_patterns or QUESTION_HEADER_PATTERNS
-        self.a_patterns = a_patterns or ANSWER_HEADER_PATTERNS
-        
-        # Compile patterns
-        self.delimiter_regex = re.compile("|".join(self.delimiters), re.IGNORECASE | re.MULTILINE)
-        self.q_regex = re.compile("|".join(self.q_patterns), re.IGNORECASE | re.MULTILINE)
-        self.a_regex = re.compile("|".join(self.a_patterns), re.IGNORECASE | re.MULTILINE)
+from .types import LayoutType, LayoutResult, ParserConfig
 
+class DocumentLayoutDetector:
+    """
+    Decision tree to identify document layout: SECTION_WISE, INTERLEAVED, or UNKNOWN.
+    """
+    
+    def __init__(self, config: ParserConfig):
+        self.config = config
+        
     def detect_layout(self, text: str) -> LayoutResult:
         """
         Determines the layout based on structural signals.
         """
         # Step 1: Check for Section Delimiters
-        delimiter_match = self.delimiter_regex.search(text)
-        if delimiter_match:
-            # Signal: Found clear answer section header.
-            # Check if headers appear after it
-            post_text = text[delimiter_match.end():]
-            if self.q_regex.search(post_text) or self.a_regex.search(post_text):
-                return LayoutResult(
-                    layout=LayoutType.SECTION_WISE,
-                    boundary_position=delimiter_match.start(),
-                    reason=f"Found section delimiter '{delimiter_match.group(0)}' with headers following."
-                )
+        for delim_regex in self.config.section_delimiters:
+            delims = list(delim_regex.finditer(text))
+            for delim in delims:
+                pre_text = text[:delim.start()]
+                post_text = text[delim.end():]
+                
+                # Check for questions before delimiter
+                has_q_before = any(p.search(pre_text) for p in self.config.question_header_patterns)
+                # Check for answers or more questions after delimiter
+                has_a_after = any(p.search(post_text) for p in self.config.answer_header_patterns)
+                has_q_after = any(p.search(post_text) for p in self.config.question_header_patterns)
+                
+                if has_q_before and (has_a_after or has_q_after):
+                    return LayoutResult(
+                        layout=LayoutType.SECTION_WISE,
+                        boundary_position=delim.start(),
+                        reason=f"Found section delimiter '{delim.group(0)}' with headers before and after."
+                    )
 
         # Step 2: Check for INTERLEAVED pattern
-        # Look for repeated Q -> A pattern
-        # We search first 50% of the doc for efficiency or just the whole doc? 
-        # ICAI docs are large, let's look for a few sequences.
-        q_matches = list(self.q_regex.finditer(text))
-        a_matches = list(self.a_regex.finditer(text))
+        # We look for a few sequences of Q followed shortly by A
+        q_regexes = self.config.question_header_patterns
+        a_regexes = self.config.answer_header_patterns
         
-        # If we find alternating Q and A headers multiple times
-        alternating_count = 0
+        q_matches = []
+        for r in q_regexes:
+            q_matches.extend(list(r.finditer(text)))
+        q_matches.sort(key=lambda x: x.start())
+        
+        a_matches = []
+        for r in a_regexes:
+            a_matches.extend(list(r.finditer(text)))
+        a_matches.sort(key=lambda x: x.start())
+
         if q_matches and a_matches:
-            # Very simple check: are there multiple Answer headers interspersed with Question headers?
-            # A more robust check could look at the offsets.
-            last_a_pos = -1
-            for q in q_matches[:10]: # Check first few questions
-                # Find if an Answer follows this Question before the next Question
+            alternating_sequences = 0
+            # Look at first 15 questions to check for interleaved pattern
+            for i in range(min(15, len(q_matches) - 1)):
+                current_q = q_matches[i]
+                next_q_pos = q_matches[i+1].start()
+                
+                # Is there an answer between this Q and the next Q?
                 for a in a_matches:
-                    if a.start() > q.start():
-                        # Found an answer after a question
-                        alternating_count += 1
+                    if current_q.start() < a.start() < next_q_pos:
+                        alternating_sequences += 1
                         break
             
-            if alternating_count >= 3:
+            if alternating_sequences >= 3:
                 return LayoutResult(
                     layout=LayoutType.INTERLEAVED,
-                    reason=f"Detected {alternating_count} alternating Question/Answer headers."
+                    reason=f"Detected {alternating_sequences} sequential Q->A blocks."
                 )
 
         return LayoutResult(
             layout=LayoutType.UNKNOWN,
-            reason="No clear section delimiter or interleaved pattern detected."
+            reason="Insufficient structural evidence for SECTION_WISE or INTERLEAVED."
         )

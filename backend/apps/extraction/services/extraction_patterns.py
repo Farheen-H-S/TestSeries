@@ -87,3 +87,21 @@ CLASSIFICATION_RULES = {
         "TRUE OR FALSE", "MULTIPLE CHOICE", "MCQ", "CHOOSE THE CORRECT"
     ]
 }
+# Compiled Patterns (Individual to preserve anchors)
+COMPILED_SECTION_DELIMITERS = [re.compile(p, re.IGNORECASE | re.MULTILINE) for p in ANSWER_SECTION_DELIMITERS]
+COMPILED_QUESTION_HEADER_PATTERNS = [re.compile(p, re.MULTILINE) for p in QUESTION_HEADER_PATTERNS]
+COMPILED_ANSWER_HEADER_PATTERNS = [re.compile(p, re.MULTILINE) for p in ANSWER_HEADER_PATTERNS]
+COMPILED_MARKS_PATTERNS = [re.compile(p, re.IGNORECASE) for p in MARKS_PATTERNS]
+COMPILED_MARKS_EXCLUSION_PATTERNS = [re.compile(p, re.IGNORECASE) for p in MARKS_EXCLUSION_PATTERNS]
+
+def get_default_parser_config():
+    from .types import ParserConfig
+    return ParserConfig(
+        section_delimiters=COMPILED_SECTION_DELIMITERS,
+        question_header_patterns=COMPILED_QUESTION_HEADER_PATTERNS,
+        answer_header_patterns=COMPILED_ANSWER_HEADER_PATTERNS,
+        case_study_keywords=CLASSIFICATION_RULES["CASE_STUDY"],
+        instruction_priority=INSTRUCTION_PRIORITY,
+        marks_patterns=COMPILED_MARKS_PATTERNS,
+        marks_exclusion_patterns=COMPILED_MARKS_EXCLUSION_PATTERNS
+    )

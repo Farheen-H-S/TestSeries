@@ -21,12 +21,14 @@ from .marks_extractor import MarksExtractor
 from .question_classifier import QuestionClassifier
 from .instruction_detector import InstructionDetector
 
+from .extraction_patterns import get_default_parser_config
+
 # Initialize logger
 logger = logging.getLogger(__name__)
 
 def extract_document(document: Document):
     """
-    Full Phase 3D pipeline to process a Document.
+    Full Phase 3D pipeline to process a Document with industrial-grade correctness.
     """
     document.extraction_status = Document.ExtractionStatus.PROCESSING
     document.save(update_fields=["extraction_status"])
@@ -37,6 +39,7 @@ def extract_document(document: Document):
     )
     
     start_time = time.time()
+    config = get_default_parser_config()
     
     try:
         # 1. Load and Extract Raw Text
@@ -56,29 +59,43 @@ def extract_document(document: Document):
             current_offset += len(p["text"]) + 1
 
         # 2. Layout Detection
-        detector = DocumentLayoutDetector()
+        detector = DocumentLayoutDetector(config)
         layout_res = detector.detect_layout(full_text)
         logger.info("Detected layout: %s. Reason: %s", layout_res.layout, layout_res.reason)
 
-        # 3. Text Slicing (if SECTION_WISE)
+        # 3. Text Slicing
         splitter = SectionSplitter()
         if layout_res.layout == LayoutType.SECTION_WISE:
             q_part, a_part = splitter.split(full_text, layout_res.boundary_position)
+            q_base_offset = 0
+            a_base_offset = layout_res.boundary_position
         else:
             q_part, a_part = full_text, full_text
+            q_base_offset = 0
+            a_base_offset = 0
 
-        # 4. Parsing
-        q_parser = QuestionParser()
-        a_parser = AnswerParser()
+        # 4. Parsing with Config and Base Offsets
+        q_parser = QuestionParser(config)
+        a_parser = AnswerParser(config)
         
-        parsed_questions = q_parser.parse(q_part, page_offsets)
+        parsed_questions = q_parser.parse(q_part, page_offsets, base_offset=q_base_offset)
         
-        # Best-effort Answer Parsing
+        # Best-effort Answer Parsing for UNKNOWN layout
         parsed_answers = []
-        if layout_res.layout != LayoutType.UNKNOWN or "ANSWER" in a_part.upper():
-            parsed_answers = a_parser.parse(a_part, page_offsets)
+        # UNKNOWN should require actual header signals to avoid false positives (e.g. "Answer the following")
+        if layout_res.layout != LayoutType.UNKNOWN:
+            parsed_answers = a_parser.parse(a_part, page_offsets, base_offset=a_base_offset)
+        else:
+            # Best effort: require at least 2 distinct answer headers
+            signals = 0
+            for p in config.answer_header_patterns:
+                signals += len(p.findall(a_part))
+                if signals >= 2: break
+                
+            if signals >= 2:
+                parsed_answers = a_parser.parse(a_part, page_offsets, base_offset=a_base_offset)
 
-        # 5. Matching
+        # 5. Matching using Canonical Hierarchy Paths
         matcher = AnswerMatcher()
         match_res = matcher.match(parsed_questions, parsed_answers)
         
@@ -91,12 +108,12 @@ def extract_document(document: Document):
         )
 
         # 6. Enrichment Hooks
-        marks_ext = MarksExtractor()
-        classifier = QuestionClassifier()
-        instr_det = InstructionDetector()
+        marks_ext = MarksExtractor(config)
+        classifier = QuestionClassifier() # Uses CLASSIFICATION_RULES internally
+        instr_det = InstructionDetector(config.instruction_priority)
         
-        # Build lookup for matched answers
-        answer_lookup = {id(q): a for q, a in match_res.matches}
+        # Build lookup for matched answers based on canonical path tuple
+        answer_lookup = {tuple(q.hierarchy_path): a for q, a in match_res.matches}
 
         # 7. Persistence inside a transaction
         with transaction.atomic():
@@ -108,10 +125,13 @@ def extract_document(document: Document):
             # hierarchy_map: tuple(path) -> Question object
             hierarchy_map = {}
 
+            # Sort questions by hierarchy depth then order to ensure parents are created first
+            # But the parser already handles them in order.
             for pq in parsed_questions:
                 # 7.1 Enrichment
                 marks = None
                 try:
+                    # Provide larger context to marks extractor
                     marks = marks_ext.extract(pq.text)
                 except Exception:
                     logger.exception("Marks extraction failed for %s", pq.raw_header)
@@ -129,7 +149,7 @@ def extract_document(document: Document):
                     logger.exception("Instruction detection failed for %s", pq.raw_header)
                 
                 # Answer Matching
-                ans = answer_lookup.get(id(pq))
+                ans = answer_lookup.get(tuple(pq.hierarchy_path))
                 ans_text = ans.text if ans else ""
                 
                 # HTML Formatting
@@ -146,7 +166,7 @@ def extract_document(document: Document):
                 except Exception:
                     logger.exception("Chapter mapping failed for %s", pq.raw_header)
 
-                # 7.2 Resolve Parent
+                # 7.2 Resolve Parent deterministically
                 parent_q = None
                 if len(pq.hierarchy_path) > 1:
                     parent_path = tuple(pq.hierarchy_path[:-1])
@@ -169,7 +189,7 @@ def extract_document(document: Document):
                     source_page=pq.start_page
                 )
                 
-                # Keep track for hierarchy
+                # Keep track for hierarchy resolution
                 hierarchy_map[tuple(pq.hierarchy_path)] = q_obj
 
         # 8. Finalize Success
@@ -177,7 +197,7 @@ def extract_document(document: Document):
         document.save(update_fields=["extraction_status"])
         
         log.status = ExtractionLog.Status.COMPLETED
-        log.message = f"Extracted {len(parsed_questions)} questions in {time.time() - start_time:.2f}s"
+        log.message = f"Extracted {len(parsed_questions)} questions in {time.time() - start_time:.2f}s."
         log.save(update_fields=["status", "message"])
         
     except Exception as e:
