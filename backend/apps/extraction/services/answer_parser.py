@@ -1,13 +1,13 @@
 import re
-from typing import List, Tuple
+import bisect
+from typing import List, Tuple, Optional
 from .types import ParsedAnswer, ParserConfig
 from .normalizer import Normalizer
-from .extraction_patterns import ANSWER_HEADER_PATTERNS
 
 class AnswerParser:
     """
     Greedy parser for extracting answer blocks.
-    In SECTION_WISE documents, it can also be driven by numbering patterns.
+    Deduplicates matches and uses binary search for performance.
     """
     
     def __init__(self, config: ParserConfig):
@@ -18,22 +18,26 @@ class AnswerParser:
         """
         Parses text into a list of answers with stateful path resolution and absolute offsets.
         """
-        all_potential_matches = []
+        raw_matches = []
         for regex in self.config.answer_header_patterns:
-            all_potential_matches.extend(list(regex.finditer(text)))
-        all_potential_matches.sort(key=lambda x: x.start())
+            raw_matches.extend(list(regex.finditer(text)))
+            
+        unique_matches = {}
+        for m in raw_matches:
+            span = (m.start(), m.end())
+            if span not in unique_matches:
+                unique_matches[span] = m
+                
+        all_potential_matches = sorted(unique_matches.values(), key=lambda x: x.start())
 
         if not all_potential_matches:
             return []
 
         parsed_answers = []
-        
-        # Stateful tracking
         hierarchy_stack: List[str] = []
         
         for i, match in enumerate(all_potential_matches):
             raw_header = match.group(0)
-            # Absolute offsets
             start_offset = base_offset + match.start()
             
             next_match_start = all_potential_matches[i+1].start() if i + 1 < len(all_potential_matches) else len(text)
@@ -41,12 +45,11 @@ class AnswerParser:
             
             block_text = text[match.end():next_match_start].strip()
             
-            # Extract from current header
             path = self.normalizer.normalize_header(raw_header)
             self._update_hierarchy_stack(hierarchy_stack, path)
             
-            start_page = self._get_page_num(start_offset, page_offsets)
-            end_page = self._get_page_num(end_offset - 1, page_offsets)
+            start_page = self._get_page_num_fast(match.start(), page_offsets)
+            end_page = self._get_page_num_fast(next_match_start - 1, page_offsets)
             
             parsed_answers.append(ParsedAnswer(
                 hierarchy_path=list(hierarchy_stack),
@@ -63,13 +66,19 @@ class AnswerParser:
     def _update_hierarchy_stack(self, stack: List[str], new_path: List[str]):
         if not new_path: return
         
+        # We reuse the logic from question parser via decomposition if possible,
+        # but answers are often simpler.
         main = new_path[0] if new_path[0].isdigit() else None
         alpha = None
         roman = None
+        
+        # Explicit Roman check for consistency
+        ROMAN_REGEX = re.compile(r'^(i|ii|iii|iv|v|vi|vii|viii|ix|x|xi|xii|xiii|xiv|xv)$', re.IGNORECASE)
+        
         for p in new_path:
             if p.isdigit(): main = p
+            elif ROMAN_REGEX.match(p): roman = p
             elif len(p) == 1 and p.isalpha(): alpha = p
-            else: roman = p
 
         if main:
             stack.clear()
@@ -79,15 +88,13 @@ class AnswerParser:
         elif alpha:
             while len(stack) > 1: stack.pop()
             stack.append(alpha)
+            if roman: stack.append(roman)
         elif roman:
             while len(stack) > 2: stack.pop()
             stack.append(roman)
 
-    def _get_page_num(self, offset: int, page_offsets: List[Tuple[int, int]]) -> int:
-        """
-        Finds the page number for a given relative character offset within the slice.
-        """
-        for i in range(len(page_offsets) - 1):
-            if page_offsets[i][0] <= offset < page_offsets[i+1][0]:
-                return page_offsets[i][1]
-        return page_offsets[-1][1] if page_offsets else 1
+    def _get_page_num_fast(self, offset: int, page_offsets: List[Tuple[int, int]]) -> int:
+        if not page_offsets: return 1
+        keys = [x[0] for x in page_offsets]
+        idx = bisect.bisect_right(keys, offset) - 1
+        return page_offsets[max(0, idx)][1]

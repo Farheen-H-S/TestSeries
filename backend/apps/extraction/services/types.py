@@ -41,6 +41,12 @@ class ParsedAnswer:
     end_page: int
 
 @dataclass
+class ParsingDiagnostics:
+    total_matches: int = 0
+    validated_count: int = 0
+    rejected_headers: List[Dict[str, str]] = field(default_factory=list) # {"header": str, "reason": str}
+
+@dataclass
 class MatchingDiagnostics:
     matched_count: int = 0
     unmatched_questions: List[str] = field(default_factory=list)
@@ -48,6 +54,7 @@ class MatchingDiagnostics:
     duplicate_question_ids: List[str] = field(default_factory=list)
     duplicate_answer_ids: List[str] = field(default_factory=list)
     ambiguous_matches: List[str] = field(default_factory=list)
+    rejected_headers: List[Dict[str, str]] = field(default_factory=list)
     processing_time_ms: float = 0.0
 
 @dataclass

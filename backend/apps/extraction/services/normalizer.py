@@ -10,19 +10,25 @@ class Normalizer:
     def ocr_correct(text: str) -> str:
         """
         Applies deterministic OCR correction for common mistakes in numeric contexts.
+        Targets markers like S->5, B->8, Z->2 only when context suggests numeric code.
         """
         if not text:
             return ""
             
-        # Common OCR mistakes: l/I/| for 1, O for 0
-        # We only apply these if the resulting string is clearly numeric or a common label
-        
-        # 1. Handle isolated l, I, | -> 1
+        # 1. Handle isolated l, I, |, S, B, Z -> 1, 5, 8, 2
+        # Use word boundaries or bracketed context
         text = re.sub(r'\b[lI|]\b', '1', text)
         
-        # 2. Handle O -> 0 in numeric context (e.g., Q.1O -> Q.10)
-        # Only if O is surrounded by digits or start/end of string
+        # 2. Handle O -> 0, S -> 5, B -> 8, Z -> 2 in numeric context
+        # Only if surrounded by digits or common header markers
         text = re.sub(r'(?<=\d)O|O(?=\d)', '0', text)
+        text = re.sub(r'(?<=\d)S|S(?=\d)', '5', text)
+        text = re.sub(r'(?<=\d)B|B(?=\d)', '8', text)
+        text = re.sub(r'(?<=\d)Z|Z(?=\d)', '2', text)
+        
+        # Specific bracketed fixes (a common pattern for ICAI sub-questions)
+        text = re.sub(r'\(S\)', '(5)', text)
+        text = re.sub(r'\(B\)', '(8)', text)
         
         return text
 

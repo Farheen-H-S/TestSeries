@@ -52,14 +52,16 @@ class MarksExtractor:
                     if is_excluded:
                         continue
                         
-                    # 2. Positional Signal: Marks often appear at the end of a sub-question paragraph.
-                    # We increase priority if followed by newline/end-of-block
+                    # 2. Positional Signal: Marks often appear at the end of a block/paragraph.
+                    # Check if there is significant text followed by something other than a space before a newline.
                     is_at_end = False
-                    after_text = text[end:end+10].strip()
-                    if not after_text or after_text.startswith(("\n", "\r", "\f")):
+                    after_text = text[end:end+40] # Check a bit more context
+                    
+                    # If followed by a paragraph break or header-like pattern
+                    if not after_text.strip() or "\n" in after_text[:15]:
                         is_at_end = True
                     
-                    final_priority = priority + (10 if is_at_end else 0)
+                    final_priority = priority + (15 if is_at_end else 0)
                     candidates.append((val, final_priority))
                     
                 except (ValueError, IndexError):
