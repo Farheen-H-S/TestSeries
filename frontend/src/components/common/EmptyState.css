@@ -1,0 +1,36 @@
+.empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 3rem 2rem;
+  text-align: center;
+  background-color: var(--surface-color);
+  border: 1px dashed var(--border-color);
+  border-radius: var(--border-radius-lg);
+  max-width: 500px;
+  margin: 2rem auto;
+}
+
+.empty-state-icon {
+  color: var(--text-muted);
+  margin-bottom: 1.25rem;
+}
+
+.empty-state-title {
+  font-size: 1.25rem;
+  color: var(--primary-color);
+  font-weight: 600;
+  margin-bottom: 0.5rem;
+}
+
+.empty-state-message {
+  font-size: 0.875rem;
+  color: var(--text-secondary);
+  max-width: 320px;
+  margin-bottom: 1.5rem;
+}
+
+.empty-state-btn {
+  font-weight: 500;
+}
