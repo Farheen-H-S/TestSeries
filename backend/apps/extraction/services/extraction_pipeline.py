@@ -48,13 +48,7 @@ def extract_document(document: Document):
     
     try:
         # 1. Load and Extract Raw Text
-        try:
-            pdf_doc = load_pdf(document.storage_path)
-        except (FileNotFoundError, PDFLoadError) as e:
-            logger.error("Invalid input PDF file | document_id=%s | path=%s | error=%s", 
-                         document.document_id, document.storage_path, str(e))
-            raise
-            
+        pdf_doc = load_pdf(document.storage_path)
         try:
             pages_data = extract_text(pdf_doc)
             logger.info("Loaded document | pages=%d", len(pages_data))
@@ -110,21 +104,13 @@ def extract_document(document: Document):
         q_parser = QuestionParser(config)
         a_parser = AnswerParser(config)
         
-        try:
-            parsed_questions = q_parser.parse(q_part, page_offsets, base_offset=q_base_offset)
-        except Exception as e:
-            logger.error("Question parsing failed | error=%s", str(e), exc_info=True)
-            raise
+        parsed_questions = q_parser.parse(q_part, page_offsets, base_offset=q_base_offset)
         
         # Best-effort Answer Parsing for UNKNOWN layout
         parsed_answers = []
         # UNKNOWN should require actual header signals to avoid false positives (e.g. "Answer the following")
         if layout_res.layout != LayoutType.UNKNOWN:
-            try:
-                parsed_answers = a_parser.parse(a_part, page_offsets, base_offset=a_base_offset)
-            except Exception as e:
-                logger.error("Answer parsing failed | error=%s", str(e), exc_info=True)
-                raise
+            parsed_answers = a_parser.parse(a_part, page_offsets, base_offset=a_base_offset)
         else:
             # Best effort: require at least 2 distinct answer headers
             signals = 0
@@ -133,11 +119,7 @@ def extract_document(document: Document):
                 if signals >= 2: break
                 
             if signals >= 2:
-                try:
-                    parsed_answers = a_parser.parse(a_part, page_offsets, base_offset=a_base_offset)
-                except Exception as e:
-                    logger.error("Answer parsing failed | error=%s", str(e), exc_info=True)
-                    raise
+                parsed_answers = a_parser.parse(a_part, page_offsets, base_offset=a_base_offset)
 
         # 5. Matching using Canonical Hierarchy Paths
         matcher = AnswerMatcher()
@@ -305,7 +287,11 @@ def extract_document(document: Document):
         log.save(update_fields=["status", "message"])
         
     except Exception as e:
-        logger.exception("Extraction failed for document %s", document.document_id)
+        logger.exception(
+            "Extraction failed | document_id=%s | storage_path=%s",
+            document.document_id,
+            document.storage_path
+        )
         document.extraction_status = Document.ExtractionStatus.FAILED
         document.save(update_fields=["extraction_status"])
         

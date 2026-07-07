@@ -26,13 +26,10 @@ class QuestionParser:
         """
         Parses text into a list of hierarchical questions with strict validation and offset correction.
         """
-        try:
-            result = self.parse_with_diagnostics(text, page_offsets, base_offset)
-            self.diagnostics = result.diagnostics
-            return result.questions
-        except Exception as e:
-            logger.error("Question parser failure: %s", str(e), exc_info=True)
-            raise
+        result = self.parse_with_diagnostics(text, page_offsets, base_offset)
+        self.diagnostics = result.diagnostics
+        return result.questions
+
 
 
     def parse_with_diagnostics(

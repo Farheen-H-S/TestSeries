@@ -23,13 +23,10 @@ class AnswerParser:
         """
         Parses text into a list of answers with stateful path resolution and absolute offsets.
         """
-        try:
-            result = self.parse_with_diagnostics(text, page_offsets, base_offset)
-            self.diagnostics = result.diagnostics
-            return result.answers
-        except Exception as e:
-            logger.error("Answer parser failure: %s", str(e), exc_info=True)
-            raise
+        result = self.parse_with_diagnostics(text, page_offsets, base_offset)
+        self.diagnostics = result.diagnostics
+        return result.answers
+
 
 
     def parse_with_diagnostics(
