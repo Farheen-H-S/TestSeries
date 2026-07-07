@@ -20,14 +20,13 @@ class MarksExtractor:
             
         candidates: List[Tuple[int, int]] = [] # (value, priority)
         
-        # Priority mapping based on pattern order (1 to 5 as requested)
+        # Priority mapping based on pattern order (1 to 7)
         for i, regex in enumerate(self.config.marks_patterns):
             priority = 100 - i
             matches = list(regex.finditer(text))
             
             for m in matches:
                 try:
-                    # In our custom regex patterns, the value is in group 1
                     val = int(m.group(1))
                     
                     # Structural Validation
@@ -46,22 +45,24 @@ class MarksExtractor:
                     if is_excluded:
                         continue
                         
-                    # 2. Positional Validation for Weaker Patterns (e.g. (5), [5], 5M)
+                    # 2. Positional Validation for Weaker Patterns (e.g. (5), [5], 5M) to filter list items
                     is_weak = "marks" not in m.group(0).lower()
                     if is_weak:
-                        # Check if the match is preceded by any non-whitespace character on the same line.
-                        # If preceded only by whitespace, it is at the start of a line (like a list item)
-                        # and is rejected.
                         line_start_idx = text.rfind('\n', 0, start)
-                        if line_start_idx == -1:
-                            line_start_idx = 0
-                        else:
-                            line_start_idx += 1
+                        line_start_idx = max(0, line_start_idx)
                         before_on_same_line = text[line_start_idx:start]
                         
-                        if not re.search(r'\S', before_on_same_line):
-                            continue
-                    
+                        is_preceded = bool(re.search(r'\S', before_on_same_line))
+                        if not is_preceded:
+                            # It starts the line.
+                            # Reject if followed by word characters on the same line (which would be a list item like "(1) Point")
+                            line_end_idx = text.find('\n', end)
+                            if line_end_idx == -1:
+                                line_end_idx = len(text)
+                            after_on_same_line = text[end:line_end_idx]
+                            if re.search(r'\w', after_on_same_line):
+                                continue
+
                     # Calculate if it's near the end of a line or paragraph
                     after_text = text[end:end+40]
                     is_at_end = (not re.search(r'\w', after_text)) or ("\n" in after_text[:15])

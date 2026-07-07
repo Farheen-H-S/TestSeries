@@ -200,6 +200,12 @@ class ParserRegressionTests(unittest.TestCase):
             ("Explain the process. [5]", 5),
             ("Explain the system. 5M", 5),
             ("Explain the theory. 5 M", 5),
+            # Marks on their own line
+            ("Explain valuation.\n(5)", 5),
+            ("Explain valuation.\n[5]", 5),
+            # Marks followed by transition text
+            ("Explain valuation. (5) OR", 5),
+            ("Explain valuation. (5) Compulsory", 5),
         ]
         for text, expected in formats:
             with self.subTest(text=text):
@@ -218,6 +224,7 @@ class ParserRegressionTests(unittest.TestCase):
             ("This occurred in year 2024.", None),
             ("5 M employees were surveyed.", None),
             ("We bought 5m packets of seeds.", None),
+            ("(1) Point one explanation", None), # List items should be rejected!
         ]
         for text, expected in false_positives:
             with self.subTest(text=text):
