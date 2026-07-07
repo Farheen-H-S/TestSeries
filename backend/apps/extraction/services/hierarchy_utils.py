@@ -62,3 +62,14 @@ class HierarchyUtils:
             while len(stack) > 2:
                 stack.pop()
             stack.append(roman)
+
+    @staticmethod
+    def get_page_num_fast(offset: int, page_offsets: List[Tuple[int, int]], page_keys: List[int]) -> int:
+        """
+        Finds the page number for a given character offset using binary search on precomputed keys.
+        """
+        if not page_keys: return 1
+        import bisect
+        idx = bisect.bisect_right(page_keys, offset) - 1
+        return page_offsets[max(0, idx)][1]
+

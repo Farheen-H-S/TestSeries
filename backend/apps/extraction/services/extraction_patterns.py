@@ -36,11 +36,13 @@ ANSWER_HEADER_PATTERNS = [
 
 # Marks Extraction Patterns
 MARKS_PATTERNS = [
-    r"\(\s*(\d+)\s*[Mm]arks?\s*\)",           # (5 Marks)
-    r"\[\s*(\d+)\s*[Mm]arks?\s*\]",           # [5 Marks]
-    r"\(\s*(\d+)\s*\)",                       # (5)
-    r"\[\s*(\d+)\s*\]",                       # [5]
-    r"\b(\d+)\s*[Mm]\b"                       # 5M or 5 M
+    r"\(\s*(\d+)\s*marks?\s*\)",           # (5 Marks)
+    r"\[\s*(\d+)\s*marks?\s*\]",           # [5 Marks]
+    r"\bmarks?\s*[:\-–—]\s*(\d+)\b",       # Marks: 5 or Marks - 5
+    r"\b(\d+)\s*marks?\b",                 # 5 Marks
+    r"\(\s*(\d+)\s*\)",                    # (5)
+    r"\[\s*(\d+)\s*\]",                    # [5]
+    r"\b(\d+)\s*m\b"                       # 5M or 5 M
 ]
 
 # Marks Exclusion Patterns (To avoid False Positives)

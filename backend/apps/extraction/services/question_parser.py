@@ -22,15 +22,31 @@ class QuestionParser:
         """
         Parses text into a list of hierarchical questions with strict validation and offset correction.
         """
-        # Collect all potential matches from all patterns
-        # We also track the pattern index to resolve overlaps by pattern priority
+        result = self.parse_with_diagnostics(text, page_offsets, base_offset)
+        self.diagnostics = result.diagnostics
+        return result.questions
+
+    def parse_with_diagnostics(
+        self,
+        text: str,
+        page_offsets: List[Tuple[int, int]],
+        base_offset: int = 0,
+    ) -> QuestionParseResult:
+        """
+        Parses text and returns a QuestionParseResult that bundles the
+        questions list with the diagnostics from this run.
+        """
+        # Pre-normalize the text for OCR errors before matching
+        normalized_text = self.normalizer.pre_normalize_ocr(text)
+
+        # Collect all potential matches from all patterns using the normalized text
         raw_matches = []
         for p_idx, regex in enumerate(self.config.question_header_patterns):
-            for match in regex.finditer(text):
+            for match in regex.finditer(normalized_text):
                 raw_matches.append((match, p_idx))
         
-        # Resolve overlapping matches: Keep the match with longer span or higher priority pattern
-        raw_matches.sort(key=lambda x: x[0].start())
+        # Resolve overlapping matches: Sort by start index ascending, length descending, and pattern priority ascending
+        raw_matches.sort(key=lambda x: (x[0].start(), -x[0].end(), x[1]))
         resolved_matches: List[Tuple[re.Match, int]] = []
         
         for match, p_idx in raw_matches:
@@ -54,16 +70,15 @@ class QuestionParser:
             
             if is_valid_overlap:
                 # Remove overlapping matches that this new match beats
-                # We do it by index in reverse to avoid shifting
                 for idx in sorted(matches_to_remove, reverse=True):
                     resolved_matches.pop(idx)
                 resolved_matches.append((match, p_idx))
         
         all_potential_matches = sorted([m for m, _ in resolved_matches], key=lambda x: x.start())
-        self.diagnostics = ParsingDiagnostics(total_matches=len(all_potential_matches))
+        diagnostics = ParsingDiagnostics(total_matches=len(all_potential_matches))
         
         if not all_potential_matches:
-            return []
+            return QuestionParseResult(questions=[], diagnostics=diagnostics)
 
         # Precompute page keys for true O(log n) lookup
         page_keys = [x[0] for x in page_offsets] if page_offsets else []
@@ -73,38 +88,43 @@ class QuestionParser:
         
         validated_matches = []
         for i, match in enumerate(all_potential_matches):
-            raw_header = match.group(0)
-            path = self.normalizer.normalize_header(raw_header)
+            normalized_header = match.group(0)
+            path = self.normalizer.normalize_header(normalized_header)
             
-            result = self.validator.is_valid(match, path, hierarchy_stack, text)
+            result = self.validator.is_valid(match, path, hierarchy_stack, normalized_text)
             if result.is_valid:
                 # Update stack to get the full hierarchical path for this question
                 HierarchyUtils.update_hierarchy_stack(hierarchy_stack, path)
                 # Capture current stack state as the path for this question
                 validated_matches.append((match, list(hierarchy_stack)))
             else:
-                self.diagnostics.rejected_headers.append({
+                # Use the original header from original text for diagnostics
+                raw_header = text[match.start():match.end()]
+                diagnostics.rejected_headers.append({
                     "header": raw_header, 
                     "reason": result.reason or "Unknown rejection"
                 })
 
-        self.diagnostics.validated_count = len(validated_matches)
+        diagnostics.validated_count = len(validated_matches)
         if not validated_matches:
-            return []
+            return QuestionParseResult(questions=[], diagnostics=diagnostics)
 
         for i, (match, h_path) in enumerate(validated_matches):
-            raw_header = match.group(0)
+            # Extract raw header from original text to preserve OCR typo exact matches
+            raw_header = text[match.start():match.end()]
             start_offset = base_offset + match.start()
             
             next_match_start = validated_matches[i+1][0].start() if i + 1 < len(validated_matches) else len(text)
             end_offset = base_offset + next_match_start
             
+            # Extract actual text from original document
             block_text = text[match.end():next_match_start].strip()
             
             level = self._get_level(h_path)
             
-            start_page = self._get_page_num_fast(match.start(), page_offsets, page_keys)
-            end_page = self._get_page_num_fast(next_match_start - 1, page_offsets, page_keys)
+            # Use centralized O(log n) page lookup from HierarchyUtils
+            start_page = HierarchyUtils.get_page_num_fast(match.start(), page_offsets, page_keys)
+            end_page = HierarchyUtils.get_page_num_fast(next_match_start - 1, page_offsets, page_keys)
             
             parsed_questions.append(ParsedQuestion(
                 hierarchy_path=h_path,
@@ -117,32 +137,9 @@ class QuestionParser:
                 level=level
             ))
             
-        return parsed_questions
-
-    def parse_with_diagnostics(
-        self,
-        text: str,
-        page_offsets: List[Tuple[int, int]],
-        base_offset: int = 0,
-    ) -> QuestionParseResult:
-        """
-        Same as parse() but returns a QuestionParseResult that bundles the
-        questions list with the diagnostics from this run.  Prefer this method
-        when the caller needs to inspect rejected headers or match counts
-        without accessing mutable parser instance state.
-        """
-        questions = self.parse(text, page_offsets, base_offset)
-        return QuestionParseResult(questions=questions, diagnostics=self.diagnostics)
+        return QuestionParseResult(questions=parsed_questions, diagnostics=diagnostics)
 
     def _get_level(self, path: List[str]) -> QuestionLevel:
         if len(path) >= 3: return QuestionLevel.SUB_SUB
         if len(path) == 2: return QuestionLevel.SUB
         return QuestionLevel.MAIN
-
-    def _get_page_num_fast(self, offset: int, page_offsets: List[Tuple[int, int]], page_keys: List[int]) -> int:
-        """
-        Finds the page number for a given character offset using binary search on precomputed keys.
-        """
-        if not page_keys: return 1
-        idx = bisect.bisect_right(page_keys, offset) - 1
-        return page_offsets[max(0, idx)][1]

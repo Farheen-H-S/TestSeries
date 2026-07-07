@@ -58,6 +58,16 @@ class QuestionParseResult:
     diagnostics: 'ParsingDiagnostics'
 
 @dataclass
+class AnswerParseResult:
+    """
+    Wraps the list of parsed answers together with the diagnostics from
+    that parse run.
+    """
+    answers: List['ParsedAnswer']
+    diagnostics: 'ParsingDiagnostics'
+
+
+@dataclass
 class MatchingDiagnostics:
     matched_count: int = 0
     unmatched_questions: List[str] = field(default_factory=list)

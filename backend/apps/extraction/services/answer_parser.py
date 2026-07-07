@@ -1,7 +1,6 @@
 import re
-import bisect
 from typing import List, Tuple, Optional
-from .types import ParsedAnswer, ParserConfig
+from .types import ParsedAnswer, ParserConfig, AnswerParseResult, ParsingDiagnostics
 from .normalizer import Normalizer
 from .hierarchy_utils import HierarchyUtils
 
@@ -14,20 +13,37 @@ class AnswerParser:
     def __init__(self, config: ParserConfig):
         self.config = config
         self.normalizer = Normalizer()
+        self.diagnostics = ParsingDiagnostics()
 
     def parse(self, text: str, page_offsets: List[Tuple[int, int]], base_offset: int = 0) -> List[ParsedAnswer]:
         """
         Parses text into a list of answers with stateful path resolution and absolute offsets.
         """
-        # Collect all potential matches from all patterns
+        result = self.parse_with_diagnostics(text, page_offsets, base_offset)
+        self.diagnostics = result.diagnostics
+        return result.answers
+
+    def parse_with_diagnostics(
+        self,
+        text: str,
+        page_offsets: List[Tuple[int, int]],
+        base_offset: int = 0,
+    ) -> AnswerParseResult:
+        """
+        Parses text and returns an AnswerParseResult that bundles the
+        answers list with the diagnostics from this run.
+        """
+        # Pre-normalize the text for OCR errors before matching
+        normalized_text = self.normalizer.pre_normalize_ocr(text)
+
+        # Collect all potential matches from all patterns using the normalized text
         raw_matches = []
         for p_idx, regex in enumerate(self.config.answer_header_patterns):
-            for match in regex.finditer(text):
+            for match in regex.finditer(normalized_text):
                 raw_matches.append((match, p_idx))
             
-        # Resolve overlapping matches: prefer longer span; break ties by lower pattern index (higher priority).
-        # Same deterministic algorithm used by QuestionParser.
-        raw_matches.sort(key=lambda x: x[0].start())
+        # Resolve overlapping matches: Sort by start index ascending, length descending, and pattern priority ascending
+        raw_matches.sort(key=lambda x: (x[0].start(), -x[0].end(), x[1]))
         resolved_matches: List[Tuple[re.Match, int]] = []
 
         for match, p_idx in raw_matches:
@@ -51,10 +67,10 @@ class AnswerParser:
                 resolved_matches.append((match, p_idx))
 
         all_potential_matches = sorted([m for m, _ in resolved_matches], key=lambda x: x.start())
-
+        diagnostics = ParsingDiagnostics(total_matches=len(all_potential_matches))
 
         if not all_potential_matches:
-            return []
+            return AnswerParseResult(answers=[], diagnostics=diagnostics)
 
         # Precompute page keys for true O(log n) lookup
         page_keys = [x[0] for x in page_offsets] if page_offsets else []
@@ -63,7 +79,8 @@ class AnswerParser:
         hierarchy_stack: List[str] = []
         
         for i, match in enumerate(all_potential_matches):
-            raw_header = match.group(0)
+            normalized_header = match.group(0)
+            raw_header = text[match.start():match.end()]
             start_offset = base_offset + match.start()
             
             next_match_start = all_potential_matches[i+1].start() if i + 1 < len(all_potential_matches) else len(text)
@@ -71,12 +88,13 @@ class AnswerParser:
             
             block_text = text[match.end():next_match_start].strip()
             
-            path = self.normalizer.normalize_header(raw_header)
+            path = self.normalizer.normalize_header(normalized_header)
             # Use shared hierarchy logic
             HierarchyUtils.update_hierarchy_stack(hierarchy_stack, path)
             
-            start_page = self._get_page_num_fast(match.start(), page_offsets, page_keys)
-            end_page = self._get_page_num_fast(next_match_start - 1, page_offsets, page_keys)
+            # Use centralized O(log n) page lookup from HierarchyUtils
+            start_page = HierarchyUtils.get_page_num_fast(match.start(), page_offsets, page_keys)
+            end_page = HierarchyUtils.get_page_num_fast(next_match_start - 1, page_offsets, page_keys)
             
             parsed_answers.append(ParsedAnswer(
                 hierarchy_path=list(hierarchy_stack),
@@ -88,12 +106,6 @@ class AnswerParser:
                 end_page=end_page
             ))
             
-        return parsed_answers
+        diagnostics.validated_count = len(parsed_answers)
+        return AnswerParseResult(answers=parsed_answers, diagnostics=diagnostics)
 
-    def _get_page_num_fast(self, offset: int, page_offsets: List[Tuple[int, int]], page_keys: List[int]) -> int:
-        """
-        Finds the page number for a given character offset using binary search on precomputed keys.
-        """
-        if not page_keys: return 1
-        idx = bisect.bisect_right(page_keys, offset) - 1
-        return page_offsets[max(0, idx)][1]

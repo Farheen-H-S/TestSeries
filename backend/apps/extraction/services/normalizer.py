@@ -62,18 +62,77 @@ class Normalizer:
         return text
 
     @staticmethod
+    def pre_normalize_ocr(text: str) -> str:
+        """
+        Performs 1-to-1 character replacements on the input text to fix common OCR errors
+        before regex matching runs. This preserves offsets exactly.
+        """
+        if not text:
+            return ""
+
+        ocr_map = {
+            'l': '1', 'I': '1', '|': '1',
+            'O': '0', 'o': '0',
+            'S': '5', 's': '5',
+            'B': '8', 'b': '8',
+            'Z': '2', 'z': '2'
+        }
+        
+        def repl_prefix(match: re.Match) -> str:
+            prefix = match.group(1)
+            mistake = match.group(2)
+            corrected = ocr_map.get(mistake, mistake)
+            return prefix + corrected
+
+        # Matches headers like: Question S, Q. B, Ans O, Solution I, etc.
+        # Prefix pattern matches case-insensitively.
+        text = re.sub(
+            r'(?i)\b(Question\s+(?:No\.\s*)?|Q\.?\s?|Answer\s+(?:to\s+)?(?:Question\s+)?(?:No\.\s*)?|Ans\.?\s*|Solution\s*)([lI|OSBZ])\b',
+            repl_prefix,
+            text
+        )
+
+        def repl_line_start(match: re.Match) -> str:
+            indent = match.group(1)
+            mistake = match.group(2)
+            suffix = match.group(3)
+            corrected = ocr_map.get(mistake, mistake)
+            return indent + corrected + suffix
+
+        # Numbered list markers at the start of a line, e.g. "l.", "I.", "O.", "S.", "B."
+        text = re.sub(
+            r'(?m)^([ \t]*)([lI|OSBZ])([.)])',
+            repl_line_start,
+            text
+        )
+
+        # Digit-sandwiched substitutions (just like original Normalizer rules)
+        text = re.sub(r'(?<=\d)O|O(?=\d)', '0', text)
+        text = re.sub(r'(?<=\d)o|o(?=\d)', '0', text)
+        text = re.sub(r'(?<=\d)S|S(?=\d)', '5', text)
+        text = re.sub(r'(?<=\d)s|s(?=\d)', '5', text)
+        text = re.sub(r'(?<=\d)B|B(?=\d)', '8', text)
+        text = re.sub(r'(?<=\d)b|b(?=\d)', '8', text)
+        text = re.sub(r'(?<=\d)Z|Z(?=\d)', '2', text)
+        text = re.sub(r'(?<=\d)z|z(?=\d)', '2', text)
+
+        return text
+
+    @staticmethod
     def normalize_header(raw_header: str) -> List[str]:
         """
         Converts a raw header string into a canonical hierarchy path list.
         Example: "Question 1(a)(i)" → ["1", "a", "i"]
 
         Steps:
-          1. Apply OCR correction on the captured header text.
-          2. Extract the leading main number (digits).
-          3. Extract sequential bracketed sub-labels in order.
-          4. Fallback for simple "a." / "a)" style labels.
+          1. Apply pre-normalize OCR correction on the captured header text.
+          2. Apply basic OCR correction.
+          3. Extract the leading main number (digits).
+          4. Extract sequential bracketed sub-labels in order.
+          5. Fallback for simple "a." / "a)" style labels.
         """
-        header = Normalizer.ocr_correct(raw_header.strip())
+        header = Normalizer.pre_normalize_ocr(raw_header.strip())
+        header = Normalizer.ocr_correct(header)
 
         path = []
 
