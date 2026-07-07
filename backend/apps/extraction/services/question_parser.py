@@ -123,8 +123,8 @@ class QuestionParser:
             level = self._get_level(h_path)
             
             # Use centralized O(log n) page lookup from HierarchyUtils
-            start_page = HierarchyUtils.get_page_num_fast(match.start(), page_offsets, page_keys)
-            end_page = HierarchyUtils.get_page_num_fast(next_match_start - 1, page_offsets, page_keys)
+            start_page = HierarchyUtils.get_page_num_fast(start_offset, page_offsets, page_keys)
+            end_page = HierarchyUtils.get_page_num_fast(end_offset - 1, page_offsets, page_keys)
             
             parsed_questions.append(ParsedQuestion(
                 hierarchy_path=h_path,

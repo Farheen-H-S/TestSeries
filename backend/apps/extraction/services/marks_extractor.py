@@ -49,7 +49,10 @@ class MarksExtractor:
                     is_weak = "marks" not in m.group(0).lower()
                     if is_weak:
                         line_start_idx = text.rfind('\n', 0, start)
-                        line_start_idx = max(0, line_start_idx)
+                        if line_start_idx == -1:
+                            line_start_idx = 0
+                        else:
+                            line_start_idx += 1
                         before_on_same_line = text[line_start_idx:start]
                         
                         is_preceded = bool(re.search(r'\S', before_on_same_line))
@@ -63,12 +66,7 @@ class MarksExtractor:
                             if re.search(r'\w', after_on_same_line):
                                 continue
 
-                    # Calculate if it's near the end of a line or paragraph
-                    after_text = text[end:end+40]
-                    is_at_end = (not re.search(r'\w', after_text)) or ("\n" in after_text[:15])
-                    
-                    final_priority = priority + (15 if is_at_end else 0)
-                    candidates.append((val, final_priority))
+                    candidates.append((val, priority))
                     
                 except (ValueError, IndexError):
                     continue

@@ -93,8 +93,8 @@ class AnswerParser:
             HierarchyUtils.update_hierarchy_stack(hierarchy_stack, path)
             
             # Use centralized O(log n) page lookup from HierarchyUtils
-            start_page = HierarchyUtils.get_page_num_fast(match.start(), page_offsets, page_keys)
-            end_page = HierarchyUtils.get_page_num_fast(next_match_start - 1, page_offsets, page_keys)
+            start_page = HierarchyUtils.get_page_num_fast(start_offset, page_offsets, page_keys)
+            end_page = HierarchyUtils.get_page_num_fast(end_offset - 1, page_offsets, page_keys)
             
             parsed_answers.append(ParsedAnswer(
                 hierarchy_path=list(hierarchy_stack),

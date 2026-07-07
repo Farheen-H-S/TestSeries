@@ -203,9 +203,21 @@ class ParserRegressionTests(unittest.TestCase):
             # Marks on their own line
             ("Explain valuation.\n(5)", 5),
             ("Explain valuation.\n[5]", 5),
-            # Marks followed by transition text
+            ("Explain valuation.\n5M", 5),
+            # Transition text
             ("Explain valuation. (5) OR", 5),
             ("Explain valuation. (5) Compulsory", 5),
+            ("Explain valuation. (5) Attempt Any One", 5),
+            # Punctuation variations
+            ("Explain. ( 5 )", 5),
+            ("Explain. [  5  ]", 5),
+            ("Explain. Marks:5", 5),
+            ("Explain. Marks - 5", 5),
+            # OCR noise variations
+            ("Explain the term. 5M.", 5),
+            ("Explain the term. 5 M.", 5),
+            ("Explain the term. 5M:", 5),
+            ("Explain the term. 5 M:", 5),
         ]
         for text, expected in formats:
             with self.subTest(text=text):
@@ -214,22 +226,52 @@ class ParserRegressionTests(unittest.TestCase):
 
         # Verify exclusions & structural position validation for weak patterns
         false_positives = [
+            # Measurements (should be ignored)
             ("Company issued 5m shares.", None),
-            ("5 M Ltd. issued shares.", None),
             ("Pipeline length is 5 m.", None),
-            ("Section 5 of the Act", None),
-            ("Refer to Page 5 of guidelines", None),
-            ("Question 5 is compulsory", None),
+            ("We bought 5m packets of seeds.", None),
+            ("The container capacity is 5 M employees.", None),
+            ("5 M employees were surveyed.", None),
+            ("5 m pipe", None),
+            # Company names
+            ("5 M Ltd. issued shares.", None),
+            ("ABC Ltd. has 5 M capital.", None),
+            # General OCR / Number noise
+            ("We found some 5 m. of pipe.", None),
+            ("Refer to page 5.", None),
+            ("Section 5 of the act.", None),
             ("Under Ind AS 10 guidance", None),
             ("This occurred in year 2024.", None),
-            ("5 M employees were surveyed.", None),
-            ("We bought 5m packets of seeds.", None),
-            ("(1) Point one explanation", None), # List items should be rejected!
+            # List items starting lines
+            ("(1) Point one explanation", None),
+            ("[2] Point two explanation", None),
+            ("1. Point one", None),
+            ("a) Point a", None),
         ]
         for text, expected in false_positives:
             with self.subTest(text=text):
                 val = extractor.extract(text)
                 self.assertEqual(val, expected)
+
+    def test_section_wise_pagination_offset(self):
+        # Verify that questions and answers parsed in a section-wise layout
+        # (with base_offset) are assigned the correct absolute page numbers.
+        from apps.extraction.services.question_parser import QuestionParser
+        from apps.extraction.services.answer_parser import AnswerParser
+        
+        # 3 pages offsets: page 1 starts at 0, page 2 starts at 1000, page 3 starts at 2000
+        offsets = [(0, 1), (1000, 2), (2000, 3)]
+        
+        # Answer parsed at relative offset 100 with base_offset 1000 should map to page 2 (1100 absolute)
+        a_parser = AnswerParser(self.config)
+        parsed = a_parser.parse("Solution 1\nSome answer text", offsets, base_offset=1000)
+        self.assertEqual(len(parsed), 1)
+        self.assertEqual(parsed[0].start_page, 2)
+        
+        q_parser = QuestionParser(self.config)
+        parsed_q = q_parser.parse("Question 1\nSome question text", offsets, base_offset=1000)
+        self.assertEqual(len(parsed_q), 1)
+        self.assertEqual(parsed_q[0].start_page, 2)
 
     def test_page_lookup(self):
         from apps.extraction.services.hierarchy_utils import HierarchyUtils

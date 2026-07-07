@@ -59,8 +59,10 @@ def extract_document(document: Document):
             current_offset += len(p["text"]) + 1
 
         # 2. Layout Detection
+        from .normalizer import Normalizer
+        normalized_full_text = Normalizer.pre_normalize_ocr(full_text)
         detector = DocumentLayoutDetector(config)
-        layout_res = detector.detect_layout(full_text)
+        layout_res = detector.detect_layout(normalized_full_text)
         logger.info("Detected layout: %s. Reason: %s", layout_res.layout, layout_res.reason)
 
         # 3. Text Slicing
