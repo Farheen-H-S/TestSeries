@@ -99,9 +99,9 @@ class Normalizer:
             corrected = ocr_map.get(mistake, mistake)
             return indent + corrected + suffix
 
-        # Numbered list markers at the start of a line, e.g. "l.", "I.", "O.", "S.", "B."
+        # Numbered list markers at the start of a line, e.g. "l.", "|."
         text = re.sub(
-            r'(?m)^([ \t]*)([lI|OSBZ])([.)])',
+            r'(?m)^([ \t]*)([l|])([.)])',
             repl_line_start,
             text
         )

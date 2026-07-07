@@ -75,6 +75,40 @@ class ParserRegressionTests(unittest.TestCase):
                 self.assertEqual(parsed[0].hierarchy_path, expected_path)
                 self.assertEqual(parsed[0].raw_header, expected_raw)
 
+    def test_ocr_no_corruption_of_subquestions(self):
+        # Alphabetical subquestions like b., b), s), z. should NOT be corrupted by OCR
+        text = textwrap.dedent("""
+            Question 1
+            (a)
+            Text
+            b.
+            Text
+            s)
+            Text
+            z.
+            Text
+        """).strip()
+        parsed = self.q_parser.parse(text, self.offsets)
+        # Since hierarchy transition allows a -> b, the "b." should be parsed as subquestion "b" of "1"
+        self.assertEqual(len(parsed), 5)
+        self.assertEqual(parsed[0].hierarchy_path, ["1"])
+        self.assertEqual(parsed[1].hierarchy_path, ["1", "a"])
+        self.assertEqual(parsed[2].hierarchy_path, ["1", "b"]) # "b." is preserved!
+        # "s)" and "z." are also preserved as sub-labels (they don't become main questions "5" and "2")
+        self.assertEqual(parsed[3].hierarchy_path, ["1", "s"])
+        self.assertEqual(parsed[4].hierarchy_path, ["1", "z"])
+
+    def test_ocr_no_corruption_of_roman_numerals(self):
+        # Roman numeral list items like "I." at the start of a line must not become "1."
+        text = textwrap.dedent("""
+            Question 1
+            (a)
+            I.
+            Some text.
+        """).strip()
+        parsed = self.q_parser.parse(text, self.offsets)
+        self.assertEqual(len(parsed), 2) # "I." is ignored (not corrupted to "1.", which would start a new hierarchy)
+
     def test_ocr_correction_in_headers(self):
         # Case A: Bracketed label (S) stays as sub-label 's', NOT corrected to '5'.
         # Sub-question brackets contain letters; bracket->digit corrections are for marks only.
@@ -154,30 +188,33 @@ class ParserRegressionTests(unittest.TestCase):
             ("Marks: 5", 5),
             ("Marks - 5", 5),
             ("5 Marks", 5),
-            ("(5)", 5),
-            ("[5]", 5),
-            ("5M", 5),
-            ("5 M", 5),
+            ("Explain the method. (5)", 5),
+            ("Explain the process. [5]", 5),
+            ("Explain the system. 5M", 5),
+            ("Explain the theory. 5 M", 5),
         ]
         for text, expected in formats:
             with self.subTest(text=text):
-                # We put the marks at the end of some text to simulate end-of-block context
-                full_text = f"Explain the process of valuation. {text}"
-                val = extractor.extract(full_text)
+                val = extractor.extract(text)
                 self.assertEqual(val, expected)
 
-        # Verify exclusions
-        exclusions = [
-            "Ind AS 10",
-            "See Page 5",
-            "Refer to Question 5",
-            "This happened in 2024.",
-            "As per Section 5",
+        # Verify exclusions & structural position validation for weak patterns
+        false_positives = [
+            ("Company issued 5m shares.", None),
+            ("5 M Ltd. issued shares.", None),
+            ("Pipeline length is 5 m.", None),
+            ("Section 5 of the Act", None),
+            ("Refer to Page 5 of guidelines", None),
+            ("Question 5 is compulsory", None),
+            ("Under Ind AS 10 guidance", None),
+            ("This occurred in year 2024.", None),
+            ("5 M employees were surveyed.", None),
+            ("We bought 5m packets of seeds.", None),
         ]
-        for text in exclusions:
+        for text, expected in false_positives:
             with self.subTest(text=text):
                 val = extractor.extract(text)
-                self.assertNotEqual(val, 5)
+                self.assertEqual(val, expected)
 
     def test_page_lookup(self):
         from apps.extraction.services.hierarchy_utils import HierarchyUtils

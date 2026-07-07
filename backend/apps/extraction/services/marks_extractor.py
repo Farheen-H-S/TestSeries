@@ -45,13 +45,24 @@ class MarksExtractor:
                         continue
                         
                     # 2. Positional Signal: Marks often appear at the end of a block/paragraph.
-                    # Check if there is significant text followed by something other than a space before a newline.
-                    is_at_end = False
+                    # Check if followed by only punctuation/whitespace or a newline within 15 chars.
                     after_text = text[end:end+40] # Check a bit more context
+                    import re
+                    is_at_end = (not re.search(r'\w', after_text)) or ("\n" in after_text[:15])
                     
-                    # If followed by a paragraph break or header-like pattern
-                    if not after_text.strip() or "\n" in after_text[:15]:
-                        is_at_end = True
+                    is_weak = "marks" not in m.group(0).lower()
+                    if is_weak:
+                        if not is_at_end:
+                            # Weak patterns (like 5M, (5)) MUST be at the end of the block/paragraph
+                            continue
+                        
+                        # Weak, unbracketed patterns (like 5M, 5 M) must not be preceded by a word character
+                        # (e.g. "length is 5 m") to avoid matching inline measurements.
+                        is_bracketed = m.group(0).startswith('(') or m.group(0).startswith('[')
+                        if not is_bracketed:
+                            before_text = text[max(0, start - 15):start]
+                            if re.search(r'\w\s*$', before_text):
+                                continue
                     
                     final_priority = priority + (15 if is_at_end else 0)
                     candidates.append((val, final_priority))
