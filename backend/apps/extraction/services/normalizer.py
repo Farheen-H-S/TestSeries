@@ -66,9 +66,18 @@ class Normalizer:
         """
         Performs 1-to-1 character replacements on the input text to fix common OCR errors
         before regex matching runs. This preserves offsets exactly.
+        
+        INVARIANT:
+        The length of the returned normalized text must exactly match the length of the
+        input text (i.e. len(normalized) == len(original)) to guarantee absolute offset safety.
         """
         if not text:
             return ""
+
+        # Normalize line endings to \n while preserving length:
+        # \r\n -> " \n"
+        # \r   -> "\n"
+        text = text.replace('\r\n', ' \n').replace('\r', '\n')
 
         ocr_map = {
             'l': '1', 'I': '1', '|': '1',

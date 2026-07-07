@@ -18,7 +18,7 @@ class MarksExtractor:
         if not text:
             return None
             
-        candidates: List[Tuple[int, int]] = [] # (value, priority)
+        candidates: List[Tuple[int, int, int]] = [] # (value, priority, start_offset)
         
         # Priority mapping based on pattern order (1 to 7)
         for i, regex in enumerate(self.config.marks_patterns):
@@ -28,45 +28,53 @@ class MarksExtractor:
             for m in matches:
                 try:
                     val = int(m.group(1))
-                    
-                    # Structural Validation
-                    # Check a large window around the match (50 chars)
                     start, end = m.span()
-                    window_start = max(0, start - 50)
-                    window_end = min(len(text), end + 50)
-                    context = text[window_start:window_end]
                     
-                    # 1. Exclusion Check
+                    # 1. Exclusion Check: Verify if candidate digits overlap with an excluded construct
                     is_excluded = False
                     for excl in self.config.marks_exclusion_patterns:
-                        if excl.search(context):
-                            is_excluded = True
+                        for excl_match in excl.finditer(text):
+                            excl_start, excl_end = excl_match.span()
+                            if excl_start < end and start < excl_end:
+                                is_excluded = True
+                                break
+                        if is_excluded:
                             break
                     if is_excluded:
                         continue
                         
-                    # 2. Positional Validation for Weaker Patterns (e.g. (5), [5], 5M) to filter list items
+                    # 2. Positional Validation for Weaker Patterns (e.g. (5), [5], 5M) to filter list items/measurements
                     is_weak = "marks" not in m.group(0).lower()
                     if is_weak:
-                        line_start_idx = text.rfind('\n', 0, start)
+                        # CR line ending support
+                        line_start_idx_n = text.rfind('\n', 0, start)
+                        line_start_idx_r = text.rfind('\r', 0, start)
+                        line_start_idx = max(line_start_idx_n, line_start_idx_r)
+                        
                         if line_start_idx == -1:
                             line_start_idx = 0
                         else:
                             line_start_idx += 1
-                        before_on_same_line = text[line_start_idx:start]
                         
-                        is_preceded = bool(re.search(r'\S', before_on_same_line))
-                        if not is_preceded:
-                            # It starts the line.
-                            # Reject if followed by word characters on the same line (which would be a list item like "(1) Point")
-                            line_end_idx = text.find('\n', end)
-                            if line_end_idx == -1:
-                                line_end_idx = len(text)
-                            after_on_same_line = text[end:line_end_idx]
-                            if re.search(r'\w', after_on_same_line):
+                        # Find the rest of the text on the same line
+                        line_end_idx_n = text.find('\n', end)
+                        line_end_idx_r = text.find('\r', end)
+                        line_end_idx = len(text)
+                        indices = [idx for idx in (line_end_idx_n, line_end_idx_r) if idx != -1]
+                        if indices:
+                            line_end_idx = min(indices)
+                            
+                        after_on_same_line = text[end:line_end_idx].strip()
+                        
+                        # If there are word characters after the match on the same line,
+                        # only allow them if they consist entirely of transition words (OR, Compulsory, etc.)
+                        if re.search(r'\w', after_on_same_line):
+                            words = re.findall(r'\b\w+\b', after_on_same_line.upper())
+                            allowed = {"OR", "COMPULSORY", "ATTEMPT", "ANY", "ONE", "MARKS", "MARK"}
+                            if not all(w in allowed for w in words):
                                 continue
 
-                    candidates.append((val, priority))
+                    candidates.append((val, priority, start))
                     
                 except (ValueError, IndexError):
                     continue
@@ -74,6 +82,6 @@ class MarksExtractor:
         if not candidates:
             return None
             
-        # Priority first, then largest value (industrial standard for marking)
-        candidates.sort(key=lambda x: (x[1], x[0]), reverse=True)
+        # Priority first, then later occurrence (larger start offset) when priorities are equal
+        candidates.sort(key=lambda x: (x[1], x[2]), reverse=True)
         return candidates[0][0]

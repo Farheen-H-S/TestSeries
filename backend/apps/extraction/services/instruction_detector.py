@@ -1,5 +1,5 @@
 import re
-from typing import List, Optional
+from typing import List, Optional, Tuple
 from .extraction_patterns import INSTRUCTION_PRIORITY
 
 class InstructionDetector:
@@ -8,7 +8,14 @@ class InstructionDetector:
     """
     
     def __init__(self, priority_list: List[str] = None):
-        self.priority_list = [v.upper() for v in (priority_list or INSTRUCTION_PRIORITY)]
+        verbs = [v.upper() for v in (priority_list or INSTRUCTION_PRIORITY)]
+        self.patterns: List[Tuple[str, re.Pattern]] = []
+        for verb in verbs:
+            # Robust word boundaries (including trailing punctuation support)
+            start_boundary = r"\b" if verb[0].isalnum() or verb[0] == '_' else ""
+            end_boundary = r"\b" if verb[-1].isalnum() or verb[-1] == '_' else r"(?!\w)"
+            pattern_str = f"{start_boundary}{re.escape(verb)}{end_boundary}"
+            self.patterns.append((verb, re.compile(pattern_str)))
 
     def detect(self, text: str) -> Optional[str]:
         """
@@ -16,8 +23,8 @@ class InstructionDetector:
         """
         upper_text = text.upper()
         
-        for verb in self.priority_list:
-            if re.search(rf"\b{re.escape(verb)}\b", upper_text):
+        for verb, pattern in self.patterns:
+            if pattern.search(upper_text):
                 return verb
                 
         return None

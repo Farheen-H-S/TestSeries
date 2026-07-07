@@ -42,7 +42,7 @@ MARKS_PATTERNS = [
     r"\b(\d+)\s*marks?\b",                 # 5 Marks
     r"\(\s*(\d+)\s*\)",                    # (5)
     r"\[\s*(\d+)\s*\]",                    # [5]
-    r"(?:^|[\n\r.)\]?:\-\–—])\s*(\d+)\s*m\b(?=\s*(?:[.)\]?:\-\–—\n\r]|$))"  # 5M or 5 M
+    r"(?:^|[\n\r.?])\s*(\d+)\s*m\b(?=\s*(?:[.)\]?:\-\–—\n\r]|$))"  # 5M or 5 M
 ]
 
 # Marks Exclusion Patterns (To avoid False Positives)

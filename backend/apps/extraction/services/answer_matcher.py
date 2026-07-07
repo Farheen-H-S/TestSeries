@@ -46,9 +46,16 @@ class AnswerMatcher:
             key_str = "-".join(key)
             
             if len(qs) == 1 and len(as_) == 1:
-                # Perfect Match
-                matches.append((qs[0], as_[0]))
-                diagnostics.matched_count += 1
+                q = qs[0]
+                a = as_[0]
+                # Prevent self-matching: if their header offsets overlap, they cannot be matched!
+                if q.start_offset < a.end_offset and a.start_offset < q.end_offset:
+                    diagnostics.unmatched_questions.append(key_str)
+                    diagnostics.unmatched_answers.append(key_str)
+                else:
+                    # Perfect Match
+                    matches.append((q, a))
+                    diagnostics.matched_count += 1
             elif len(qs) > 0 and len(as_) > 0:
                 # Ambiguous: Both exist but not 1:1
                 diagnostics.ambiguous_matches.append(key_str)

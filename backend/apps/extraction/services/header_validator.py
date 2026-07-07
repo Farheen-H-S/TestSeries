@@ -39,7 +39,7 @@ class HeaderValidator:
         check_idx = idx - 1
         while check_idx >= 0:
             char = text[check_idx]
-            if char == '\n':
+            if char in ('\n', '\r'):
                 return True
             if char not in (' ', '\t'):
                 return False

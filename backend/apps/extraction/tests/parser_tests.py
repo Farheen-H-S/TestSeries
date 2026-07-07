@@ -11,6 +11,9 @@ from apps.extraction.services.answer_parser import AnswerParser
 from apps.extraction.services.extraction_patterns import get_default_parser_config
 from apps.extraction.services.types import QuestionLevel
 from apps.extraction.services.marks_extractor import MarksExtractor
+from apps.extraction.services.answer_matcher import AnswerMatcher
+from apps.extraction.services.normalizer import Normalizer
+from apps.extraction.services.question_classifier import QuestionClassifier
 
 class ParserRegressionTests(unittest.TestCase):
     def setUp(self):
@@ -218,6 +221,9 @@ class ParserRegressionTests(unittest.TestCase):
             ("Explain the term. 5 M.", 5),
             ("Explain the term. 5M:", 5),
             ("Explain the term. 5 M:", 5),
+            # Context-bound exclusions (fixed contexts like Ind AS 10)
+            ("Explain Ind AS 10. (5 Marks)", 5),
+            ("Explain section 135. (5 Marks)", 5),
         ]
         for text, expected in formats:
             with self.subTest(text=text):
@@ -233,6 +239,9 @@ class ParserRegressionTests(unittest.TestCase):
             ("The container capacity is 5 M employees.", None),
             ("5 M employees were surveyed.", None),
             ("5 m pipe", None),
+            ("Pipeline length: 5 m.", None),
+            ("Diameter is (5) inches.", None),
+            ("The diameter is (5) inches.", None),
             # Company names
             ("5 M Ltd. issued shares.", None),
             ("ABC Ltd. has 5 M capital.", None),
@@ -252,6 +261,80 @@ class ParserRegressionTests(unittest.TestCase):
             with self.subTest(text=text):
                 val = extractor.extract(text)
                 self.assertEqual(val, expected)
+
+    def test_marks_same_priority_selection(self):
+        extractor = MarksExtractor(self.config)
+        # Priorities of both (5) and (4) are equal. Should choose the one occurring later in the question: (4)
+        text = "Explain the (5) methods. (4)"
+        val = extractor.extract(text)
+        self.assertEqual(val, 4)
+
+    def test_unknown_layout_self_matching(self):
+        # UNKNOWN layout question-only paper
+        # Ensure that Question 1 does NOT become its own Answer 1 because their match offsets overlap
+        q_parser = QuestionParser(self.config)
+        a_parser = AnswerParser(self.config)
+        matcher = AnswerMatcher()
+        
+        text = "1. Define goodwill and explain its types."
+        questions = q_parser.parse(text, self.offsets)
+        answers = a_parser.parse(text, self.offsets)
+        
+        self.assertEqual(len(questions), 1)
+        self.assertEqual(len(answers), 1)
+        
+        # Verify matching logic rejects this because of overlapping header offsets
+        result = matcher.match(questions, answers)
+        self.assertEqual(len(result.matches), 0)
+        self.assertIn("1", result.diagnostics.unmatched_questions)
+        self.assertIn("1", result.diagnostics.unmatched_answers)
+
+    def test_cr_lf_documents(self):
+        # CR-only line endings
+        text_cr = "Question 1\r(a)\rDescribe goodwill.\r(b)\rExplain valuation."
+        parsed_cr = self.q_parser.parse(text_cr, self.offsets)
+        self.assertEqual(len(parsed_cr), 3)
+        self.assertEqual(parsed_cr[0].hierarchy_path, ["1"])
+        self.assertEqual(parsed_cr[1].hierarchy_path, ["1", "a"])
+        self.assertEqual(parsed_cr[2].hierarchy_path, ["1", "b"])
+
+        # CRLF line endings
+        text_crlf = "Question 1\r\n(a)\r\nDescribe goodwill.\r\n(b)\r\nExplain valuation."
+        parsed_crlf = self.q_parser.parse(text_crlf, self.offsets)
+        self.assertEqual(len(parsed_crlf), 3)
+        self.assertEqual(parsed_crlf[0].hierarchy_path, ["1"])
+        self.assertEqual(parsed_crlf[1].hierarchy_path, ["1", "a"])
+        self.assertEqual(parsed_crlf[2].hierarchy_path, ["1", "b"])
+
+    def test_ocr_normalization_preserves_length(self):
+        # The invariant len(normalized) == len(original) must be strictly enforced.
+        test_strings = [
+            "Question S0",
+            "Question I(a)",
+            "Question l(b)",
+            "Question 1S0",
+            "Question 12S",
+            "Question 1O5",
+            "Q. B",
+            "Ans O",
+            "Solution I",
+            "  l.  ",
+            "  |.  "
+        ]
+        for s in test_strings:
+            normalized = Normalizer.pre_normalize_ocr(s)
+            self.assertEqual(len(normalized), len(s), f"Length mismatch for: {s}")
+
+    def test_question_classifier_punctuation_boundary(self):
+        # Classifier matches with trailing punctuation in keywords (e.g. MR., MRS.)
+        classifier = QuestionClassifier({
+            "CASE_STUDY": ["MR. SMITH", "MRS. JONES", "DR. WATSON"],
+            "THEORY": ["DEFINE", "EXPLAIN"]
+        })
+        self.assertEqual(classifier.classify("Explain the duties of Mr. Smith."), "CASE_STUDY")
+        self.assertEqual(classifier.classify("Explain the process to Mrs. Jones."), "CASE_STUDY")
+        self.assertEqual(classifier.classify("We consulted Dr. Watson."), "CASE_STUDY")
+        self.assertEqual(classifier.classify("Define valuation."), "THEORY")
 
     def test_section_wise_pagination_offset(self):
         # Verify that questions and answers parsed in a section-wise layout

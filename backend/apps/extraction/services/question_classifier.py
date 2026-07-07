@@ -6,7 +6,7 @@ from .extraction_patterns import CLASSIFICATION_RULES
 @dataclass
 class ClassificationRule:
     type_name: str
-    keywords: List[str]
+    patterns: List[re.Pattern]
     priority: int
 
 class QuestionClassifier:
@@ -28,9 +28,18 @@ class QuestionClassifier:
         }
         
         for type_name, keywords in source_rules.items():
+            patterns = []
+            for kw in keywords:
+                kw_upper = kw.upper()
+                # Robust boundary matching for keywords (including trailing punctuation like MR. or DR.)
+                start_boundary = r"\b" if kw_upper[0].isalnum() or kw_upper[0] == '_' else ""
+                end_boundary = r"\b" if kw_upper[-1].isalnum() or kw_upper[-1] == '_' else r"(?!\w)"
+                pattern_str = f"{start_boundary}{re.escape(kw_upper)}{end_boundary}"
+                patterns.append(re.compile(pattern_str))
+                
             self.rules.append(ClassificationRule(
                 type_name=type_name,
-                keywords=[k.upper() for k in keywords],
+                patterns=patterns,
                 priority=priority_map.get(type_name, 0)
             ))
             
@@ -44,9 +53,8 @@ class QuestionClassifier:
         upper_text = text.upper()
         
         for rule in self.rules:
-            for kw in rule.keywords:
-                # Use word boundary check
-                if re.search(rf"\b{re.escape(kw)}\b", upper_text):
+            for pattern in rule.patterns:
+                if pattern.search(upper_text):
                     return rule.type_name
                     
         return "UNIDENTIFIED"
