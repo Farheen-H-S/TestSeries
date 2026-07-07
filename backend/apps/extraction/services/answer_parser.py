@@ -1,8 +1,12 @@
 import re
+import logging
 from typing import List, Tuple, Optional
 from .types import ParsedAnswer, ParserConfig, AnswerParseResult, ParsingDiagnostics
 from .normalizer import Normalizer
 from .hierarchy_utils import HierarchyUtils
+
+logger = logging.getLogger(__name__)
+
 
 class AnswerParser:
     """
@@ -19,9 +23,14 @@ class AnswerParser:
         """
         Parses text into a list of answers with stateful path resolution and absolute offsets.
         """
-        result = self.parse_with_diagnostics(text, page_offsets, base_offset)
-        self.diagnostics = result.diagnostics
-        return result.answers
+        try:
+            result = self.parse_with_diagnostics(text, page_offsets, base_offset)
+            self.diagnostics = result.diagnostics
+            return result.answers
+        except Exception as e:
+            logger.error("Answer parser failure: %s", str(e), exc_info=True)
+            raise
+
 
     def parse_with_diagnostics(
         self,
@@ -90,7 +99,12 @@ class AnswerParser:
             
             path = self.normalizer.normalize_header(normalized_header)
             # Use shared hierarchy logic
+            old_stack = list(hierarchy_stack)
             HierarchyUtils.update_hierarchy_stack(hierarchy_stack, path)
+            logger.debug(
+                "Hierarchy stack transition (Answer) | old_stack=%s | new_stack=%s | header=%s | start_offset=%d",
+                old_stack, hierarchy_stack, normalized_header, match.start()
+            )
             
             # Use centralized O(log n) page lookup from HierarchyUtils
             start_page = HierarchyUtils.get_page_num_fast(start_offset, page_offsets, page_keys)

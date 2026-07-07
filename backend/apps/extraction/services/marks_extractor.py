@@ -1,6 +1,10 @@
 import re
+import logging
 from typing import List, Optional, Tuple
 from .types import ParserConfig
+
+logger = logging.getLogger(__name__)
+
 
 class MarksExtractor:
     """
@@ -41,6 +45,7 @@ class MarksExtractor:
                         if is_excluded:
                             break
                     if is_excluded:
+                        logger.debug("Rejected marks candidate | candidate=%s | reason=exclusion_pattern | start_offset=%d", m.group(0), start)
                         continue
                         
                     # 2. Positional Validation for Weaker Patterns (e.g. (5), [5], 5M) to filter list items/measurements
@@ -72,6 +77,10 @@ class MarksExtractor:
                             words = re.findall(r'\b\w+\b', after_on_same_line.upper())
                             allowed = {"OR", "COMPULSORY", "ATTEMPT", "ANY", "ONE", "MARKS", "MARK"}
                             if not all(w in allowed for w in words):
+                                logger.debug(
+                                    "Rejected marks candidate | candidate=%s | reason=invalid_trailing_words | trailing_text=%s | start_offset=%d",
+                                    m.group(0), after_on_same_line[:30], start
+                                )
                                 continue
 
                     candidates.append((val, priority, start))

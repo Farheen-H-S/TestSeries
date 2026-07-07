@@ -1,10 +1,14 @@
 import re
 import bisect
+import logging
 from typing import List, Optional, Dict, Any, Tuple
 from .types import ParsedQuestion, QuestionLevel, ParserConfig, ParsingDiagnostics, QuestionParseResult
 from .normalizer import Normalizer
 from .header_validator import HeaderValidator
 from .hierarchy_utils import HierarchyUtils
+
+logger = logging.getLogger(__name__)
+
 
 class QuestionParser:
     """
@@ -22,9 +26,14 @@ class QuestionParser:
         """
         Parses text into a list of hierarchical questions with strict validation and offset correction.
         """
-        result = self.parse_with_diagnostics(text, page_offsets, base_offset)
-        self.diagnostics = result.diagnostics
-        return result.questions
+        try:
+            result = self.parse_with_diagnostics(text, page_offsets, base_offset)
+            self.diagnostics = result.diagnostics
+            return result.questions
+        except Exception as e:
+            logger.error("Question parser failure: %s", str(e), exc_info=True)
+            raise
+
 
     def parse_with_diagnostics(
         self,
@@ -93,13 +102,22 @@ class QuestionParser:
             
             result = self.validator.is_valid(match, path, hierarchy_stack, normalized_text)
             if result.is_valid:
+                old_stack = list(hierarchy_stack)
                 # Update stack to get the full hierarchical path for this question
                 HierarchyUtils.update_hierarchy_stack(hierarchy_stack, path)
+                logger.debug(
+                    "Hierarchy stack transition | old_stack=%s | new_stack=%s | header=%s | start_offset=%d",
+                    old_stack, hierarchy_stack, normalized_header, match.start()
+                )
                 # Capture current stack state as the path for this question
                 validated_matches.append((match, list(hierarchy_stack)))
             else:
                 # Use the original header from original text for diagnostics
                 raw_header = text[match.start():match.end()]
+                logger.debug(
+                    "Rejected question header candidate | candidate=%s | reason=%s | start_offset=%d",
+                    raw_header, result.reason or "Unknown rejection", match.start()
+                )
                 diagnostics.rejected_headers.append({
                     "header": raw_header, 
                     "reason": result.reason or "Unknown rejection"

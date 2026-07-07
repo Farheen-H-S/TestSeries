@@ -1,7 +1,14 @@
 import re
+import logging
 from typing import List, Tuple, Optional
 
+logger = logging.getLogger(__name__)
+
 class Normalizer:
+    # Configurable initial defaults for OCR anomaly detection, expected to be tuned after testing
+    OCR_ANOMALY_CHAR_PERCENTAGE_THRESHOLD = 0.015
+    OCR_ANOMALY_PER_PAGE_THRESHOLD = 50.0
+
     """
     Standardizes headers and handles deterministic OCR corrections.
 
@@ -74,6 +81,8 @@ class Normalizer:
         if not text:
             return ""
 
+        original_text = text
+
         # Normalize line endings to \n while preserving length:
         # \r\n -> " \n"
         # \r   -> "\n"
@@ -124,6 +133,11 @@ class Normalizer:
         text = re.sub(r'(?<=\d)b|b(?=\d)', '8', text)
         text = re.sub(r'(?<=\d)Z|Z(?=\d)', '2', text)
         text = re.sub(r'(?<=\d)z|z(?=\d)', '2', text)
+
+        if logger.isEnabledFor(logging.DEBUG):
+            changes = sum(1 for c1, c2 in zip(original_text, text) if c1 != c2)
+            if changes > 0:
+                logger.debug("OCR pre-normalization applied | text_length=%d | changed_chars=%d", len(text), changes)
 
         return text
 
