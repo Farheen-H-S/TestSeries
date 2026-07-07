@@ -67,6 +67,14 @@ class ParserRegressionTests(unittest.TestCase):
             ("Question S\nText for q5", ["5"], "Question S"),
             ("Question B\nText for q8", ["8"], "Question B"),
             ("Question Z\nText for q2", ["2"], "Question Z"),
+            # Nested OCR headers
+            ("Question l(a)\nText for q1(a)", ["1", "a"], "Question l(a)"),
+            ("Question I(a)\nText for q1(a)", ["1", "a"], "Question I(a)"),
+            ("Question B(a)\nText for q8(a)", ["8", "a"], "Question B(a)"),
+            ("Question S(a)\nText for q5(a)", ["5", "a"], "Question S(a)"),
+            # Digit-sandwiched OCR corrections
+            ("Question 12S\nText for q125", ["125"], "Question 12S"),
+            ("Question 1O5\nText for q105", ["105"], "Question 1O5"),
         ]
         for input_text, expected_path, expected_raw in ocr_cases:
             with self.subTest(input_text=input_text):

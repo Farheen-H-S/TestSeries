@@ -1,3 +1,4 @@
+import re
 from typing import List, Optional, Tuple
 from .types import ParserConfig
 
@@ -26,6 +27,7 @@ class MarksExtractor:
             
             for m in matches:
                 try:
+                    # In our custom regex patterns, the value is in group 1
                     val = int(m.group(1))
                     
                     # Structural Validation
@@ -44,25 +46,25 @@ class MarksExtractor:
                     if is_excluded:
                         continue
                         
-                    # 2. Positional Signal: Marks often appear at the end of a block/paragraph.
-                    # Check if followed by only punctuation/whitespace or a newline within 15 chars.
-                    after_text = text[end:end+40] # Check a bit more context
-                    import re
-                    is_at_end = (not re.search(r'\w', after_text)) or ("\n" in after_text[:15])
-                    
+                    # 2. Positional Validation for Weaker Patterns (e.g. (5), [5], 5M)
                     is_weak = "marks" not in m.group(0).lower()
                     if is_weak:
-                        if not is_at_end:
-                            # Weak patterns (like 5M, (5)) MUST be at the end of the block/paragraph
-                            continue
+                        # Check if the match is preceded by any non-whitespace character on the same line.
+                        # If preceded only by whitespace, it is at the start of a line (like a list item)
+                        # and is rejected.
+                        line_start_idx = text.rfind('\n', 0, start)
+                        if line_start_idx == -1:
+                            line_start_idx = 0
+                        else:
+                            line_start_idx += 1
+                        before_on_same_line = text[line_start_idx:start]
                         
-                        # Weak, unbracketed patterns (like 5M, 5 M) must not be preceded by a word character
-                        # (e.g. "length is 5 m") to avoid matching inline measurements.
-                        is_bracketed = m.group(0).startswith('(') or m.group(0).startswith('[')
-                        if not is_bracketed:
-                            before_text = text[max(0, start - 15):start]
-                            if re.search(r'\w\s*$', before_text):
-                                continue
+                        if not re.search(r'\S', before_on_same_line):
+                            continue
+                    
+                    # Calculate if it's near the end of a line or paragraph
+                    after_text = text[end:end+40]
+                    is_at_end = (not re.search(r'\w', after_text)) or ("\n" in after_text[:15])
                     
                     final_priority = priority + (15 if is_at_end else 0)
                     candidates.append((val, final_priority))
