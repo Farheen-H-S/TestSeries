@@ -49,15 +49,26 @@ class HierarchyUtils:
             if roman: stack.append(roman)
         elif alpha:
             # Transitioning to/within a SUB level (e.g. 1 -> (a) or (a) -> (b))
-            # Must have a main level to attach to
-            if not stack: return
+            # Must have a main level to attach to, OR be a mainless alpha-only document
+            if not stack:
+                stack.append(alpha)
+                if roman: stack.append(roman)
+                return
             while len(stack) > 1:
                 stack.pop()
-            stack.append(alpha)
+            if stack[0].isdigit():
+                stack.append(alpha)
+            else:
+                stack[0] = alpha
             if roman: stack.append(roman)
         elif roman:
             # Transitioning to/within a SUB_SUB level (e.g. (a) -> (i) or (i) -> (ii))
             # Must have an alpha level to attach to for strict hierarchy
+            if len(stack) < 1: return
+            # If the stack has alpha at index 0 and no main, length is 1
+            if not stack[0].isdigit() and len(stack) == 1:
+                stack.append(roman)
+                return
             if len(stack) < 2: return
             while len(stack) > 2:
                 stack.pop()

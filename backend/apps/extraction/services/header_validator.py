@@ -74,13 +74,15 @@ class HeaderValidator:
         
         if alpha and not roman:
             # 1 -> (a) (ALLOWED)
-            if not c_main:
+            # (a) -> (b) in a mainless document (ALLOWED)
+            if not c_main and not c_alpha:
                 return ValidationResult(False, "alpha label found without parent main number")
             return ValidationResult(True)
             
         if roman:
             # 1 -> (a) -> (i) (ALLOWED)
             # 1 -> (i) (REJECTED by strict rule)
+            # (a) -> (i) in a mainless document (ALLOWED)
             if not c_alpha:
                 return ValidationResult(False, "illegal hierarchy transition: roman must follow alpha")
             return ValidationResult(True)

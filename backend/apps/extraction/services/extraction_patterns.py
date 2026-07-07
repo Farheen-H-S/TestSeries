@@ -48,8 +48,8 @@ MARKS_PATTERNS = [
 # Marks Exclusion Patterns (To avoid False Positives)
 MARKS_EXCLUSION_PATTERNS = [
     r"\b(20\d{2}|19\d{2})\b",                 # Years
-    r"\b(?:Ind\s+AS|AS|SA|CARO)\s+\d+\b",     # Standards
-    r"\b(?:Sec|Section)\.?\s+\d+[A-Z]*\b",     # Sections
+    r"\b(?:Ind\s+AS|AS|SA|CARO)\s+\d+(?:\s*\([a-zA-Z0-9]+\))*(?!\w)",     # Standards
+    r"\b(?:Sec|Section)\.?\s+\d+[A-Z]*(?:\s*\([a-zA-Z0-9]+\))*(?!\w)",     # Sections
     r"\b(?:Page|P)\.?\s*\d+\b",               # Page numbers
     r"\b(?:Question|Q)\.?\s*\d+\b",           # Question numbers
 ]

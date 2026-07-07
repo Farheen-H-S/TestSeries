@@ -367,5 +367,20 @@ class ParserRegressionTests(unittest.TestCase):
         # Offset 2500 is in page 3 (2000+)
         self.assertEqual(HierarchyUtils.get_page_num_fast(2500, self.offsets, page_keys), 3)
 
+    def test_mainless_alpha_hierarchy_transition(self):
+        text = "(a)\nFirst subquestion\n(b)\nSecond subquestion\n(i)\nFirst sub-subquestion"
+        parsed = self.q_parser.parse(text, self.offsets)
+        self.assertEqual(len(parsed), 3)
+        self.assertEqual(parsed[0].hierarchy_path, ["a"])
+        self.assertEqual(parsed[1].hierarchy_path, ["b"])
+        self.assertEqual(parsed[2].hierarchy_path, ["b", "i"])
+
+    def test_marks_nested_exclusion(self):
+        extractor = MarksExtractor(self.config)
+        self.assertEqual(extractor.extract("Explain Section 135(5)."), None)
+        self.assertEqual(extractor.extract("Explain Section 135(5). (5 Marks)"), 5)
+        self.assertEqual(extractor.extract("Explain Ind AS 10(1)."), None)
+        self.assertEqual(extractor.extract("Explain Ind AS 10(1). [5 Marks]"), 5)
+
 if __name__ == "__main__":
     unittest.main()
