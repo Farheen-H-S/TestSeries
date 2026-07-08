@@ -6,6 +6,7 @@ from django.contrib.auth import get_user_model
 from django.core.files.uploadedfile import SimpleUploadedFile
 from apps.syllabus.models import Subject
 from apps.documents.models import Document
+from unittest.mock import patch
 import tempfile
 import shutil
 
@@ -21,6 +22,13 @@ class DocumentUploadTests(APITestCase):
         Document.objects.all().delete()
         
         self.user = User.objects.create_user(username="testuser", password="password")
+        
+        # Start celery task mock patcher to avoid connection attempts to Redis
+        self.patcher = patch('apps.extraction.tasks.extract_document_task.delay')
+        self.mock_delay = self.patcher.start()
+
+    def tearDown(self):
+        self.patcher.stop()
 
     @classmethod
     def tearDownClass(cls):

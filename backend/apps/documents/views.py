@@ -1,3 +1,4 @@
+import logging
 from rest_framework import generics
 from rest_framework.permissions import AllowAny
 from rest_framework.parsers import MultiPartParser, FormParser
@@ -6,6 +7,8 @@ from rest_framework import status
 from django.core.files.storage import default_storage
 from .models import Document
 from .serializers import DocumentUploadSerializer, DocumentListSerializer
+
+logger = logging.getLogger(__name__)
 
 class DocumentUploadView(generics.CreateAPIView):
     queryset = Document.objects.all()
@@ -36,11 +39,28 @@ class DocumentUploadView(generics.CreateAPIView):
             )
         
         # Save document record with business logic fields
-        serializer.save(
+        instance = serializer.save(
             user=user,
             storage_path=file_path,
             extraction_status=Document.ExtractionStatus.PENDING
         )
+
+        # Trigger background Celery extraction task resiliently
+        try:
+            from apps.extraction.tasks import extract_document_task
+            extract_document_task.delay(instance.document_id)
+            logger.info("Successfully queued extraction task for document_id=%s", instance.document_id)
+        except Exception as e:
+            logger.exception("Failed to queue extraction task for document_id=%s", instance.document_id)
+            try:
+                from apps.extraction.models import ExtractionLog
+                ExtractionLog.objects.create(
+                    document=instance,
+                    status=ExtractionLog.Status.FAILED,
+                    message=f"Failed to queue background extraction task: {str(e)}"
+                )
+            except Exception as log_err:
+                logger.exception("Also failed to create ExtractionLog for document_id=%s: %s", instance.document_id, log_err)
 
     def create(self, request, *args, **kwargs):
         serializer = self.get_serializer(data=request.data)

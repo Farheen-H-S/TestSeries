@@ -30,11 +30,12 @@ logger = logging.getLogger(__name__)
 UNMATCHED_RATIO_THRESHOLD = 0.20
 UNMATCHED_COUNT_THRESHOLD = 5
 
-def extract_document(document: Document):
+def extract_document(document: Document, temp_file_path: str = None):
     """
     Full Phase 3D pipeline to process a Document with industrial-grade correctness.
     """
-    logger.info("Starting extraction | document_id=%s | storage_path=%s", document.document_id, document.storage_path)
+    pdf_path = temp_file_path or document.storage_path
+    logger.info("Starting extraction | document_id=%s | storage_path=%s | pdf_path=%s", document.document_id, document.storage_path, pdf_path)
     document.extraction_status = Document.ExtractionStatus.PROCESSING
     document.save(update_fields=["extraction_status"])
     
@@ -48,7 +49,7 @@ def extract_document(document: Document):
     
     try:
         # 1. Load and Extract Raw Text
-        pdf_doc = load_pdf(document.storage_path)
+        pdf_doc = load_pdf(pdf_path)
         try:
             pages_data = extract_text(pdf_doc)
             logger.info("Loaded document | pages=%d", len(pages_data))
