@@ -53,6 +53,7 @@ class DocumentUploadTests(APITestCase):
         self.assertEqual(res_data['subject']['subject_id'], subject.subject_id)
         self.assertEqual(res_data['subject']['name'], 'Financial Management')
         self.assertEqual(res_data['subject']['exam_level'], 'Intermediate')
+        self.assertIn('uploaded_at', res_data)
         
         # 2. Upload another document with the same subject name (different casing/spacing) and same level
         pdf_file_2 = SimpleUploadedFile(
@@ -102,3 +103,27 @@ class DocumentUploadTests(APITestCase):
         subject_final = Subject.objects.get(name='Financial Management', exam_level='Final')
         res_data_3 = response_3.json()
         self.assertEqual(res_data_3['subject']['subject_id'], subject_final.subject_id)
+        self.assertIn('uploaded_at', res_data_3)
+
+    def test_document_upload_blank_subject(self):
+        url = reverse('document-upload')
+        pdf_file = SimpleUploadedFile(
+            "test_paper.pdf",
+            b"%PDF-1.4 ... dummy content ...",
+            content_type="application/pdf"
+        )
+        
+        # Test spaces-only subject_name
+        data = {
+            'subject_name': '     ',
+            'exam_level': 'Intermediate',
+            'title': 'FM Nov 2025 Paper',
+            'document_type': 'PYQ',
+            'paper_year': 2025,
+            'paper_session': 'November',
+            'file': pdf_file
+        }
+        
+        response = self.client.post(url, data, format='multipart')
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn('subject_name', response.json())

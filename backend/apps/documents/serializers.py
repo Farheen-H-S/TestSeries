@@ -3,6 +3,7 @@ from django.conf import settings
 from django.utils import timezone
 from .models import Document
 from apps.syllabus.models import Subject
+from apps.syllabus.serializers import SubjectSerializer
 import os
 
 class DocumentUploadSerializer(serializers.ModelSerializer):
@@ -22,18 +23,16 @@ class DocumentUploadSerializer(serializers.ModelSerializer):
         # Normalize: trim, collapse spaces, Title Case
         normalized_name = " ".join(subject_name.strip().split()).title()
         
-        # Case-insensitive lookup using both normalized name and exam_level
-        subject = Subject.objects.filter(
-            name__iexact=normalized_name,
-            exam_level=exam_level
-        ).first()
-        
-        if not subject:
-            # Create a new Subject if not found
-            subject = Subject.objects.create(
-                name=normalized_name,
-                exam_level=exam_level
+        if not normalized_name:
+            raise serializers.ValidationError(
+                {"subject_name": "Subject name cannot be blank."}
             )
+        
+        # Atomically get or create Subject using normalized name and exam_level
+        subject, created = Subject.objects.get_or_create(
+            name=normalized_name,
+            exam_level=exam_level
+        )
             
         attrs['subject'] = subject
         return attrs
@@ -68,11 +67,14 @@ class DocumentUploadSerializer(serializers.ModelSerializer):
 
 
 class DocumentListSerializer(serializers.ModelSerializer):
+    subject = SubjectSerializer(read_only=True)
+
     class Meta:
         model = Document
         fields = [
             'document_id', 
             'title', 
+            'subject',
             'document_type', 
             'paper_year', 
             'paper_session', 
