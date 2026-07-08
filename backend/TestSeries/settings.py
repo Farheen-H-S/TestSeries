@@ -135,3 +135,17 @@ MEDIA_ROOT = BASE_DIR / 'media'
 
 # Upload settings
 MAX_UPLOAD_SIZE = 100 * 1024 * 1024  # 100MB
+
+# CSRF settings for local development with Vite dev server
+CSRF_TRUSTED_ORIGINS = [
+    'http://localhost:5173',
+    'http://127.0.0.1:5173',
+]
+
+REST_FRAMEWORK = {
+    'DEFAULT_AUTHENTICATION_CLASSES': [
+        # SessionAuthentication is disabled for stateless API calls to prevent CSRF token issues in development.
+        'rest_framework.authentication.BasicAuthentication',
+    ],
+}
+

@@ -18,11 +18,12 @@ const documentService = {
    * @param {FormData} formData - Multipart data containing metadata and file
    * @returns {Promise<Object>} Uploaded document metadata
    */
-  uploadDocument: async (formData) => {
+  uploadDocument: async (formData, onUploadProgress) => {
     const response = await api.post('/documents/upload/', formData, {
       headers: {
         'Content-Type': 'multipart/form-data',
       },
+      onUploadProgress,
     });
     return response.data;
   },

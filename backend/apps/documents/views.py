@@ -51,7 +51,13 @@ class DocumentUploadView(generics.CreateAPIView):
         return Response({
             "document_id": instance.document_id,
             "title": instance.title,
-            "status": instance.extraction_status
+            "subject": {
+                "subject_id": instance.subject.subject_id,
+                "name": instance.subject.name,
+                "exam_level": instance.subject.exam_level
+            },
+            "status": instance.extraction_status,
+            "uploaded_at": instance.uploaded_at
         }, status=status.HTTP_201_CREATED)
 
 

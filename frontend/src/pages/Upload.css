@@ -1,0 +1,323 @@
+.upload-container {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  min-height: calc(100vh - var(--navbar-height) - 4rem);
+  padding: 2rem 1rem;
+}
+
+.upload-card {
+  background-color: var(--surface-color);
+  border-radius: var(--border-radius-lg);
+  box-shadow: var(--shadow-lg);
+  border: 1px solid var(--border-color);
+  width: 100%;
+  max-width: 800px;
+  padding: 3rem;
+  transition: transform var(--transition-normal), box-shadow var(--transition-normal);
+}
+
+.upload-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 20px 25px -5px rgba(10, 37, 64, 0.08), 0 10px 10px -5px rgba(10, 37, 64, 0.04);
+}
+
+.upload-title {
+  font-size: 1.75rem;
+  font-weight: 700;
+  color: var(--primary-color);
+  margin-bottom: 0.5rem;
+  background: linear-gradient(135deg, var(--primary-color) 0%, var(--accent-color) 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.upload-subtitle {
+  font-size: 0.95rem;
+  color: var(--text-secondary);
+  margin-bottom: 2rem;
+}
+
+/* Form Layout */
+.upload-form {
+  display: flex;
+  flex-direction: column;
+  gap: 2rem;
+}
+
+.form-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1.5rem;
+}
+
+@media (max-width: 640px) {
+  .form-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* File Upload Dropzone */
+.file-upload-section {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.file-input-hidden {
+  display: none;
+}
+
+.dropzone {
+  border: 2px dashed var(--border-color);
+  border-radius: var(--border-radius-md);
+  padding: 2.5rem 1.5rem;
+  text-align: center;
+  cursor: pointer;
+  background-color: var(--background-color);
+  transition: all var(--transition-normal);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  outline: none;
+  position: relative;
+}
+
+.dropzone:hover:not(.dropzone-disabled) {
+  border-color: var(--accent-color);
+  background-color: var(--accent-light);
+}
+
+.dropzone-active {
+  border-color: var(--accent-color);
+  background-color: var(--accent-light);
+  transform: scale(1.01);
+}
+
+.dropzone-error {
+  border-color: var(--status-failed-text);
+  background-color: rgba(220, 38, 38, 0.05);
+}
+
+.dropzone-disabled {
+  opacity: 0.7;
+  cursor: not-allowed;
+  background-color: var(--border-color);
+}
+
+.upload-icon {
+  width: 48px;
+  height: 48px;
+  color: var(--text-muted);
+  margin-bottom: 1rem;
+  transition: color var(--transition-fast), transform var(--transition-normal);
+}
+
+.dropzone:hover:not(.dropzone-disabled) .upload-icon {
+  color: var(--accent-color);
+  transform: translateY(-4px);
+}
+
+.dropzone-text {
+  font-size: 0.95rem;
+  color: var(--text-secondary);
+  font-weight: 500;
+  margin-bottom: 0.25rem;
+}
+
+.browse-link {
+  color: var(--accent-color);
+  font-weight: 600;
+  text-decoration: underline;
+}
+
+.dropzone-subtext {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+}
+
+/* Selected File Info Card */
+.selected-file-info {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.5rem;
+  width: 100%;
+  max-width: 400px;
+  padding: 1rem;
+  background: var(--surface-color);
+  border-radius: var(--border-radius-md);
+  border: 1px solid var(--border-color);
+  box-shadow: var(--shadow-sm);
+  animation: fadeIn 0.3s ease;
+}
+
+.file-name {
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  word-break: break-all;
+  text-align: center;
+  max-width: 100%;
+}
+
+.file-size {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+}
+
+.remove-file-btn {
+  background: none;
+  border: none;
+  color: var(--status-failed-text);
+  font-size: 0.825rem;
+  font-weight: 600;
+  cursor: pointer;
+  padding: 0.25rem 0.5rem;
+  border-radius: var(--border-radius-sm);
+  transition: all var(--transition-fast);
+}
+
+.remove-file-btn:hover {
+  background-color: var(--status-failed-bg);
+  text-decoration: underline;
+}
+
+/* Error message styling */
+.field-error-msg {
+  color: var(--status-failed-text);
+  font-size: 0.8rem;
+  margin-top: 0.25rem;
+  font-weight: 500;
+  display: block;
+}
+
+/* General alert message */
+.upload-alert {
+  padding: 1rem;
+  border-radius: var(--border-radius-md);
+  margin-bottom: 1.5rem;
+  font-size: 0.9rem;
+  font-weight: 500;
+  animation: slideIn 0.3s ease;
+}
+
+.alert-error {
+  background-color: var(--status-failed-bg);
+  color: var(--status-failed-text);
+  border: 1px solid rgba(220, 38, 38, 0.2);
+}
+
+/* Progress bar styles */
+.upload-progress-container {
+  padding: 1.25rem;
+  background-color: var(--background-color);
+  border-radius: var(--border-radius-md);
+  border: 1px solid var(--border-color);
+  animation: fadeIn 0.3s ease;
+}
+
+.progress-bar-wrapper {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.progress-info {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.progress-status-text {
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--primary-color);
+}
+
+.progress-percentage {
+  font-size: 0.875rem;
+  font-weight: 700;
+  color: var(--accent-color);
+}
+
+.progress-bar-track {
+  width: 100%;
+  height: 8px;
+  background-color: var(--border-color);
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.progress-bar-fill {
+  height: 100%;
+  background: linear-gradient(90deg, var(--accent-color) 0%, #3B82F6 100%);
+  border-radius: 4px;
+  transition: width 0.3s ease-out;
+}
+
+/* Indeterminate / Pulse Loader */
+.indeterminate-loader {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
+.pulse-loader {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background-color: var(--accent-color);
+  animation: pulse 1.2s infinite ease-in-out;
+}
+
+/* Form actions alignment */
+.form-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 1rem;
+  margin-top: 1rem;
+  border-top: 1px solid var(--border-color);
+  padding-top: 1.5rem;
+}
+
+.form-actions button {
+  min-width: 120px;
+}
+
+/* Animations */
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes slideIn {
+  from {
+    opacity: 0;
+    transform: translateY(-8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes pulse {
+  0% {
+    transform: scale(0.8);
+    opacity: 0.5;
+  }
+  50% {
+    transform: scale(1.2);
+    opacity: 1;
+  }
+  100% {
+    transform: scale(0.8);
+    opacity: 0.5;
+  }
+}
