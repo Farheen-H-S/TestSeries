@@ -1,4 +1,4 @@
-from django.test import TestCase
+from django.test import TestCase, override_settings
 from django.urls import reverse
 from rest_framework import status
 from rest_framework.test import APITestCase
@@ -6,7 +6,12 @@ from django.contrib.auth import get_user_model
 from django.core.files.uploadedfile import SimpleUploadedFile
 from apps.syllabus.models import Subject
 from apps.documents.models import Document
+import tempfile
+import shutil
 
+TEMP_MEDIA_ROOT = tempfile.mkdtemp()
+
+@override_settings(MEDIA_ROOT=TEMP_MEDIA_ROOT)
 class DocumentUploadTests(APITestCase):
     def setUp(self):
         User = get_user_model()
@@ -16,6 +21,11 @@ class DocumentUploadTests(APITestCase):
         Document.objects.all().delete()
         
         self.user = User.objects.create_user(username="testuser", password="password")
+
+    @classmethod
+    def tearDownClass(cls):
+        shutil.rmtree(TEMP_MEDIA_ROOT, ignore_errors=True)
+        super().tearDownClass()
         
     def test_document_upload_flow(self):
         # Create a dummy PDF file
