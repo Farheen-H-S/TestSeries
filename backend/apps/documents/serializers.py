@@ -6,16 +6,37 @@ from apps.syllabus.models import Subject
 import os
 
 class DocumentUploadSerializer(serializers.ModelSerializer):
+    subject_name = serializers.CharField(write_only=True)
+    exam_level = serializers.ChoiceField(choices=Subject.ExamLevel.choices, write_only=True)
     file = serializers.FileField(write_only=True)
-    subject_id = serializers.PrimaryKeyRelatedField(
-        queryset=Subject.objects.all(), 
-        source='subject', 
-        write_only=True
-    )
 
     class Meta:
         model = Document
-        fields = ['subject_id', 'title', 'document_type', 'paper_year', 'paper_session', 'file']
+        fields = ['subject_name', 'exam_level', 'title', 'document_type', 'paper_year', 'paper_session', 'file']
+
+    def validate(self, attrs):
+        subject_name = attrs.pop('subject_name')
+        exam_level = attrs.pop('exam_level')
+        attrs.pop('file', None)  # Pop write-only file field as it is handled by the view
+        
+        # Normalize: trim, collapse spaces, Title Case
+        normalized_name = " ".join(subject_name.strip().split()).title()
+        
+        # Case-insensitive lookup using both normalized name and exam_level
+        subject = Subject.objects.filter(
+            name__iexact=normalized_name,
+            exam_level=exam_level
+        ).first()
+        
+        if not subject:
+            # Create a new Subject if not found
+            subject = Subject.objects.create(
+                name=normalized_name,
+                exam_level=exam_level
+            )
+            
+        attrs['subject'] = subject
+        return attrs
 
     def validate_file(self, value):
         # Validate extension

@@ -10,13 +10,21 @@ class Subject(models.Model):
         FINAL = "Final", "Final"
 
     subject_id = models.BigAutoField(primary_key=True)
-    name = models.CharField(max_length=150, unique=True)
+    name = models.CharField(max_length=150)
     exam_level = models.CharField(
         max_length=30, 
         choices=ExamLevel.choices
     )
     is_active = models.BooleanField(default=True)
     created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=['name', 'exam_level'],
+                name='unique_subject_name_exam_level'
+            )
+        ]
 
     def __str__(self):
         return self.name
