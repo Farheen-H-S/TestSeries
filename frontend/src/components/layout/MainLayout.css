@@ -1,0 +1,34 @@
+.layout-container {
+  display: flex;
+  min-height: 100vh;
+  width: 100%;
+}
+
+.layout-main {
+  flex: 1;
+  margin-left: var(--sidebar-width);
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+  transition: margin-left var(--transition-normal);
+  background-color: var(--background-color);
+}
+
+.layout-main-collapsed {
+  margin-left: var(--sidebar-collapsed-width);
+}
+
+.layout-content {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+}
+
+/* Tablet & Mobile Layout resets */
+@media (max-width: 1023px) {
+  .layout-main,
+  .layout-main-collapsed {
+    margin-left: 0;
+  }
+}
