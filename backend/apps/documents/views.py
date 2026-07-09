@@ -94,3 +94,12 @@ class DocumentListView(generics.ListAPIView):
         #     queryset = queryset.filter(user=self.request.user)
         
         return queryset
+
+
+class DocumentDetailView(generics.RetrieveAPIView):
+    """
+    Retrieve document detail and current status of a specific uploaded document.
+    """
+    queryset = Document.objects.all()
+    serializer_class = DocumentListSerializer
+    permission_classes = [AllowAny]

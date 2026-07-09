@@ -1,10 +1,18 @@
 import logging
 from celery import shared_task
+from django.db.utils import OperationalError
 from .services.extraction_service import ExtractionService
 
 logger = logging.getLogger(__name__)
 
-@shared_task(name="documents.extract_document", acks_late=True)
+@shared_task(
+    name="documents.extract_document",
+    acks_late=True,
+    autoretry_for=(OperationalError,),
+    retry_backoff=True,
+    retry_backoff_max=300,
+    max_retries=5,
+)
 def extract_document_task(document_id: int):
     """
     Celery task to trigger document extraction.

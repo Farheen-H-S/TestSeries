@@ -123,6 +123,50 @@ class DocumentUploadTests(APITestCase):
         self.assertEqual(res_data_3['subject']['subject_id'], subject_final.subject_id)
         self.assertIn('uploaded_at', res_data_3)
 
+        # Verify Celery delay task was called for each successful upload
+        self.assertEqual(self.mock_delay.call_count, 3)
+        self.assertEqual(self.mock_delay.call_args_list[0][0][0], res_data['document_id'])
+
+    def test_document_upload_celery_queue_failure(self):
+        # Setup mock delay to raise a connection/broker exception
+        self.mock_delay.side_effect = RuntimeError("Broker connection refused")
+        
+        pdf_file = SimpleUploadedFile(
+            "test_paper_fail.pdf",
+            b"%PDF-1.4 ... dummy content ...",
+            content_type="application/pdf"
+        )
+        
+        url = reverse('document-upload')
+        data = {
+            'subject_name': 'Financial Management',
+            'exam_level': 'Intermediate',
+            'title': 'FM Queue Fail Paper',
+            'document_type': 'PYQ',
+            'paper_year': 2025,
+            'paper_session': 'November',
+            'file': pdf_file
+        }
+        
+        response = self.client.post(url, data, format='multipart')
+        # The upload view should handle broker failure gracefully, returning 201 Created,
+        # but leaving the document status as PENDING and creating an ExtractionLog detailing the failure.
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        
+        res_data = response.json()
+        doc_id = res_data['document_id']
+        
+        # Verify document status is still PENDING
+        document = Document.objects.get(pk=doc_id)
+        self.assertEqual(document.extraction_status, Document.ExtractionStatus.PENDING)
+        
+        # Verify an ExtractionLog is created with FAILED status and message about the queue failure
+        from apps.extraction.models import ExtractionLog
+        log = ExtractionLog.objects.filter(document=document).latest('created_at')
+        self.assertEqual(log.status, ExtractionLog.Status.FAILED)
+        self.assertIn("Failed to queue background extraction task", log.message)
+        self.assertIn("Broker connection refused", log.message)
+
     def test_document_upload_blank_subject(self):
         url = reverse('document-upload')
         pdf_file = SimpleUploadedFile(

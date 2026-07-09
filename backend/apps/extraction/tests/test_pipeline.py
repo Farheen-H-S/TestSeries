@@ -6,15 +6,29 @@ sys.path.append(os.getcwd())
 
 import unittest
 from unittest.mock import patch, MagicMock
+from django.test import TestCase, override_settings
+from django.conf import settings
+from pathlib import Path
+import tempfile
+import shutil
+from django.contrib.auth import get_user_model
+from apps.documents.models import Document
+from apps.syllabus.models import Subject
+from apps.extraction.models import ExtractionLog
+from apps.extraction.services.extraction_service import ExtractionService
+from apps.papers.models import Question
 
-class PipelineErrorHandlingTests(unittest.TestCase):
+class PipelineErrorHandlingTests(TestCase):
+    def setUp(self):
+        User = get_user_model()
+        self.user = User.objects.create_user(username="testuser_err", password="password")
+        self.subject = Subject.objects.create(name="Mathematics", exam_level="Intermediate")
+
     @patch('apps.extraction.services.extraction_pipeline.load_pdf')
     @patch('apps.extraction.services.extraction_pipeline.extract_text')
     @patch('apps.extraction.services.extraction_pipeline.logger')
-    @patch('apps.extraction.services.extraction_pipeline.ExtractionLog')
-    def test_pipeline_error_handling_and_cleanup(self, mock_extraction_log_cls, mock_logger, mock_extract_text, mock_load_pdf):
+    def test_pipeline_error_handling_and_cleanup(self, mock_logger, mock_extract_text, mock_load_pdf):
         from apps.extraction.services.extraction_pipeline import extract_document
-        from apps.documents.models import Document
         
         # 1. Setup mocks
         mock_pdf = MagicMock()
@@ -24,18 +38,19 @@ class PipelineErrorHandlingTests(unittest.TestCase):
         test_exception = ValueError("Simulated extraction text failure")
         mock_extract_text.side_effect = test_exception
         
-        # Mock document
-        mock_document = MagicMock()
-        mock_document.document_id = "doc_123"
-        mock_document.storage_path = "/path/to/test.pdf"
-        
-        # Mock log object returned by create
-        mock_log = MagicMock()
-        mock_extraction_log_cls.objects.create.return_value = mock_log
+        # Create actual Document
+        document = Document.objects.create(
+            user=self.user,
+            subject=self.subject,
+            title="FM Nov 2025 Paper",
+            document_type=Document.DocumentType.PYQ,
+            paper_year=2025,
+            storage_path="documents/test_err.pdf"
+        )
         
         # 2. Run extraction and assert exception is raised
         with self.assertRaises(ValueError) as context:
-            extract_document(mock_document)
+            extract_document(document)
             
         self.assertEqual(str(context.exception), "Simulated extraction text failure")
         
@@ -43,33 +58,77 @@ class PipelineErrorHandlingTests(unittest.TestCase):
         mock_pdf.close.assert_called_once()
         
         # 4. Verify status updates
-        # Document status should be set to PROCESSING then FAILED
-        self.assertEqual(mock_document.extraction_status, Document.ExtractionStatus.FAILED)
-        mock_document.save.assert_any_call(update_fields=["extraction_status"])
+        document.refresh_from_db()
+        self.assertEqual(document.extraction_status, Document.ExtractionStatus.FAILED)
         
         # ExtractionLog status should be set to FAILED and message should be str(e)
-        self.assertEqual(mock_log.status, mock_extraction_log_cls.Status.FAILED)
-        self.assertEqual(mock_log.message, "Simulated extraction text failure")
-        mock_log.save.assert_called_with(update_fields=["status", "message"])
+        log = ExtractionLog.objects.filter(document=document).latest('created_at')
+        self.assertEqual(log.status, ExtractionLog.Status.FAILED)
+        self.assertEqual(log.message, "Simulated extraction text failure")
         
         # 5. Verify single stack trace / no duplicate logging
-        # We expect logger.exception to be called once with context
         mock_logger.exception.assert_called_once_with(
             "Extraction failed | document_id=%s | storage_path=%s",
-            "doc_123",
-            "/path/to/test.pdf"
+            document.document_id,
+            "documents/test_err.pdf"
         )
 
+    @patch('apps.extraction.services.extraction_pipeline.load_pdf')
+    @patch('apps.extraction.services.extraction_pipeline.extract_text')
+    def test_pipeline_successful_extraction_integration(self, mock_extract_text, mock_load_pdf):
+        """
+        Verify the extraction pipeline end-to-end with mock PDF text loading.
+        """
+        from apps.extraction.services.extraction_pipeline import extract_document
+        
+        # 1. Setup mocks
+        mock_pdf = MagicMock()
+        mock_load_pdf.return_value = mock_pdf
+        
+        # Mock PyMuPDF text loader to return page content
+        mock_extract_text.return_value = [
+            {
+                "page_number": 1,
+                "text": (
+                    "Question 1\n"
+                    "What is the capital of France?\n"
+                    "(a)\n"
+                    "Option A content.\n"
+                    "SUGGESTED ANSWERS\n"
+                    "Answer 1\n"
+                    "(a)\n"
+                    "Paris is the capital of France.\n"
+                )
+            }
+        ]
+        
+        # Create a document
+        document = Document.objects.create(
+            user=self.user,
+            subject=self.subject,
+            title="E2E Integration Test Paper",
+            document_type=Document.DocumentType.MOCK,
+            paper_year=2026,
+            storage_path="documents/e2e_test.pdf"
+        )
+        
+        # Run pipeline
+        extract_document(document)
+        
+        # Verify document status updated to COMPLETED
+        document.refresh_from_db()
+        self.assertEqual(document.extraction_status, Document.ExtractionStatus.COMPLETED)
+        self.assertEqual(document.total_pages, 1)
+        
+        # Verify questions created in DB
+        questions = Question.objects.filter(document=document)
+        self.assertTrue(questions.exists())
+        
+        # Verify extraction log completed
+        log = ExtractionLog.objects.filter(document=document).latest('created_at')
+        self.assertEqual(log.status, ExtractionLog.Status.COMPLETED)
+        self.assertIn("Extracted", log.message)
 
-import tempfile
-import shutil
-from pathlib import Path
-from django.test import TestCase, override_settings
-from django.conf import settings
-from apps.documents.models import Document
-from apps.extraction.services.extraction_service import ExtractionService
-from apps.syllabus.models import Subject
-from django.contrib.auth import get_user_model
 
 class ExtractionServiceTests(TestCase):
     def setUp(self):
@@ -108,7 +167,7 @@ class ExtractionServiceTests(TestCase):
         # Mock default_storage.path to point to our test source file
         with patch('django.core.files.storage.default_storage.path', return_value=str(self.source_pdf)), \
              override_settings(BASE_DIR=self.test_dir, MEDIA_ROOT=str(self.temp_media_root)):
-             
+              
             # Verify temp root doesn't contain extraction files yet
             temp_root = Path(self.test_dir) / "temp"
             self.assertFalse(temp_root.exists())
@@ -159,7 +218,7 @@ class ExtractionServiceTests(TestCase):
         # Mock default_storage.path
         with patch('django.core.files.storage.default_storage.path', return_value=str(self.source_pdf)), \
              override_settings(BASE_DIR=self.test_dir, MEDIA_ROOT=str(self.temp_media_root)):
-             
+              
             # Capture the temporary path passed to extract_document before it is deleted
             def extract_side_effect(doc, temp_file_path=None):
                 nonlocal captured_temp_path
