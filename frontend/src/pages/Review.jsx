@@ -1,9 +1,8 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import documentService from '../services/documentService';
 import questionService from '../services/questionService';
 import Button from '../components/common/Button';
-import LoadingSpinner from '../components/common/LoadingSpinner';
 import EmptyState from '../components/common/EmptyState';
 import './Review.css';
 
@@ -26,11 +25,11 @@ const Review = () => {
   // Expanded states for cards (keyed by question_id)
   const [expandedCards, setExpandedCards] = useState({});
 
-  const fetchData = async () => {
+  // Fetch both document details and questions concurrently (wrapped in useCallback to prevent recreate triggers)
+  const fetchData = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
-      // Fetch both document details and questions concurrently
       const [docData, questionsData] = await Promise.all([
         documentService.getDocument(documentId),
         questionService.getQuestions(documentId)
@@ -44,11 +43,11 @@ const Review = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [documentId]);
 
   useEffect(() => {
     fetchData();
-  }, [documentId]);
+  }, [fetchData]);
 
   // Toggle expanded state for a single question card
   const toggleCard = (qId) => {
@@ -117,13 +116,17 @@ const Review = () => {
       }
       
       if (sortBy === 'MARKS_ASC' || sortBy === 'MARKS_DESC') {
-        const marksA = a.marks ?? 0;
-        const marksB = b.marks ?? 0;
-        if (marksA !== marksB) {
-          return sortBy === 'MARKS_ASC' ? marksA - marksB : marksB - marksA;
+        const marksA = a.marks ?? Number.POSITIVE_INFINITY;
+        const marksB = b.marks ?? Number.POSITIVE_INFINITY;
+        if (marksA === marksB) {
+          // Secondary sort by question number if marks are equal
+          return (a.question_number || '').localeCompare(b.question_number || '', undefined, { numeric: true });
         }
-        // Secondary sort by question number if marks are equal
-        return (a.question_number || '').localeCompare(b.question_number || '', undefined, { numeric: true });
+        if (sortBy === 'MARKS_ASC') {
+          return marksA < marksB ? -1 : 1;
+        } else {
+          return marksA > marksB ? -1 : 1;
+        }
       }
 
       return 0;
@@ -137,13 +140,22 @@ const Review = () => {
     navigate('/');
   };
 
+  // Helper class resolver for extraction status
+  const getStatusColorClass = (status) => {
+    switch (status) {
+      case 'COMPLETED': return 'status-completed-text';
+      case 'FAILED': return 'status-failed-text';
+      default: return 'status-processing-text';
+    }
+  };
+
   // Loading skeleton placeholder render helper
   if (loading) {
     return (
       <div className="review-container">
         <div className="review-header">
-          <div className="skeleton-block skeleton-text" style={{ width: '250px', height: '2rem' }}></div>
-          <div className="skeleton-block skeleton-text" style={{ width: '150px', height: '2.5rem' }}></div>
+          <div className="skeleton-block skeleton-text skeleton-header-title"></div>
+          <div className="skeleton-block skeleton-text skeleton-back-btn"></div>
         </div>
 
         <div className="overview-section">
@@ -151,7 +163,7 @@ const Review = () => {
           <div className="skeleton-card skeleton-block"></div>
         </div>
 
-        <div className="skeleton-card skeleton-block" style={{ height: '80px' }}></div>
+        <div className="skeleton-card skeleton-block skeleton-toolbar"></div>
 
         <div className="skeleton-container">
           <div className="skeleton-list-item skeleton-block"></div>
@@ -168,7 +180,7 @@ const Review = () => {
       <div className="error-state-card">
         <h2 className="error-state-title">Unable to load this document.</h2>
         <p className="error-state-desc">The request failed. Please check your connection or retry loading the document detail.</p>
-        <div style={{ display: 'flex', gap: '1rem' }}>
+        <div className="error-actions">
           <Button variant="outline" onClick={handleBackToDocuments}>
             Back to Documents
           </Button>
@@ -246,7 +258,7 @@ const Review = () => {
             </div>
             <div className="metadata-item">
               <span className="metadata-label">Extraction Status</span>
-              <span className="metadata-value highlight" style={{ color: document.extraction_status === 'COMPLETED' ? 'var(--status-completed-text)' : document.extraction_status === 'FAILED' ? 'var(--status-failed-text)' : 'var(--status-processing-text)' }}>
+              <span className={`metadata-value highlight ${getStatusColorClass(document.extraction_status)}`}>
                 {document.extraction_status || '—'}
               </span>
             </div>
@@ -281,8 +293,8 @@ const Review = () => {
       <section className="toolbar-card">
         <div className="toolbar-grid">
           {/* Search Box */}
-          <div className="input-container" style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
-            <label htmlFor="search" className="input-label" style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-secondary)' }}>Search</label>
+          <div className="toolbar-field-group">
+            <label htmlFor="search" className="toolbar-field-label">Search</label>
             <input
               id="search"
               type="text"
@@ -294,8 +306,8 @@ const Review = () => {
           </div>
 
           {/* Status Tab Group */}
-          <div className="input-container" style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
-            <label className="input-label" style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-secondary)' }}>Answer Status</label>
+          <div className="toolbar-field-group">
+            <label className="toolbar-field-label">Answer Status</label>
             <div className="status-filter-group">
               <button 
                 className={`status-tab-btn ${statusFilter === 'ALL' ? 'active' : ''}`}
@@ -319,8 +331,8 @@ const Review = () => {
           </div>
 
           {/* Dynamic Marks Filter */}
-          <div className="select-container" style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
-            <label htmlFor="marks-filter" className="select-label" style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-secondary)' }}>Marks</label>
+          <div className="toolbar-field-group">
+            <label htmlFor="marks-filter" className="toolbar-field-label">Marks</label>
             <div className="select-wrapper">
               <select
                 id="marks-filter"
@@ -339,8 +351,8 @@ const Review = () => {
           </div>
 
           {/* Sorting Dropdown */}
-          <div className="select-container" style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
-            <label htmlFor="sort-by" className="select-label" style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-secondary)' }}>Sort By</label>
+          <div className="toolbar-field-group">
+            <label htmlFor="sort-by" className="toolbar-field-label">Sort By</label>
             <div className="select-wrapper">
               <select
                 id="sort-by"

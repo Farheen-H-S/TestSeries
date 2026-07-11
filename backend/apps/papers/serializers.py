@@ -6,7 +6,24 @@ class QuestionSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Question
-        fields = '__all__'
+        fields = [
+            'question_id',
+            'parent_question',
+            'document',
+            'chapter',
+            'chapter_name',
+            'question_number',
+            'sub_question_label',
+            'question_content',
+            'question_text',
+            'answer_content',
+            'answer_text',
+            'question_type',
+            'instruction_type',
+            'marks',
+            'source_page',
+            'created_at',
+        ]
 
 class GeneratedPaperSerializer(serializers.ModelSerializer):
     class Meta:

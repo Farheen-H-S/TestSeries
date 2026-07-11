@@ -232,7 +232,7 @@
 }
 
 .question-card-header:hover {
-  background-color: rgba(248, 250, 252, 0.5);
+  background-color: var(--background-color);
 }
 
 .question-header-left {
@@ -418,4 +418,47 @@
   font-size: 1rem;
   color: var(--text-secondary);
   margin-bottom: 1rem;
+}
+
+.skeleton-header-title {
+  width: 250px;
+  height: 2rem;
+}
+
+.skeleton-back-btn {
+  width: 150px;
+  height: 2.5rem;
+}
+
+.skeleton-toolbar {
+  height: 80px;
+}
+
+.error-actions {
+  display: flex;
+  gap: 1rem;
+}
+
+.toolbar-field-group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.toolbar-field-label {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+.status-completed-text {
+  color: var(--status-completed-text);
+}
+
+.status-failed-text {
+  color: var(--status-failed-text);
+}
+
+.status-processing-text {
+  color: var(--status-processing-text);
 }
