@@ -2,7 +2,7 @@ from rest_framework import serializers
 from .models import Question, GeneratedPaper, GeneratedPaperQuestion
 
 class QuestionSerializer(serializers.ModelSerializer):
-    chapter_name = serializers.CharField(source="chapter.chapter_name", read_only=True, allow_null=True)
+    chapter_name = serializers.SerializerMethodField()
 
     class Meta:
         model = Question
@@ -24,6 +24,9 @@ class QuestionSerializer(serializers.ModelSerializer):
             'source_page',
             'created_at',
         ]
+
+    def get_chapter_name(self, obj):
+        return obj.chapter.chapter_name if obj.chapter else None
 
 class GeneratedPaperSerializer(serializers.ModelSerializer):
     class Meta:

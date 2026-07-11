@@ -6,6 +6,12 @@ import Button from '../components/common/Button';
 import EmptyState from '../components/common/EmptyState';
 import './Review.css';
 
+// Helper to strip HTML tags safely for text preview
+const stripHtml = (htmlString) => {
+  if (!htmlString) return '';
+  return htmlString.replace(/<\/?[^>]+(>|$)/g, "");
+};
+
 const Review = () => {
   const { documentId } = useParams();
   const navigate = useNavigate();
@@ -149,6 +155,21 @@ const Review = () => {
     }
   };
 
+  // Generate the collapsed preview safely from question_content or question_text
+  const getQuestionPreview = (q) => {
+    if (q.question_content && q.question_content.trim() !== '') {
+      return stripHtml(q.question_content);
+    }
+    return q.question_text || '';
+  };
+
+  // Reset all filters in client-side search toolbar
+  const handleClearFilters = () => {
+    setSearchQuery('');
+    setStatusFilter('ALL');
+    setMarksFilter('ALL');
+  };
+
   // Loading skeleton placeholder render helper
   if (loading) {
     return (
@@ -238,9 +259,11 @@ const Review = () => {
             </div>
             <div className="metadata-item">
               <span className="metadata-label">Subject</span>
-              <span className="metadata-value">
-                {document.subject?.name ? `${document.subject.name} (${document.subject.exam_level})` : '—'}
-              </span>
+              <span className="metadata-value">{document.subject?.name || '—'}</span>
+            </div>
+            <div className="metadata-item">
+              <span className="metadata-label">Exam Level</span>
+              <span className="metadata-value">{document.subject?.exam_level || '—'}</span>
             </div>
             <div className="metadata-item">
               <span className="metadata-label">Document Type</span>
@@ -262,6 +285,10 @@ const Review = () => {
                 {document.extraction_status || '—'}
               </span>
             </div>
+            <div className="metadata-item">
+              <span className="metadata-label">Total Pages</span>
+              <span className="metadata-value highlight">{document.total_pages ?? '—'}</span>
+            </div>
           </div>
         </div>
 
@@ -272,10 +299,6 @@ const Review = () => {
             <div className="stat-item">
               <span className="stat-number">{stats.total}</span>
               <span className="stat-label">Questions Extracted</span>
-            </div>
-            <div className="stat-item">
-              <span className="stat-number">{document.total_pages !== null ? document.total_pages : '—'}</span>
-              <span className="stat-label">Total Pages</span>
             </div>
             <div className="stat-item">
               <span className="stat-number">{stats.withAnswers}</span>
@@ -379,17 +402,25 @@ const Review = () => {
           </span>
         </div>
 
-        {processedQuestions.length === 0 ? (
+        {questions.length === 0 ? (
+          <EmptyState
+            title="No questions extracted"
+            message="No questions were extracted from this document. The extraction may have failed or produced no usable content."
+            actionText="Back to Documents"
+            onAction={handleBackToDocuments}
+          />
+        ) : processedQuestions.length === 0 ? (
           <EmptyState
             title="No questions match filters"
             message="No questions were extracted from this document that match your current search, answer status, or marks filter settings."
-            actionText="Back to Documents"
-            onAction={handleBackToDocuments}
+            actionText="Clear Filters"
+            onAction={handleClearFilters}
           />
         ) : (
           processedQuestions.map((q) => {
             const isExpanded = !!expandedCards[q.question_id];
             const answerMissing = isAnswerMissing(q.answer_text);
+            const questionPreview = getQuestionPreview(q);
             
             return (
               <div 
@@ -403,7 +434,7 @@ const Review = () => {
                 >
                   <div className="question-header-left">
                     <span className="question-number-title">
-                      Question {q.question_number || '—'}
+                      Question {q.question_number ?? '—'}
                     </span>
                     {q.marks !== null && q.marks !== undefined && (
                       <span className="doc-type-badge" style={{ textTransform: 'lowercase' }}>
@@ -423,9 +454,9 @@ const Review = () => {
                 </div>
 
                 {/* Collapsed Snippet Preview */}
-                {!isExpanded && q.question_text && (
+                {!isExpanded && questionPreview && (
                   <div className="question-preview-content">
-                    {q.question_text}
+                    {questionPreview}
                   </div>
                 )}
 
