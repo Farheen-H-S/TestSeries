@@ -1,0 +1,421 @@
+/* Styles for Review Page */
+
+.review-container {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 2rem 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 2rem;
+  font-family: var(--font-family);
+  background-color: var(--background-color);
+  min-height: calc(100vh - var(--navbar-height));
+}
+
+/* Page Header & Navigation */
+.review-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border-bottom: 1px solid var(--border-color);
+  padding-bottom: 1rem;
+}
+
+.review-header-title {
+  font-size: 1.75rem;
+  font-weight: 700;
+  color: var(--primary-color);
+}
+
+/* Document Overview Section */
+.overview-section {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 1.5rem;
+}
+
+@media (min-width: 768px) {
+  .overview-section {
+    grid-template-columns: 3fr 2fr;
+  }
+}
+
+.overview-card {
+  background-color: var(--surface-color);
+  border-radius: var(--border-radius-lg);
+  box-shadow: var(--shadow-sm);
+  border: 1px solid var(--border-color);
+  padding: 1.5rem;
+}
+
+.overview-card-title {
+  font-size: 1.2rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin-bottom: 1.25rem;
+  border-bottom: 1.5px solid var(--border-color);
+  padding-bottom: 0.5rem;
+}
+
+/* Metadata Grid */
+.metadata-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1.25rem 1rem;
+}
+
+.metadata-item {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.metadata-label {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.metadata-value {
+  font-size: 0.95rem;
+  color: var(--text-secondary);
+  font-weight: 500;
+}
+
+.metadata-value.highlight {
+  color: var(--text-primary);
+  font-weight: 600;
+}
+
+/* Stats Cards */
+.stats-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 1rem;
+}
+
+@media (min-width: 480px) {
+  .stats-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+.stat-item {
+  background-color: var(--background-color);
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius-md);
+  padding: 1.25rem;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  text-align: center;
+  transition: transform var(--transition-fast);
+}
+
+.stat-item:hover {
+  transform: translateY(-2px);
+}
+
+.stat-number {
+  font-size: 2rem;
+  font-weight: 800;
+  color: var(--primary-color);
+  line-height: 1.2;
+}
+
+.stat-label {
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+  font-weight: 600;
+  margin-top: 0.5rem;
+}
+
+/* Toolbar Filters */
+.toolbar-card {
+  background-color: var(--surface-color);
+  border-radius: var(--border-radius-lg);
+  box-shadow: var(--shadow-sm);
+  border: 1px solid var(--border-color);
+  padding: 1.25rem;
+}
+
+.toolbar-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 1rem;
+  align-items: end;
+}
+
+@media (min-width: 768px) {
+  .toolbar-grid {
+    grid-template-columns: 2fr 1fr 1fr 1fr;
+  }
+}
+
+/* Status tabs filter */
+.status-filter-group {
+  display: flex;
+  gap: 0.5rem;
+  background-color: var(--background-color);
+  padding: 0.25rem;
+  border-radius: var(--border-radius-md);
+  border: 1px solid var(--border-color);
+}
+
+.status-tab-btn {
+  flex: 1;
+  text-align: center;
+  border: none;
+  background: transparent;
+  padding: 0.5rem 0.75rem;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+  border-radius: var(--border-radius-sm);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.status-tab-btn:hover {
+  color: var(--text-primary);
+}
+
+.status-tab-btn.active {
+  background-color: var(--surface-color);
+  color: var(--accent-color);
+  box-shadow: var(--shadow-sm);
+}
+
+/* Questions Section */
+.questions-section {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+}
+
+.questions-count-label {
+  font-size: 1.1rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+/* Question Review Card */
+.question-review-card {
+  background-color: var(--surface-color);
+  border-radius: var(--border-radius-lg);
+  border: 1px solid var(--border-color);
+  box-shadow: var(--shadow-sm);
+  overflow: hidden;
+  transition: box-shadow var(--transition-normal), border-color var(--transition-normal);
+}
+
+.question-review-card:hover {
+  box-shadow: var(--shadow-md);
+  border-color: var(--text-muted);
+}
+
+.question-card-header {
+  padding: 1.25rem 1.5rem;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  cursor: pointer;
+  user-select: none;
+  background-color: var(--surface-color);
+  transition: background-color var(--transition-fast);
+}
+
+.question-card-header:hover {
+  background-color: rgba(248, 250, 252, 0.5);
+}
+
+.question-header-left {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
+.question-number-title {
+  font-size: 1.1rem;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.question-header-right {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
+.question-badge {
+  font-size: 0.75rem;
+  font-weight: 600;
+  padding: 0.25rem 0.625rem;
+  border-radius: 50px;
+}
+
+.question-badge.badge-available {
+  background-color: var(--status-completed-bg);
+  color: var(--status-completed-text);
+}
+
+.question-badge.badge-missing {
+  background-color: var(--status-failed-bg);
+  color: var(--status-failed-text);
+}
+
+/* Chevron icon rotation */
+.chevron-icon {
+  width: 1.25rem;
+  height: 1.25rem;
+  color: var(--text-secondary);
+  transition: transform var(--transition-normal);
+}
+
+.question-review-card.expanded .chevron-icon {
+  transform: rotate(180deg);
+}
+
+/* Preview Content shown when collapsed */
+.question-preview-content {
+  padding: 0 1.5rem 1.25rem 1.5rem;
+  font-size: 0.925rem;
+  color: var(--text-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  border-top: 1px dashed var(--border-color);
+  padding-top: 0.75rem;
+}
+
+/* Expanded Card Body */
+.question-card-body {
+  padding: 1.5rem;
+  border-top: 1px solid var(--border-color);
+  background-color: var(--surface-color);
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+.question-field-group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.question-field-label {
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.question-text-box {
+  background-color: var(--background-color);
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius-md);
+  padding: 1.25rem;
+  font-size: 0.95rem;
+  line-height: 1.6;
+  color: var(--text-primary);
+  overflow-x: auto;
+}
+
+/* HTML render reset inside text box */
+.question-text-box p {
+  margin-bottom: 0.75rem;
+}
+
+.question-text-box p:last-child {
+  margin-bottom: 0;
+}
+
+.question-text-box.warning-box {
+  background-color: var(--status-failed-bg);
+  border-color: rgba(220, 38, 38, 0.2);
+  color: var(--status-failed-text);
+  font-weight: 500;
+}
+
+/* Loading Skeleton Placeholders */
+.skeleton-container {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+.skeleton-block {
+  background: linear-gradient(90deg, var(--border-color) 25%, var(--background-color) 50%, var(--border-color) 75%);
+  background-size: 200% 100%;
+  animation: loading-skeleton 1.5s infinite;
+  border-radius: var(--border-radius-md);
+}
+
+.skeleton-text {
+  height: 1rem;
+  margin-bottom: 0.5rem;
+  width: 100%;
+}
+
+.skeleton-text.short {
+  width: 60%;
+}
+
+.skeleton-card {
+  height: 120px;
+  width: 100%;
+  border-radius: var(--border-radius-lg);
+}
+
+.skeleton-list-item {
+  height: 60px;
+  width: 100%;
+  border-radius: var(--border-radius-md);
+  margin-bottom: 0.75rem;
+}
+
+@keyframes loading-skeleton {
+  0% {
+    background-position: 200% 0;
+  }
+  100% {
+    background-position: -200% 0;
+  }
+}
+
+/* Error State card style */
+.error-state-card {
+  background-color: var(--surface-color);
+  border-radius: var(--border-radius-lg);
+  box-shadow: var(--shadow-lg);
+  border: 1px solid var(--border-color);
+  padding: 3rem;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  gap: 1.5rem;
+  color: var(--status-failed-text);
+  max-width: 600px;
+  margin: 4rem auto;
+}
+
+.error-state-title {
+  font-size: 1.5rem;
+  font-weight: 700;
+}
+
+.error-state-desc {
+  font-size: 1rem;
+  color: var(--text-secondary);
+  margin-bottom: 1rem;
+}

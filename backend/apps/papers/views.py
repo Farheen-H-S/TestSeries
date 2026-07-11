@@ -7,10 +7,17 @@ class QuestionListView(generics.ListAPIView):
     """
     API view to list all questions.
     Ordered by question_id ascending.
+    Supports filtering by document_id via query parameter.
     """
-    queryset = Question.objects.all().order_by('document', 'source_page', 'question_number')
     serializer_class = QuestionSerializer
     permission_classes = [AllowAny]
+
+    def get_queryset(self):
+        queryset = Question.objects.all().order_by('document', 'source_page', 'question_number')
+        document_id = self.request.query_params.get('document_id')
+        if document_id:
+            queryset = queryset.filter(document_id=document_id)
+        return queryset
 
 
 class GeneratedPaperListView(generics.ListAPIView):

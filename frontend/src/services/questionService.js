@@ -8,8 +8,10 @@ const questionService = {
    * Fetch all questions
    * @returns {Promise<Array>} List of questions
    */
-  getQuestions: async () => {
-    const response = await api.get('/questions/');
+  getQuestions: async (documentId) => {
+    const response = await api.get('/questions/', {
+      params: documentId ? { document_id: documentId } : {}
+    });
     return response.data;
   },
 };
