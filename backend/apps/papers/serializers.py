@@ -26,7 +26,8 @@ class QuestionSerializer(serializers.ModelSerializer):
         ]
 
     def get_chapter_name(self, obj):
-        return obj.chapter.chapter_name if obj.chapter else None
+        chapter = getattr(obj, "chapter", None)
+        return getattr(chapter, "chapter_name", None)
 
 class GeneratedPaperSerializer(serializers.ModelSerializer):
     class Meta:

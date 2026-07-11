@@ -336,7 +336,7 @@
 
 .question-text-box.warning-box {
   background-color: var(--status-failed-bg);
-  border-color: rgba(220, 38, 38, 0.2);
+  border-color: var(--status-failed-text);
   color: var(--status-failed-text);
   font-weight: 500;
 }

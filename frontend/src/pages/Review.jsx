@@ -9,7 +9,13 @@ import './Review.css';
 // Helper to strip HTML tags safely for text preview
 const stripHtml = (htmlString) => {
   if (!htmlString) return '';
-  return htmlString.replace(/<\/?[^>]+(>|$)/g, "");
+  try {
+    const doc = new DOMParser().parseFromString(htmlString, 'text/html');
+    return doc.body.textContent || '';
+  } catch (e) {
+    // Fallback if DOMParser fails or is unavailable
+    return htmlString.replace(/<\/?[^>]+(>|$)/g, "");
+  }
 };
 
 const Review = () => {
