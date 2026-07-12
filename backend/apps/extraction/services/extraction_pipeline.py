@@ -185,6 +185,49 @@ def extract_document(document: Document, temp_file_path: str = None):
         # Build lookup for matched answers based on canonical path tuple
         answer_lookup = {tuple(q.hierarchy_path): a for q, a in match_res.matches}
 
+        # Debugging duplicate detection
+        seen = {}
+        for pq in parsed_questions:
+            key = (
+                pq.hierarchy_path[0] if pq.hierarchy_path else None,
+                pq.hierarchy_path[1] if len(pq.hierarchy_path) > 1 else None,
+            )
+            print("hierarchy_path:", pq.hierarchy_path)
+            print("key:", key)
+            print("start_page:", pq.start_page)
+            print("question_text:", pq.text[:80])
+            if key in seen:
+                print("===== DUPLICATE =====")
+                print("previous page:", seen[key][0])
+                print("current page:", pq.start_page)
+                print("previous hierarchy:", seen[key][1])
+                print("current hierarchy:", pq.hierarchy_path)
+            else:
+                seen[key] = (pq.start_page, pq.hierarchy_path)
+        # Logs
+        print("\n===== PARSED QUESTIONS =====")
+
+        seen = {}
+
+        for pq in parsed_questions:
+            key = (
+                pq.hierarchy_path[0] if pq.hierarchy_path else None,
+                pq.hierarchy_path[1] if len(pq.hierarchy_path) > 1 else None,
+            )
+
+            print(
+                "PATH:", pq.hierarchy_path,
+                "KEY:", key,
+                "PAGE:", pq.start_page,
+            )
+
+            if key in seen:
+                print("DUPLICATE:", key)
+
+            seen[key] = True
+
+        print("===========================\n")
+
         # 7. Persistence inside a transaction
         with transaction.atomic():
             document.total_pages = len(pages_data)
