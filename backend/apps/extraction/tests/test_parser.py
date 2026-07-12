@@ -382,5 +382,28 @@ class ParserRegressionTests(unittest.TestCase):
         self.assertEqual(extractor.extract("Explain Ind AS 10(1)."), None)
         self.assertEqual(extractor.extract("Explain Ind AS 10(1). [5 Marks]"), 5)
 
+    def test_build_hierarchy_key(self):
+        from apps.extraction.services.hierarchy_utils import build_hierarchy_key
+        
+        # Test edge cases
+        self.assertEqual(build_hierarchy_key([]), "")
+        self.assertEqual(build_hierarchy_key(["1"]), "1")
+        self.assertEqual(build_hierarchy_key(["1", "a"]), "1.a")
+        self.assertEqual(build_hierarchy_key(["1", "a", "i"]), "1.a.i")
+        self.assertEqual(build_hierarchy_key(["1", "a", "i", "A", "I"]), "1.a.i.A.I")
+        
+        # Test whitespace trimming and none/empty string filtering
+        self.assertEqual(build_hierarchy_key([" 1 ", " a "]), "1.a")
+        self.assertEqual(build_hierarchy_key(["1", None, "a"]), "1.a")
+        self.assertEqual(build_hierarchy_key(["1", "", "a"]), "1.a")
+        
+        # Test equivalent path serialization (whitespace-insensitive uniqueness)
+        key1 = build_hierarchy_key(["1", "a"])
+        key2 = build_hierarchy_key(["1 ", " a"])
+        self.assertEqual(key1, "1.a")
+        self.assertEqual(key2, "1.a")
+        self.assertEqual(key1, key2)
+
+
 if __name__ == "__main__":
     unittest.main()

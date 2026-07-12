@@ -316,6 +316,57 @@ class ExtractionServiceTests(TestCase):
             # Verify original source PDF is untouched
             self.assertTrue(self.source_pdf.exists())
 
+    def test_question_model_behavior(self):
+        from apps.extraction.services.hierarchy_utils import build_hierarchy_key
+        from django.db import IntegrityError
+        
+        # 1. Create document
+        document = Document.objects.create(
+            user=self.user,
+            subject=self.subject,
+            title="Model Test Paper",
+            document_type=Document.DocumentType.MOCK,
+            paper_year=2026,
+            storage_path="documents/test_model.pdf"
+        )
+        
+        # 2. Verify build_hierarchy_key normalizes equivalent paths to the same canonical key
+        path1 = ["1", "a", "i", "A", "I"]
+        path2 = ["1 ", " a", "i", "A", "I"]
+        key1 = build_hierarchy_key(path1)
+        key2 = build_hierarchy_key(path2)
+        
+        self.assertEqual(key1, "1.a.i.A.I")
+        self.assertEqual(key2, "1.a.i.A.I")
+        self.assertEqual(key1, key2)
+        
+        # 3. Create first question with the canonical key
+        q1 = Question.objects.create(
+            document=document,
+            question_number="1",
+            hierarchy_key=key1,
+            question_text="First q",
+            question_content="<p>First q</p>",
+            answer_text="First ans",
+            answer_content="<p>First ans</p>"
+        )
+        
+        # 4. Verify __str__() behavior
+        self.assertEqual(str(q1), f"Q1.a.i.A.I ({document.title})")
+        
+        # 5. Verify that persisting a second question with the same canonical key raises IntegrityError
+        with self.assertRaises(IntegrityError):
+            Question.objects.create(
+                document=document,
+                question_number="1",
+                hierarchy_key=key2,
+                question_text="Second q",
+                question_content="<p>Second q</p>",
+                answer_text="Second ans",
+                answer_content="<p>Second ans</p>"
+            )
+
+
 
 if __name__ == "__main__":
     import django

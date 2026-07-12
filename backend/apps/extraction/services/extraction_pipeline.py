@@ -189,6 +189,8 @@ def extract_document(document: Document, temp_file_path: str = None):
 
         # Duplicate detection/logging before persistence
         seen_questions = {}
+        # Cache uses id(pq) because the same ParsedQuestion instance is reused throughout the pipeline.
+        # This avoids recomputing hierarchy_key without relying on hierarchy content as a lookup key.
         hierarchy_keys = {}
         for pq in parsed_questions:
             h_key = build_hierarchy_key(pq.hierarchy_path)
