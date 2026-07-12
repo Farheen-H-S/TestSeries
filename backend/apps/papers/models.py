@@ -67,7 +67,7 @@ class Question(models.Model):
         ]
 
     def __str__(self):
-        return f"Q{self.question_number} ({self.document.title})"
+        return f"Q{self.hierarchy_key or self.question_number} ({self.document.title})"
 
 
 class GeneratedPaper(models.Model):

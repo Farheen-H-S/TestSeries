@@ -75,25 +75,45 @@ class PipelineErrorHandlingTests(TestCase):
 
     @patch('apps.extraction.services.extraction_pipeline.load_pdf')
     @patch('apps.extraction.services.extraction_pipeline.extract_text')
-    def test_pipeline_fail_fast_duplicate_detection(self, mock_extract_text, mock_load_pdf):
+    @patch('apps.extraction.services.extraction_pipeline.QuestionParser')
+    def test_pipeline_fail_fast_duplicate_detection(self, mock_q_parser_cls, mock_extract_text, mock_load_pdf):
         from apps.extraction.services.extraction_pipeline import extract_document
         from apps.extraction.services.exceptions import DuplicateHierarchyError
+        from apps.extraction.services.types import ParsedQuestion, QuestionLevel
         
         mock_pdf = MagicMock()
         mock_load_pdf.return_value = mock_pdf
+        mock_extract_text.return_value = [{"page_number": 1, "text": "dummy text"}]
         
-        # Emulating duplicate questions that will produce identical hierarchy keys
-        # "Question 1" and "Question 1"
-        mock_extract_text.return_value = [
-            {
-                "page_number": 1,
-                "text": (
-                    "Question 1\n"
-                    "What is question 1?\n"
-                    "Question 1\n"
-                    "Duplicate question 1?\n"
-                )
-            }
+        # Mock the parser instance
+        mock_parser = MagicMock()
+        mock_q_parser_cls.return_value = mock_parser
+        mock_parser.diagnostics.total_matches = 2
+        mock_parser.diagnostics.rejected_headers = []
+        mock_parser.diagnostics.validated_count = 2
+        
+        # Return duplicate ParsedQuestion objects of depth 3
+        mock_parser.parse.return_value = [
+            ParsedQuestion(
+                hierarchy_path=["2", "d", "i"],
+                raw_header="Question 2(d)(i)",
+                text="First occurrence text",
+                start_offset=10,
+                end_offset=50,
+                start_page=6,
+                end_page=6,
+                level=QuestionLevel.SUB_SUB
+            ),
+            ParsedQuestion(
+                hierarchy_path=["2", "d", "i"],
+                raw_header="Question 2(d)(i)",
+                text="Second occurrence text",
+                start_offset=60,
+                end_offset=100,
+                start_page=8,
+                end_page=8,
+                level=QuestionLevel.SUB_SUB
+            ),
         ]
         
         document = Document.objects.create(
@@ -108,9 +128,22 @@ class PipelineErrorHandlingTests(TestCase):
         with self.assertRaises(DuplicateHierarchyError) as context:
             extract_document(document)
             
-        self.assertIn("Duplicate hierarchy key detected", str(context.exception))
-        self.assertIn("1", str(context.exception))
-        self.assertIn("Page:\n1", str(context.exception))
+        err_msg = str(context.exception)
+        self.assertIn("Duplicate hierarchy key detected", err_msg)
+        self.assertIn("Duplicate Test Paper", err_msg)
+        self.assertIn("2.d.i", err_msg)
+        
+        # Assert first occurrence diagnostics
+        self.assertIn("First", err_msg)
+        self.assertIn("['2', 'd', 'i']", err_msg)
+        self.assertIn("Page:\n6", err_msg)
+        self.assertIn("First occurrence text", err_msg)
+        
+        # Assert second occurrence diagnostics
+        self.assertIn("Second", err_msg)
+        self.assertIn("['2', 'd', 'i']", err_msg)
+        self.assertIn("Page:\n8", err_msg)
+        self.assertIn("Second occurrence text", err_msg)
 
     @patch('apps.extraction.services.extraction_pipeline.load_pdf')
     @patch('apps.extraction.services.extraction_pipeline.extract_text')

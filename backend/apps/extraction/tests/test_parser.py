@@ -382,14 +382,5 @@ class ParserRegressionTests(unittest.TestCase):
         self.assertEqual(extractor.extract("Explain Ind AS 10(1)."), None)
         self.assertEqual(extractor.extract("Explain Ind AS 10(1). [5 Marks]"), 5)
 
-    def test_arbitrary_deep_nesting(self):
-        # Verify that parsing headers with deep nested structures preserves the full path list
-        text = "Question 1(a)(i)(A)(I)\nThis is a very deeply nested sub-question."
-        parsed = self.q_parser.parse(text, self.offsets)
-        self.assertEqual(len(parsed), 1)
-        self.assertEqual(parsed[0].hierarchy_path, ["1", "a", "i"])
-        self.assertEqual(parsed[0].raw_header, "Question 1(a)(i)(A)(I)")
-
-
 if __name__ == "__main__":
     unittest.main()

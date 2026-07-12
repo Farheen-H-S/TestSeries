@@ -189,6 +189,7 @@ def extract_document(document: Document, temp_file_path: str = None):
 
         # Duplicate detection/logging before persistence
         seen_questions = {}
+        hierarchy_keys = {}
         for pq in parsed_questions:
             h_key = build_hierarchy_key(pq.hierarchy_path)
             if h_key in seen_questions:
@@ -217,6 +218,7 @@ def extract_document(document: Document, temp_file_path: str = None):
                     f"'{pq.text[:80]}...'"
                 )
             seen_questions[h_key] = pq
+            hierarchy_keys[id(pq)] = h_key
 
         # 7. Persistence inside a transaction
         with transaction.atomic():
@@ -282,7 +284,7 @@ def extract_document(document: Document, temp_file_path: str = None):
                     chapter=matched_chapter,
                     question_number=pq.hierarchy_path[0],
                     sub_question_label=pq.hierarchy_path[1] if len(pq.hierarchy_path) > 1 else None,
-                    hierarchy_key=build_hierarchy_key(pq.hierarchy_path),
+                    hierarchy_key=hierarchy_keys[id(pq)],
                     question_text=pq.text,
                     question_content=q_content,
                     answer_text=ans_text,
