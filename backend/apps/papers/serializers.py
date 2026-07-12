@@ -14,6 +14,7 @@ class QuestionSerializer(serializers.ModelSerializer):
             'chapter_name',
             'question_number',
             'sub_question_label',
+            'hierarchy_key',
             'question_content',
             'question_text',
             'answer_content',

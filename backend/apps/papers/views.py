@@ -13,7 +13,9 @@ class QuestionListView(generics.ListAPIView):
     permission_classes = [AllowAny]
 
     def get_queryset(self):
-        queryset = Question.objects.all().select_related('chapter').order_by('document', 'source_page', 'question_number')
+        # Order by source_page and question_id as a sequential fallback.
+        # This assumes sequential parsing insertion order preserves correct document sequence.
+        queryset = Question.objects.all().select_related('chapter').order_by('source_page', 'question_id')
         document_id = self.request.query_params.get('document_id')
         if document_id:
             queryset = queryset.filter(document_id=document_id)

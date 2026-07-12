@@ -22,6 +22,8 @@ from .question_classifier import QuestionClassifier
 from .instruction_detector import InstructionDetector
 
 from .extraction_patterns import get_default_parser_config
+from .hierarchy_utils import build_hierarchy_key
+from .exceptions import DuplicateHierarchyError
 
 # Initialize logger
 logger = logging.getLogger(__name__)
@@ -185,48 +187,36 @@ def extract_document(document: Document, temp_file_path: str = None):
         # Build lookup for matched answers based on canonical path tuple
         answer_lookup = {tuple(q.hierarchy_path): a for q, a in match_res.matches}
 
-        # Debugging duplicate detection
-        seen = {}
+        # Duplicate detection/logging before persistence
+        seen_questions = {}
         for pq in parsed_questions:
-            key = (
-                pq.hierarchy_path[0] if pq.hierarchy_path else None,
-                pq.hierarchy_path[1] if len(pq.hierarchy_path) > 1 else None,
-            )
-            print("hierarchy_path:", pq.hierarchy_path)
-            print("key:", key)
-            print("start_page:", pq.start_page)
-            print("question_text:", pq.text[:80])
-            if key in seen:
-                print("===== DUPLICATE =====")
-                print("previous page:", seen[key][0])
-                print("current page:", pq.start_page)
-                print("previous hierarchy:", seen[key][1])
-                print("current hierarchy:", pq.hierarchy_path)
-            else:
-                seen[key] = (pq.start_page, pq.hierarchy_path)
-        # Logs
-        print("\n===== PARSED QUESTIONS =====")
-
-        seen = {}
-
-        for pq in parsed_questions:
-            key = (
-                pq.hierarchy_path[0] if pq.hierarchy_path else None,
-                pq.hierarchy_path[1] if len(pq.hierarchy_path) > 1 else None,
-            )
-
-            print(
-                "PATH:", pq.hierarchy_path,
-                "KEY:", key,
-                "PAGE:", pq.start_page,
-            )
-
-            if key in seen:
-                print("DUPLICATE:", key)
-
-            seen[key] = True
-
-        print("===========================\n")
+            h_key = build_hierarchy_key(pq.hierarchy_path)
+            if h_key in seen_questions:
+                prev_q = seen_questions[h_key]
+                raise DuplicateHierarchyError(
+                    f"Duplicate hierarchy key detected\n\n"
+                    f"Document:\n"
+                    f"{document.title} (ID: {document.document_id})\n\n"
+                    f"Hierarchy key:\n"
+                    f"{h_key}\n\n"
+                    f"First\n"
+                    f"-----\n"
+                    f"Raw path:\n"
+                    f"{prev_q.hierarchy_path}\n\n"
+                    f"Page:\n"
+                    f"{prev_q.start_page}\n\n"
+                    f"Preview:\n"
+                    f"'{prev_q.text[:80]}...'\n\n"
+                    f"Second\n"
+                    f"------\n"
+                    f"Raw path:\n"
+                    f"{pq.hierarchy_path}\n\n"
+                    f"Page:\n"
+                    f"{pq.start_page}\n\n"
+                    f"Preview:\n"
+                    f"'{pq.text[:80]}...'"
+                )
+            seen_questions[h_key] = pq
 
         # 7. Persistence inside a transaction
         with transaction.atomic():
@@ -292,6 +282,7 @@ def extract_document(document: Document, temp_file_path: str = None):
                     chapter=matched_chapter,
                     question_number=pq.hierarchy_path[0],
                     sub_question_label=pq.hierarchy_path[1] if len(pq.hierarchy_path) > 1 else None,
+                    hierarchy_key=build_hierarchy_key(pq.hierarchy_path),
                     question_text=pq.text,
                     question_content=q_content,
                     answer_text=ans_text,

@@ -75,6 +75,45 @@ class PipelineErrorHandlingTests(TestCase):
 
     @patch('apps.extraction.services.extraction_pipeline.load_pdf')
     @patch('apps.extraction.services.extraction_pipeline.extract_text')
+    def test_pipeline_fail_fast_duplicate_detection(self, mock_extract_text, mock_load_pdf):
+        from apps.extraction.services.extraction_pipeline import extract_document
+        from apps.extraction.services.exceptions import DuplicateHierarchyError
+        
+        mock_pdf = MagicMock()
+        mock_load_pdf.return_value = mock_pdf
+        
+        # Emulating duplicate questions that will produce identical hierarchy keys
+        # "Question 1" and "Question 1"
+        mock_extract_text.return_value = [
+            {
+                "page_number": 1,
+                "text": (
+                    "Question 1\n"
+                    "What is question 1?\n"
+                    "Question 1\n"
+                    "Duplicate question 1?\n"
+                )
+            }
+        ]
+        
+        document = Document.objects.create(
+            user=self.user,
+            subject=self.subject,
+            title="Duplicate Test Paper",
+            document_type=Document.DocumentType.MOCK,
+            paper_year=2026,
+            storage_path="documents/test_dup.pdf"
+        )
+        
+        with self.assertRaises(DuplicateHierarchyError) as context:
+            extract_document(document)
+            
+        self.assertIn("Duplicate hierarchy key detected", str(context.exception))
+        self.assertIn("1", str(context.exception))
+        self.assertIn("Page:\n1", str(context.exception))
+
+    @patch('apps.extraction.services.extraction_pipeline.load_pdf')
+    @patch('apps.extraction.services.extraction_pipeline.extract_text')
     def test_pipeline_successful_extraction_integration(self, mock_extract_text, mock_load_pdf):
         """
         Verify the extraction pipeline end-to-end with mock PDF text loading.
