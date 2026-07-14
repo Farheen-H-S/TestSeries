@@ -15,13 +15,13 @@ class QuestionParser:
     Greedy, hierarchy-aware parser for extracting question blocks.
     Delegates validation to HeaderValidator and uses binary search for performance.
     """
-    SEMANTIC_SCORE_THRESHOLD = 2
     
     def __init__(self, config: ParserConfig):
         self.config = config
         self.normalizer = Normalizer()
         self.validator = HeaderValidator()
         self.diagnostics = ParsingDiagnostics()
+        self.semantic_score_threshold = getattr(config, 'semantic_score_threshold', 2)
 
     def parse(
         self,
@@ -134,7 +134,7 @@ class QuestionParser:
                         semantic_block_text = block_text
                     
                     score, score_reasons = self._score_semantics(semantic_block_text)
-                    if score < self.SEMANTIC_SCORE_THRESHOLD:
+                    if score < self.semantic_score_threshold:
                         logger.debug("Rejecting non-semantic root question candidate: %s | score=%d | reasons=%s", normalized_header, score, score_reasons)
                         diagnostics.rejected_headers.append({
                             "header": text[match.start():match.end()],
@@ -225,26 +225,22 @@ class QuestionParser:
             
         # Negative signals
         if re.search(r"(?i)\bnotification\b", text):
-            score -= 3
+            score -= 1
             reasons.append("has_negative_notification")
         if re.search(r"(?i)\bamendment\b", text):
-            score -= 3
+            score -= 1
             reasons.append("has_negative_amendment")
         if re.search(r"(?i)\beffective\s+from\b", text):
-            score -= 2
+            score -= 1
             reasons.append("has_negative_effective_from")
         if re.search(r"(?i)\bshall\s+substitute\b", text):
-            score -= 4
+            score -= 2
             reasons.append("has_negative_shall_substitute")
         if re.search(r"(?i)\blegislative\b", text):
-            score -= 3
+            score -= 1
             reasons.append("has_negative_legislative")
             
         return score, reasons
-
-    def _is_semantic_question(self, text: str) -> bool:
-        score, _ = self._score_semantics(text)
-        return score >= self.SEMANTIC_SCORE_THRESHOLD
 
     def _get_level(self, path: List[str]) -> QuestionLevel:
         if len(path) >= 3: return QuestionLevel.SUB_SUB

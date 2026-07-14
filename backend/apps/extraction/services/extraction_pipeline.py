@@ -21,7 +21,7 @@ from .marks_extractor import MarksExtractor
 from .question_classifier import QuestionClassifier
 from .instruction_detector import InstructionDetector
 
-from .extraction_patterns import get_default_parser_config
+from .extraction_patterns import get_default_parser_config, COMPILED_QUESTION_START_PATTERNS
 from .hierarchy_utils import build_hierarchy_key
 from .exceptions import DuplicateHierarchyError
 
@@ -104,14 +104,8 @@ def extract_document(document: Document, temp_file_path: str = None):
             a_base_offset = 0
 
         # Optimization: Detect start of actual question region if possible
-        import re
-        QUESTION_START_PATTERNS = [
-            re.compile(r"(?i)Part\s+II[-–—\s]+Questions(?:\s+and\s+Answers)?"),
-            re.compile(r"(?im)^[ \t]*QUESTIONS[ \t]*$"),
-            re.compile(r"(?i)\bQuestions\s+1\s+to\s+\d+\b"),
-        ]
         q_start_relative = None
-        for pattern in QUESTION_START_PATTERNS:
+        for pattern in COMPILED_QUESTION_START_PATTERNS:
             m = pattern.search(q_part)
             if m:
                 q_start_relative = m.start()
@@ -300,12 +294,22 @@ def extract_document(document: Document, temp_file_path: str = None):
                     parent_q = hierarchy_map.get(parent_path)
 
                 # 7.3 Create Record
+                sub_label_raw = ".".join(pq.hierarchy_path[1:]) if len(pq.hierarchy_path) > 1 else None
+                sub_question_label = None
+                if sub_label_raw:
+                    sub_question_label = sub_label_raw[:10]
+                    if len(sub_label_raw) > 10:
+                        logger.warning(
+                            "Sub-question label truncated from '%s' to '%s' for question %s (Document ID: %d)",
+                            sub_label_raw, sub_question_label, pq.hierarchy_path[0], document.document_id
+                        )
+
                 q_obj = Question.objects.create(
                     document=document,
                     parent_question=parent_q,
                     chapter=matched_chapter,
                     question_number=pq.hierarchy_path[0],
-                    sub_question_label=".".join(pq.hierarchy_path[1:])[:10] if len(pq.hierarchy_path) > 1 else None,
+                    sub_question_label=sub_question_label,
                     hierarchy_key=hierarchy_keys[id(pq)],
                     question_text=pq.text,
                     question_content=q_content,

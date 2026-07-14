@@ -96,6 +96,12 @@ COMPILED_ANSWER_HEADER_PATTERNS = [re.compile(p, re.MULTILINE) for p in ANSWER_H
 COMPILED_MARKS_PATTERNS = [re.compile(p, re.IGNORECASE) for p in MARKS_PATTERNS]
 COMPILED_MARKS_EXCLUSION_PATTERNS = [re.compile(p, re.IGNORECASE) for p in MARKS_EXCLUSION_PATTERNS]
 
+COMPILED_QUESTION_START_PATTERNS = [
+    re.compile(r"(?i)Part\s+II[-–—\s]+Questions(?:\s+and\s+Answers)?"),
+    re.compile(r"(?im)^[ \t]*QUESTIONS[ \t]*$"),
+    re.compile(r"(?i)\bQuestions\s+1\s+to\s+\d+\b"),
+]
+
 def get_default_parser_config():
     from .types import ParserConfig
     return ParserConfig(
@@ -105,5 +111,6 @@ def get_default_parser_config():
         case_study_keywords=CLASSIFICATION_RULES["CASE_STUDY"],
         instruction_priority=INSTRUCTION_PRIORITY,
         marks_patterns=COMPILED_MARKS_PATTERNS,
-        marks_exclusion_patterns=COMPILED_MARKS_EXCLUSION_PATTERNS
+        marks_exclusion_patterns=COMPILED_MARKS_EXCLUSION_PATTERNS,
+        semantic_score_threshold=2
     )

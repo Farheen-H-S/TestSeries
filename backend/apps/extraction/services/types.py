@@ -96,3 +96,4 @@ class ParserConfig:
     # Compiled marks patterns
     marks_patterns: List[re.Pattern]
     marks_exclusion_patterns: List[re.Pattern]
+    semantic_score_threshold: int = 2
