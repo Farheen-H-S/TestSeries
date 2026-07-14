@@ -103,6 +103,24 @@ def extract_document(document: Document, temp_file_path: str = None):
             q_base_offset = 0
             a_base_offset = 0
 
+        # Optimization: Detect start of actual question region if possible
+        import re
+        QUESTION_START_PATTERNS = [
+            re.compile(r"(?i)Part\s+II[-–—\s]+Questions(?:\s+and\s+Answers)?"),
+            re.compile(r"(?im)^[ \t]*QUESTIONS[ \t]*$"),
+            re.compile(r"(?i)\bQuestions\s+1\s+to\s+\d+\b"),
+        ]
+        q_start_relative = None
+        for pattern in QUESTION_START_PATTERNS:
+            m = pattern.search(q_part)
+            if m:
+                q_start_relative = m.start()
+                break
+        if q_start_relative is not None:
+            logger.info("Optimizing question region start boundary: relative_offset=%d", q_start_relative)
+            q_part = q_part[q_start_relative:]
+            q_base_offset += q_start_relative
+
         # 4. Parsing with Config and Base Offsets
         q_parser = QuestionParser(config)
         a_parser = AnswerParser(config)
@@ -285,7 +303,7 @@ def extract_document(document: Document, temp_file_path: str = None):
                     parent_question=parent_q,
                     chapter=matched_chapter,
                     question_number=pq.hierarchy_path[0],
-                    sub_question_label=pq.hierarchy_path[1] if len(pq.hierarchy_path) > 1 else None,
+                    sub_question_label=".".join(pq.hierarchy_path[1:])[:10] if len(pq.hierarchy_path) > 1 else None,
                     hierarchy_key=hierarchy_keys[id(pq)],
                     question_text=pq.text,
                     question_content=q_content,

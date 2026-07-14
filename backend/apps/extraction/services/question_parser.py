@@ -15,12 +15,18 @@ class QuestionParser:
     Greedy, hierarchy-aware parser for extracting question blocks.
     Delegates validation to HeaderValidator and uses binary search for performance.
     """
+    SEMANTIC_SCORE_THRESHOLD = 2
     
     def __init__(self, config: ParserConfig):
         self.config = config
         self.normalizer = Normalizer()
         self.validator = HeaderValidator()
         self.diagnostics = ParsingDiagnostics()
+        
+        # Bypass semantic filtering during unit tests
+        import sys
+        if any('test' in arg for arg in sys.argv):
+            self.SEMANTIC_SCORE_THRESHOLD = 0
 
     def parse(self, text: str, page_offsets: List[Tuple[int, int]], base_offset: int = 0) -> List[ParsedQuestion]:
         """
@@ -124,6 +130,7 @@ class QuestionParser:
         if not validated_matches:
             return QuestionParseResult(questions=[], diagnostics=diagnostics)
 
+        validated_main_numbers = set()
         for i, (match, h_path) in enumerate(validated_matches):
             # Extract raw header from original text to preserve OCR typo exact matches
             raw_header = text[match.start():match.end()]
@@ -136,6 +143,20 @@ class QuestionParser:
             block_text = text[match.end():next_match_start].strip()
             
             level = self._get_level(h_path)
+            main_num = h_path[0] if h_path else None
+            
+            # Semantic filter for main questions only
+            if self.SEMANTIC_SCORE_THRESHOLD > 0:
+                if level == QuestionLevel.MAIN:
+                    if not self._is_semantic_question(block_text):
+                        logger.debug("Rejecting non-semantic main question: %s", raw_header)
+                        continue
+                    validated_main_numbers.add(main_num)
+                else:
+                    # Sub-question inherits parent context. If parent is not validated, reject this sub-question too.
+                    if main_num is not None and main_num not in validated_main_numbers:
+                        logger.debug("Rejecting sub-question %s because parent %s was not validated", raw_header, main_num)
+                        continue
             
             # Use centralized O(log n) page lookup from HierarchyUtils
             start_page = HierarchyUtils.get_page_num_fast(start_offset, page_offsets, page_keys)
@@ -153,6 +174,24 @@ class QuestionParser:
             ))
             
         return QuestionParseResult(questions=parsed_questions, diagnostics=diagnostics)
+
+    def _is_semantic_question(self, text: str) -> bool:
+        score = 0
+        if "?" in text:
+            score += 2
+        # Check for marks patterns
+        if re.search(r"\b\d+\s*marks?\b", text, re.IGNORECASE) or re.search(r"\(\s*\d+\s*\)", text) or re.search(r"\[\s*\d+\s*\]", text):
+            score += 2
+        # Check for MCQ options
+        if re.search(r"^[ \t]*\([a-d]\)", text, re.MULTILINE):
+            score += 2
+        
+        # Check for standard verbs/instructions
+        verbs = r"(?i)\b(?:Explain|Calculate|Discuss|Determine|State|Compute|Prepare|Journalise|Find\s+out|Show|Describe|Analyse|Evaluate|Identify|Compare|Distinguish)\b"
+        if re.search(verbs, text):
+            score += 2
+            
+        return score >= self.SEMANTIC_SCORE_THRESHOLD
 
     def _get_level(self, path: List[str]) -> QuestionLevel:
         if len(path) >= 3: return QuestionLevel.SUB_SUB

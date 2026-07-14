@@ -18,7 +18,7 @@ ANSWER_SECTION_DELIMITERS = [
 QUESTION_HEADER_PATTERNS = [
     r"(?i)^[ \t]*Question\s+(?:No\.\s*)?(\d+)(?:[ \t]*\([^)]+\))*",          # Question 1, Question 1(a), Question 1(a)(i)
     r"(?i)^[ \t]*Q\.?\s?(\d+)(?:[ \t]*\([^)]+\))*",                          # Q1, Q. 1, Q1(a)
-    r"^[ \t]*(\d+)[.)](?:[ \t]*\([^)]+\))*",                                 # 1. or 1) or 1.(a)
+    r"^[ \t]*(\d+)[.)](?!\d)(?:[ \t]*\([^)]+\))*",                                 # 1. or 1) or 1.(a)
     r"^[ \t]*\(([a-zA-Z])\)",                            # (a)
     r"^[ \t]*\(([ivxIVX]+)\)",                           # (i), (ii), (iv)
     r"^[ \t]*\d+\s*\(([a-z])\)",                         # 1(a)
