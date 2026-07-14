@@ -1,4 +1,5 @@
 import re
+from .constants import DEFAULT_SEMANTIC_SCORE_THRESHOLD
 
 # Section Delimiters for Layout Detection
 ANSWER_SECTION_DELIMITERS = [
@@ -102,6 +103,7 @@ COMPILED_QUESTION_START_PATTERNS = [
     re.compile(r"(?i)\bQuestions\s+1\s+to\s+\d+\b"),
 ]
 
+
 def get_default_parser_config():
     from .types import ParserConfig
     return ParserConfig(
@@ -112,5 +114,6 @@ def get_default_parser_config():
         instruction_priority=INSTRUCTION_PRIORITY,
         marks_patterns=COMPILED_MARKS_PATTERNS,
         marks_exclusion_patterns=COMPILED_MARKS_EXCLUSION_PATTERNS,
-        semantic_score_threshold=2
+        semantic_score_threshold=DEFAULT_SEMANTIC_SCORE_THRESHOLD,
+        question_start_patterns=COMPILED_QUESTION_START_PATTERNS
     )

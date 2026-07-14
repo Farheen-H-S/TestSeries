@@ -21,16 +21,13 @@ from .marks_extractor import MarksExtractor
 from .question_classifier import QuestionClassifier
 from .instruction_detector import InstructionDetector
 
-from .extraction_patterns import get_default_parser_config, COMPILED_QUESTION_START_PATTERNS
+from .extraction_patterns import get_default_parser_config
 from .hierarchy_utils import build_hierarchy_key
 from .exceptions import DuplicateHierarchyError
+from .constants import UNMATCHED_RATIO_THRESHOLD, UNMATCHED_COUNT_THRESHOLD
 
 # Initialize logger
 logger = logging.getLogger(__name__)
-
-# Configurable initial default thresholds for unmatched items, expected to be tuned after testing
-UNMATCHED_RATIO_THRESHOLD = 0.20
-UNMATCHED_COUNT_THRESHOLD = 5
 
 def extract_document(document: Document, temp_file_path: str = None):
     """
@@ -105,7 +102,7 @@ def extract_document(document: Document, temp_file_path: str = None):
 
         # Optimization: Detect start of actual question region if possible
         q_start_relative = None
-        for pattern in COMPILED_QUESTION_START_PATTERNS:
+        for pattern in config.question_start_patterns:
             m = pattern.search(q_part)
             if m:
                 q_start_relative = m.start()
