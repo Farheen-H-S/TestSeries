@@ -116,16 +116,18 @@ def extract_document(document: Document, temp_file_path: str = None):
             if m:
                 q_start_relative = m.start()
                 break
+        enable_semantic = True
         if q_start_relative is not None:
             logger.info("Optimizing question region start boundary: relative_offset=%d", q_start_relative)
             q_part = q_part[q_start_relative:]
             q_base_offset += q_start_relative
-
+            enable_semantic = False
+            
         # 4. Parsing with Config and Base Offsets
         q_parser = QuestionParser(config)
         a_parser = AnswerParser(config)
         
-        parsed_questions = q_parser.parse(q_part, page_offsets, base_offset=q_base_offset)
+        parsed_questions = q_parser.parse(q_part, page_offsets, base_offset=q_base_offset, enable_semantic_validation=enable_semantic)
         
         # Best-effort Answer Parsing for UNKNOWN layout
         parsed_answers = []
