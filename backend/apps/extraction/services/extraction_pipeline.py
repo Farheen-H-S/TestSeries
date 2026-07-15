@@ -22,13 +22,12 @@ from .question_classifier import QuestionClassifier
 from .instruction_detector import InstructionDetector
 
 from .extraction_patterns import get_default_parser_config
+from .hierarchy_utils import build_hierarchy_key
+from .exceptions import DuplicateHierarchyError
+from .constants import UNMATCHED_RATIO_THRESHOLD, UNMATCHED_COUNT_THRESHOLD
 
 # Initialize logger
 logger = logging.getLogger(__name__)
-
-# Configurable initial default thresholds for unmatched items, expected to be tuned after testing
-UNMATCHED_RATIO_THRESHOLD = 0.20
-UNMATCHED_COUNT_THRESHOLD = 5
 
 def extract_document(document: Document, temp_file_path: str = None):
     """
@@ -101,11 +100,25 @@ def extract_document(document: Document, temp_file_path: str = None):
             q_base_offset = 0
             a_base_offset = 0
 
+        # Optimization: Detect start of actual question region if possible
+        q_start_relative = None
+        for pattern in config.question_start_patterns:
+            m = pattern.search(q_part)
+            if m:
+                q_start_relative = m.start()
+                break
+        enable_semantic = True
+        if q_start_relative is not None:
+            logger.info("Optimizing question region start boundary: relative_offset=%d", q_start_relative)
+            q_part = q_part[q_start_relative:]
+            q_base_offset += q_start_relative
+            enable_semantic = False
+            
         # 4. Parsing with Config and Base Offsets
         q_parser = QuestionParser(config)
         a_parser = AnswerParser(config)
         
-        parsed_questions = q_parser.parse(q_part, page_offsets, base_offset=q_base_offset)
+        parsed_questions = q_parser.parse(q_part, page_offsets, base_offset=q_base_offset, enable_semantic_validation=enable_semantic)
         
         # Best-effort Answer Parsing for UNKNOWN layout
         parsed_answers = []
@@ -185,6 +198,41 @@ def extract_document(document: Document, temp_file_path: str = None):
         # Build lookup for matched answers based on canonical path tuple
         answer_lookup = {tuple(q.hierarchy_path): a for q, a in match_res.matches}
 
+        # Duplicate detection/logging before persistence
+        seen_questions = {}
+        # Cache uses id(pq) because the same ParsedQuestion instance is reused throughout the pipeline.
+        # This avoids recomputing hierarchy_key without relying on hierarchy content as a lookup key.
+        hierarchy_keys = {}
+        for pq in parsed_questions:
+            h_key = build_hierarchy_key(pq.hierarchy_path)
+            if h_key in seen_questions:
+                prev_q = seen_questions[h_key]
+                raise DuplicateHierarchyError(
+                    f"Duplicate hierarchy key detected\n\n"
+                    f"Document:\n"
+                    f"{document.title} (ID: {document.document_id})\n\n"
+                    f"Hierarchy key:\n"
+                    f"{h_key}\n\n"
+                    f"First\n"
+                    f"-----\n"
+                    f"Raw path:\n"
+                    f"{prev_q.hierarchy_path}\n\n"
+                    f"Page:\n"
+                    f"{prev_q.start_page}\n\n"
+                    f"Preview:\n"
+                    f"'{prev_q.text[:80]}...'\n\n"
+                    f"Second\n"
+                    f"------\n"
+                    f"Raw path:\n"
+                    f"{pq.hierarchy_path}\n\n"
+                    f"Page:\n"
+                    f"{pq.start_page}\n\n"
+                    f"Preview:\n"
+                    f"'{pq.text[:80]}...'"
+                )
+            seen_questions[h_key] = pq
+            hierarchy_keys[id(pq)] = h_key
+
         # 7. Persistence inside a transaction
         with transaction.atomic():
             document.total_pages = len(pages_data)
@@ -243,12 +291,23 @@ def extract_document(document: Document, temp_file_path: str = None):
                     parent_q = hierarchy_map.get(parent_path)
 
                 # 7.3 Create Record
+                sub_label_raw = ".".join(pq.hierarchy_path[1:]) if len(pq.hierarchy_path) > 1 else None
+                sub_question_label = None
+                if sub_label_raw:
+                    sub_question_label = sub_label_raw[:10]
+                    if len(sub_label_raw) > 10:
+                        logger.warning(
+                            "Sub-question label truncated from '%s' to '%s' for question %s (Document ID: %d)",
+                            sub_label_raw, sub_question_label, pq.hierarchy_path[0], document.document_id
+                        )
+
                 q_obj = Question.objects.create(
                     document=document,
                     parent_question=parent_q,
                     chapter=matched_chapter,
                     question_number=pq.hierarchy_path[0],
-                    sub_question_label=pq.hierarchy_path[1] if len(pq.hierarchy_path) > 1 else None,
+                    sub_question_label=sub_question_label,
+                    hierarchy_key=hierarchy_keys[id(pq)],
                     question_text=pq.text,
                     question_content=q_content,
                     answer_text=ans_text,

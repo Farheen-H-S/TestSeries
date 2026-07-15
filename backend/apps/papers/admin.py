@@ -7,13 +7,14 @@ class QuestionAdmin(admin.ModelAdmin):
         'question_id', 
         'question_number', 
         'sub_question_label', 
+        'hierarchy_key', 
         'document', 
         'chapter', 
         'question_type', 
         'marks'
     )
     list_filter = ('question_type', 'document', 'chapter')
-    search_fields = ('question_number', 'question_text', 'document__title')
+    search_fields = ('question_number', 'hierarchy_key', 'question_text', 'document__title')
     readonly_fields = ('created_at',)
 
 @admin.register(GeneratedPaper)

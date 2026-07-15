@@ -29,6 +29,7 @@ class Question(models.Model):
     )
     question_number = models.CharField(max_length=20)
     sub_question_label = models.CharField(max_length=10, null=True, blank=True)
+    hierarchy_key = models.CharField(max_length=512, null=True, blank=True, db_index=True)
     question_content = models.TextField()  # Formatted HTML
     question_text = models.TextField()     # Plain text
     answer_content = models.TextField()    # Formatted HTML
@@ -54,8 +55,8 @@ class Question(models.Model):
     class Meta:
         constraints = [
             models.UniqueConstraint(
-                fields=['document', 'question_number', 'sub_question_label'],
-                name='unique_question_per_document'
+                fields=['document', 'hierarchy_key'],
+                name='unique_question_hierarchy_per_document'
             )
         ]
         indexes = [
@@ -66,7 +67,7 @@ class Question(models.Model):
         ]
 
     def __str__(self):
-        return f"Q{self.question_number} ({self.document.title})"
+        return f"Q{self.hierarchy_key or self.question_number} ({self.document.title})"
 
 
 class GeneratedPaper(models.Model):

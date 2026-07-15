@@ -84,3 +84,16 @@ class HierarchyUtils:
         idx = bisect.bisect_right(page_keys, offset) - 1
         return page_offsets[max(0, idx)][1]
 
+
+def build_hierarchy_key(path: List[str]) -> str:
+    normalized = []
+    for part in path:
+        if part is None:
+            continue
+        part = str(part).strip()
+        if not part:
+            continue
+        normalized.append(part)
+    return ".".join(normalized)
+
+

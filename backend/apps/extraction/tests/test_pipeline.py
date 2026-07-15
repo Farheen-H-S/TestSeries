@@ -75,6 +75,78 @@ class PipelineErrorHandlingTests(TestCase):
 
     @patch('apps.extraction.services.extraction_pipeline.load_pdf')
     @patch('apps.extraction.services.extraction_pipeline.extract_text')
+    @patch('apps.extraction.services.extraction_pipeline.QuestionParser')
+    def test_pipeline_fail_fast_duplicate_detection(self, mock_q_parser_cls, mock_extract_text, mock_load_pdf):
+        from apps.extraction.services.extraction_pipeline import extract_document
+        from apps.extraction.services.exceptions import DuplicateHierarchyError
+        from apps.extraction.services.types import ParsedQuestion, QuestionLevel
+        
+        mock_pdf = MagicMock()
+        mock_load_pdf.return_value = mock_pdf
+        mock_extract_text.return_value = [{"page_number": 1, "text": "dummy text"}]
+        
+        # Mock the parser instance
+        mock_parser = MagicMock()
+        mock_q_parser_cls.return_value = mock_parser
+        mock_parser.diagnostics.total_matches = 2
+        mock_parser.diagnostics.rejected_headers = []
+        mock_parser.diagnostics.validated_count = 2
+        
+        # Return duplicate ParsedQuestion objects of depth 3
+        mock_parser.parse.return_value = [
+            ParsedQuestion(
+                hierarchy_path=["2", "d", "i"],
+                raw_header="Question 2(d)(i)",
+                text="First occurrence text",
+                start_offset=10,
+                end_offset=50,
+                start_page=6,
+                end_page=6,
+                level=QuestionLevel.SUB_SUB
+            ),
+            ParsedQuestion(
+                hierarchy_path=["2", "d", "i"],
+                raw_header="Question 2(d)(i)",
+                text="Second occurrence text",
+                start_offset=60,
+                end_offset=100,
+                start_page=8,
+                end_page=8,
+                level=QuestionLevel.SUB_SUB
+            ),
+        ]
+        
+        document = Document.objects.create(
+            user=self.user,
+            subject=self.subject,
+            title="Duplicate Test Paper",
+            document_type=Document.DocumentType.MOCK,
+            paper_year=2026,
+            storage_path="documents/test_dup.pdf"
+        )
+        
+        with self.assertRaises(DuplicateHierarchyError) as context:
+            extract_document(document)
+            
+        err_msg = str(context.exception)
+        self.assertIn("Duplicate hierarchy key detected", err_msg)
+        self.assertIn("Duplicate Test Paper", err_msg)
+        self.assertIn("2.d.i", err_msg)
+        
+        # Assert first occurrence diagnostics
+        self.assertIn("First", err_msg)
+        self.assertIn("['2', 'd', 'i']", err_msg)
+        self.assertIn("Page:\n6", err_msg)
+        self.assertIn("First occurrence text", err_msg)
+        
+        # Assert second occurrence diagnostics
+        self.assertIn("Second", err_msg)
+        self.assertIn("['2', 'd', 'i']", err_msg)
+        self.assertIn("Page:\n8", err_msg)
+        self.assertIn("Second occurrence text", err_msg)
+
+    @patch('apps.extraction.services.extraction_pipeline.load_pdf')
+    @patch('apps.extraction.services.extraction_pipeline.extract_text')
     def test_pipeline_successful_extraction_integration(self, mock_extract_text, mock_load_pdf):
         """
         Verify the extraction pipeline end-to-end with mock PDF text loading.
@@ -243,6 +315,57 @@ class ExtractionServiceTests(TestCase):
             
             # Verify original source PDF is untouched
             self.assertTrue(self.source_pdf.exists())
+
+    def test_question_model_behavior(self):
+        from apps.extraction.services.hierarchy_utils import build_hierarchy_key
+        from django.db import IntegrityError
+        
+        # 1. Create document
+        document = Document.objects.create(
+            user=self.user,
+            subject=self.subject,
+            title="Model Test Paper",
+            document_type=Document.DocumentType.MOCK,
+            paper_year=2026,
+            storage_path="documents/test_model.pdf"
+        )
+        
+        # 2. Verify build_hierarchy_key normalizes equivalent paths to the same canonical key
+        path1 = ["1", "a", "i", "A", "I"]
+        path2 = ["1 ", " a", "i", "A", "I"]
+        key1 = build_hierarchy_key(path1)
+        key2 = build_hierarchy_key(path2)
+        
+        self.assertEqual(key1, "1.a.i.A.I")
+        self.assertEqual(key2, "1.a.i.A.I")
+        self.assertEqual(key1, key2)
+        
+        # 3. Create first question with the canonical key
+        q1 = Question.objects.create(
+            document=document,
+            question_number="1",
+            hierarchy_key=key1,
+            question_text="First q",
+            question_content="<p>First q</p>",
+            answer_text="First ans",
+            answer_content="<p>First ans</p>"
+        )
+        
+        # 4. Verify __str__() behavior
+        self.assertEqual(str(q1), f"Q1.a.i.A.I ({document.title})")
+        
+        # 5. Verify that persisting a second question with the same canonical key raises IntegrityError
+        with self.assertRaises(IntegrityError):
+            Question.objects.create(
+                document=document,
+                question_number="1",
+                hierarchy_key=key2,
+                question_text="Second q",
+                question_content="<p>Second q</p>",
+                answer_text="Second ans",
+                answer_content="<p>Second ans</p>"
+            )
+
 
 
 if __name__ == "__main__":

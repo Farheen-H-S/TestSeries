@@ -79,5 +79,6 @@ class DocumentListSerializer(serializers.ModelSerializer):
             'paper_year', 
             'paper_session', 
             'extraction_status', 
-            'uploaded_at'
+            'uploaded_at',
+            'total_pages'
         ]

@@ -1,4 +1,5 @@
 import re
+from .constants import DEFAULT_SEMANTIC_SCORE_THRESHOLD
 
 # Section Delimiters for Layout Detection
 ANSWER_SECTION_DELIMITERS = [
@@ -18,7 +19,7 @@ ANSWER_SECTION_DELIMITERS = [
 QUESTION_HEADER_PATTERNS = [
     r"(?i)^[ \t]*Question\s+(?:No\.\s*)?(\d+)(?:[ \t]*\([^)]+\))*",          # Question 1, Question 1(a), Question 1(a)(i)
     r"(?i)^[ \t]*Q\.?\s?(\d+)(?:[ \t]*\([^)]+\))*",                          # Q1, Q. 1, Q1(a)
-    r"^[ \t]*(\d+)[.)](?:[ \t]*\([^)]+\))*",                                 # 1. or 1) or 1.(a)
+    r"^[ \t]*(\d+)[.)](?!\d)(?:[ \t]*\([^)]+\))*",                                 # 1. or 1) or 1.(a)
     r"^[ \t]*\(([a-zA-Z])\)",                            # (a)
     r"^[ \t]*\(([ivxIVX]+)\)",                           # (i), (ii), (iv)
     r"^[ \t]*\d+\s*\(([a-z])\)",                         # 1(a)
@@ -96,6 +97,13 @@ COMPILED_ANSWER_HEADER_PATTERNS = [re.compile(p, re.MULTILINE) for p in ANSWER_H
 COMPILED_MARKS_PATTERNS = [re.compile(p, re.IGNORECASE) for p in MARKS_PATTERNS]
 COMPILED_MARKS_EXCLUSION_PATTERNS = [re.compile(p, re.IGNORECASE) for p in MARKS_EXCLUSION_PATTERNS]
 
+COMPILED_QUESTION_START_PATTERNS = [
+    re.compile(r"(?i)Part\s+II[-–—\s]+Questions(?:\s+and\s+Answers)?"),
+    re.compile(r"(?im)^[ \t]*QUESTIONS[ \t]*$"),
+    re.compile(r"(?i)\bQuestions\s+1\s+to\s+\d+\b"),
+]
+
+
 def get_default_parser_config():
     from .types import ParserConfig
     return ParserConfig(
@@ -105,5 +113,7 @@ def get_default_parser_config():
         case_study_keywords=CLASSIFICATION_RULES["CASE_STUDY"],
         instruction_priority=INSTRUCTION_PRIORITY,
         marks_patterns=COMPILED_MARKS_PATTERNS,
-        marks_exclusion_patterns=COMPILED_MARKS_EXCLUSION_PATTERNS
+        marks_exclusion_patterns=COMPILED_MARKS_EXCLUSION_PATTERNS,
+        semantic_score_threshold=DEFAULT_SEMANTIC_SCORE_THRESHOLD,
+        question_start_patterns=COMPILED_QUESTION_START_PATTERNS
     )

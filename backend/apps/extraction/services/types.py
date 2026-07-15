@@ -96,3 +96,6 @@ class ParserConfig:
     # Compiled marks patterns
     marks_patterns: List[re.Pattern]
     marks_exclusion_patterns: List[re.Pattern]
+    semantic_score_threshold: int = 2
+    # Compiled question start boundary patterns
+    question_start_patterns: List[re.Pattern] = field(default_factory=list)

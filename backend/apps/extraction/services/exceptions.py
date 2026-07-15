@@ -10,3 +10,9 @@ class ExtractionError(Exception):
 class PDFLoadError(ExtractionError):
     """Raised when a PDF cannot be loaded or is invalid."""
     pass
+
+
+class DuplicateHierarchyError(ExtractionError):
+    """Raised when duplicate hierarchy keys are produced during extraction."""
+    pass
+
