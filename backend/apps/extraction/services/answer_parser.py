@@ -4,6 +4,7 @@ from typing import List, Tuple, Optional
 from .types import ParsedAnswer, ParserConfig, AnswerParseResult, ParsingDiagnostics
 from .normalizer import Normalizer
 from .hierarchy_utils import HierarchyUtils
+from .header_validator import HeaderValidator
 
 logger = logging.getLogger(__name__)
 
@@ -17,6 +18,7 @@ class AnswerParser:
     def __init__(self, config: ParserConfig):
         self.config = config
         self.normalizer = Normalizer()
+        self.validator = HeaderValidator()
         self.diagnostics = ParsingDiagnostics()
 
     def parse(self, text: str, page_offsets: List[Tuple[int, int]], base_offset: int = 0) -> List[ParsedAnswer]:
@@ -83,32 +85,47 @@ class AnswerParser:
 
         parsed_answers = []
         hierarchy_stack: List[str] = []
+        validated_matches = []
         
-        for i, match in enumerate(all_potential_matches):
+        for match in all_potential_matches:
             normalized_header = match.group(0)
+            path = self.normalizer.normalize_header(normalized_header)
+            
+            result = self.validator.is_valid(match, path, hierarchy_stack, normalized_text)
+            if result.is_valid:
+                old_stack = list(hierarchy_stack)
+                HierarchyUtils.update_hierarchy_stack(hierarchy_stack, path)
+                logger.debug(
+                    "Hierarchy stack transition (Answer) | old_stack=%s | new_stack=%s | header=%s | start_offset=%d",
+                    old_stack, hierarchy_stack, normalized_header, match.start()
+                )
+                validated_matches.append((match, list(hierarchy_stack)))
+            else:
+                raw_header = text[match.start():match.end()]
+                logger.debug(
+                    "Rejected answer header candidate | candidate=%s | reason=%s | start_offset=%d",
+                    raw_header, result.reason or "Unknown rejection", match.start()
+                )
+                diagnostics.rejected_headers.append({
+                    "header": raw_header,
+                    "reason": result.reason or "Unknown rejection"
+                })
+                
+        for i, (match, h_path) in enumerate(validated_matches):
             raw_header = text[match.start():match.end()]
             start_offset = base_offset + match.start()
             
-            next_match_start = all_potential_matches[i+1].start() if i + 1 < len(all_potential_matches) else len(text)
+            next_match_start = validated_matches[i+1][0].start() if i + 1 < len(validated_matches) else len(text)
             end_offset = base_offset + next_match_start
             
             block_text = text[match.end():next_match_start].strip()
-            
-            path = self.normalizer.normalize_header(normalized_header)
-            # Use shared hierarchy logic
-            old_stack = list(hierarchy_stack)
-            HierarchyUtils.update_hierarchy_stack(hierarchy_stack, path)
-            logger.debug(
-                "Hierarchy stack transition (Answer) | old_stack=%s | new_stack=%s | header=%s | start_offset=%d",
-                old_stack, hierarchy_stack, normalized_header, match.start()
-            )
             
             # Use centralized O(log n) page lookup from HierarchyUtils
             start_page = HierarchyUtils.get_page_num_fast(start_offset, page_offsets, page_keys)
             end_page = HierarchyUtils.get_page_num_fast(end_offset - 1, page_offsets, page_keys)
             
             parsed_answers.append(ParsedAnswer(
-                hierarchy_path=list(hierarchy_stack),
+                hierarchy_path=h_path,
                 raw_header=raw_header,
                 text=block_text,
                 start_offset=start_offset,

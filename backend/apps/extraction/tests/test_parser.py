@@ -152,16 +152,13 @@ class ParserRegressionTests(unittest.TestCase):
         self.assertEqual(parsed[0].hierarchy_path, ["1"])
         self.assertEqual(parsed[1].hierarchy_path, ["2"])
 
-    def test_illegal_hierarchy_rejection(self):
-        # Roman (i) MUST follow Alpha (a) in our strict rules
-        # 1 -> (i) should be REJECTED with a clear reason
+    def test_relaxed_roman_hierarchy_transition(self):
+        # Roman (i) is permitted to directly follow Main (1) when no Alpha is active
         text = "Question 1\n(i)\nText"
         parsed = self.q_parser.parse(text, self.offsets)
-        self.assertEqual(len(parsed), 1) # (i) was rejected
-        
-        # Verify diagnostic reason
-        rejection = self.q_parser.diagnostics.rejected_headers[0]
-        self.assertEqual(rejection["reason"], "illegal hierarchy transition: roman must follow alpha")
+        self.assertEqual(len(parsed), 2)
+        self.assertEqual(parsed[0].hierarchy_path, ["1"])
+        self.assertEqual(parsed[1].hierarchy_path, ["1", "i"])
 
     def test_starting_sequence_validation(self):
         # Starting with (i) should be rejected
@@ -177,12 +174,12 @@ class ParserRegressionTests(unittest.TestCase):
         self.assertEqual(parsed[0].hierarchy_path, ["1", "b", "ii"])
 
     def test_stateless_diagnostics(self):
-        # Call parse_with_diagnostics
-        text = "Question 1\n(i)\nText"
+        # Call parse_with_diagnostics starting with Roman to check diagnostics rejections
+        text = "(i)\nText"
         result = self.q_parser.parse_with_diagnostics(text, self.offsets)
-        self.assertEqual(len(result.questions), 1)
+        self.assertEqual(len(result.questions), 0)
         self.assertEqual(len(result.diagnostics.rejected_headers), 1)
-        self.assertEqual(result.diagnostics.rejected_headers[0]["reason"], "illegal hierarchy transition: roman must follow alpha")
+        self.assertEqual(result.diagnostics.rejected_headers[0]["reason"], "invalid starting numbering sequence")
 
         # Verify that instance diagnostics also works (backward compatibility)
         self.assertEqual(len(self.q_parser.diagnostics.rejected_headers), 0) # parse_with_diagnostics does not mutate instance state

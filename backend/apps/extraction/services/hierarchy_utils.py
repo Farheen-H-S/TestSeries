@@ -62,17 +62,32 @@ class HierarchyUtils:
                 stack[0] = alpha
             if roman: stack.append(roman)
         elif roman:
-            # Transitioning to/within a SUB_SUB level (e.g. (a) -> (i) or (i) -> (ii))
-            # Must have an alpha level to attach to for strict hierarchy
-            if len(stack) < 1: return
-            # If the stack has alpha at index 0 and no main, length is 1
+            # Transitioning to/within a SUB_SUB level (e.g. (a) -> (i), (i) -> (ii), or 16 -> (i))
+            if len(stack) < 1:
+                return
+
+            # If stack is mainless starting with alpha (e.g. ['a']), we can append roman
             if not stack[0].isdigit() and len(stack) == 1:
                 stack.append(roman)
                 return
-            if len(stack) < 2: return
+
+            # If stack is ['1'], we append roman directly (relaxed main -> roman rule)
+            if stack[0].isdigit() and len(stack) == 1:
+                stack.append(roman)
+                return
+
+            # If stack is ['1', 'i'] (no alpha, just main and active roman), replace roman
+            if stack[0].isdigit() and len(stack) == 2 and HierarchyUtils.ROMAN_REGEX.match(stack[1]):
+                stack[1] = roman
+                return
+
+            # Otherwise, normal alpha -> roman transition
+            if len(stack) < 2:
+                return
             while len(stack) > 2:
                 stack.pop()
             stack.append(roman)
+
 
     @staticmethod
     def get_page_num_fast(offset: int, page_offsets: List[Tuple[int, int]], page_keys: List[int]) -> int:
