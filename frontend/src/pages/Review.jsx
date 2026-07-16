@@ -25,6 +25,7 @@ const Review = () => {
   // State variables
   const [document, setDocument] = useState(null);
   const [questions, setQuestions] = useState([]);
+  const [logs, setLogs] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   
@@ -42,13 +43,15 @@ const Review = () => {
     setLoading(true);
     setError(null);
     try {
-      const [docData, questionsData] = await Promise.all([
+      const [docData, questionsData, logsData] = await Promise.all([
         documentService.getDocument(documentId),
-        questionService.getQuestions(documentId)
+        questionService.getQuestions(documentId),
+        documentService.getExtractionLogs(documentId)
       ]);
       
       setDocument(docData);
       setQuestions(questionsData);
+      setLogs(logsData);
     } catch (err) {
       console.error('Error fetching review data:', err);
       setError('Unable to load this document.');
@@ -76,11 +79,43 @@ const Review = () => {
 
   // 1. Statistics Calculations (based on all fetched questions)
   const stats = useMemo(() => {
-    const total = questions.length;
-    const withAnswers = questions.filter(q => !isAnswerMissing(q.answer_text)).length;
+    const parentQuestions = questions.filter(q => q.parent_question === null || q.parent_question === undefined);
+    const total = parentQuestions.length;
+    const withAnswers = parentQuestions.filter(q => !isAnswerMissing(q.answer_text)).length;
     const withoutAnswers = total - withAnswers;
     return { total, withAnswers, withoutAnswers };
   }, [questions]);
+
+  // Diagnostics Calculations
+  const diagnostics = useMemo(() => {
+    if (!logs || logs.length === 0) return null;
+    const completedLog = logs.find(l => l.status === 'COMPLETED');
+    if (!completedLog || !completedLog.message) return null;
+    
+    const message = completedLog.message;
+    const durationMatch = message.match(/in ([\d.]+)s/);
+    const duration = durationMatch ? `${durationMatch[1]}s` : '—';
+    
+    const matchesMatch = message.match(/Matches: (\d+)/);
+    const matches = matchesMatch ? matchesMatch[1] : '—';
+    
+    const rejectionsMatch = message.match(/Rejections: (.*)$/);
+    const rejections = [];
+    if (rejectionsMatch && rejectionsMatch[1]) {
+      const parts = rejectionsMatch[1].split(', ');
+      parts.forEach(part => {
+        const m = part.match(/(.+) \((\d+)\)/);
+        if (m) {
+          rejections.push({
+            reason: m[1],
+            count: parseInt(m[2], 10)
+          });
+        }
+      });
+    }
+    
+    return { duration, matches, rejections, raw: message };
+  }, [logs]);
 
   // 2. Extract dynamic marks options from current questions
   const marksOptions = useMemo(() => {
@@ -316,6 +351,34 @@ const Review = () => {
             </div>
           </div>
         </div>
+
+        {/* Diagnostics Card */}
+        {diagnostics && (
+          <div className="overview-card">
+            <h3 className="overview-card-title">Extraction Diagnostics</h3>
+            <div className="diagnostics-grid">
+              <div className="diag-meta">
+                <span>Duration: <strong>{diagnostics.duration}</strong></span>
+                <span>Answer Matches: <strong>{diagnostics.matches}</strong></span>
+              </div>
+              {diagnostics.rejections.length > 0 ? (
+                <div className="rejections-section">
+                  <span className="rejections-title">Rejected Candidate Headers:</span>
+                  <div className="rejections-list">
+                    {diagnostics.rejections.map((rej, index) => (
+                      <div key={index} className="rejection-item">
+                        <span className="rejection-reason">{rej.reason}</span>
+                        <span className="rejection-badge">{rej.count}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ) : (
+                <div className="rejections-empty">No candidate headers were rejected.</div>
+              )}
+            </div>
+          </div>
+        )}
       </section>
 
       {/* Filters & Sorting Toolbar */}

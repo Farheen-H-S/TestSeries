@@ -36,7 +36,13 @@
 
 @media (min-width: 768px) {
   .overview-section {
-    grid-template-columns: 3fr 2fr;
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+@media (min-width: 1024px) {
+  .overview-section {
+    grid-template-columns: 2fr 1fr 1fr;
   }
 }
 
@@ -457,4 +463,67 @@
 
 .status-processing-text {
   color: var(--status-processing-text);
+}
+
+/* Diagnostics Section */
+.diag-meta {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 1rem;
+  font-size: 0.9rem;
+  color: var(--text-secondary);
+  border-bottom: 1px dashed var(--border-color);
+  padding-bottom: 0.5rem;
+}
+
+.rejections-section {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.rejections-title {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.rejections-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.rejection-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.5rem;
+  background-color: var(--background-color);
+  border-radius: var(--border-radius);
+  border-left: 3px solid #f59e0b;
+}
+
+.rejection-reason {
+  font-size: 0.82rem;
+  color: var(--text-secondary);
+  font-weight: 500;
+}
+
+.rejection-badge {
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: #fff;
+  background-color: #f59e0b;
+  padding: 0.1rem 0.5rem;
+  border-radius: 10px;
+}
+
+.rejections-empty {
+  font-size: 0.85rem;
+  color: var(--text-muted);
+  text-align: center;
+  padding: 1rem 0;
 }

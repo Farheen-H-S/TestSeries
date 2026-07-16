@@ -1,7 +1,7 @@
 import re
 import logging
 from typing import List, Tuple, Optional
-from .types import ParsedAnswer, ParserConfig, AnswerParseResult, ParsingDiagnostics
+from .types import ParsedAnswer, ParserConfig, AnswerParseResult, ParsingDiagnostics, ParsingContext
 from .normalizer import Normalizer
 from .hierarchy_utils import HierarchyUtils
 from .header_validator import HeaderValidator
@@ -21,11 +21,11 @@ class AnswerParser:
         self.validator = HeaderValidator()
         self.diagnostics = ParsingDiagnostics()
 
-    def parse(self, text: str, page_offsets: List[Tuple[int, int]], base_offset: int = 0) -> List[ParsedAnswer]:
+    def parse(self, text: str, page_offsets: List[Tuple[int, int]], base_offset: int = 0, context: Optional[ParsingContext] = None) -> List[ParsedAnswer]:
         """
         Parses text into a list of answers with stateful path resolution and absolute offsets.
         """
-        result = self.parse_with_diagnostics(text, page_offsets, base_offset)
+        result = self.parse_with_diagnostics(text, page_offsets, base_offset, context)
         self.diagnostics = result.diagnostics
         return result.answers
 
@@ -36,6 +36,7 @@ class AnswerParser:
         text: str,
         page_offsets: List[Tuple[int, int]],
         base_offset: int = 0,
+        context: Optional[ParsingContext] = None,
     ) -> AnswerParseResult:
         """
         Parses text and returns an AnswerParseResult that bundles the
@@ -88,6 +89,21 @@ class AnswerParser:
         validated_matches = []
         
         for match in all_potential_matches:
+            # Check if this match falls inside a structured block (table region)
+            if self._is_inside_structured_block(match.start(), normalized_text):
+                if context:
+                    context.inside_structured_block = True
+                raw_header = text[match.start():match.end()]
+                logger.debug("Ignoring candidate inside structured block: %s", raw_header)
+                diagnostics.rejected_headers.append({
+                    "header": raw_header,
+                    "reason": "inside structured block"
+                })
+                continue
+            else:
+                if context:
+                    context.inside_structured_block = False
+                    
             normalized_header = match.group(0)
             path = self.normalizer.normalize_header(normalized_header)
             
@@ -136,4 +152,12 @@ class AnswerParser:
             
         diagnostics.validated_count = len(parsed_answers)
         return AnswerParseResult(answers=parsed_answers, diagnostics=diagnostics)
+
+    def _is_inside_structured_block(self, start_idx: int, text: str) -> bool:
+        last_start = text.rfind("[STRUCTURED_START]", 0, start_idx)
+        if last_start == -1:
+            return False
+        last_end = text.rfind("[STRUCTURED_END]", 0, start_idx)
+        return last_start > last_end
+
 

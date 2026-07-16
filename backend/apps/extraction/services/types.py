@@ -99,3 +99,15 @@ class ParserConfig:
     semantic_score_threshold: int = 2
     # Compiled question start boundary patterns
     question_start_patterns: List[re.Pattern] = field(default_factory=list)
+
+
+@dataclass
+class ParsingContext:
+    current_page: int = 1
+    active_chapter_id: Optional[int] = None
+    inside_structured_block: bool = False
+    inside_header_footer_zone: bool = False
+    current_question: Optional[str] = None
+    inside_mcq_sequence: bool = False
+    inside_answer_sequence: bool = False
+

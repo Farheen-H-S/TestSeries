@@ -2,7 +2,7 @@ import re
 import bisect
 import logging
 from typing import List, Optional, Dict, Any, Tuple
-from .types import ParsedQuestion, QuestionLevel, ParserConfig, ParsingDiagnostics, QuestionParseResult
+from .types import ParsedQuestion, QuestionLevel, ParserConfig, ParsingDiagnostics, QuestionParseResult, ParsingContext
 from .normalizer import Normalizer
 from .header_validator import HeaderValidator
 from .hierarchy_utils import HierarchyUtils
@@ -28,12 +28,13 @@ class QuestionParser:
         text: str,
         page_offsets: List[Tuple[int, int]],
         base_offset: int = 0,
-        enable_semantic_validation: bool = False
+        enable_semantic_validation: bool = False,
+        context: Optional[ParsingContext] = None
     ) -> List[ParsedQuestion]:
         """
         Parses text into a list of hierarchical questions with strict validation and offset correction.
         """
-        result = self.parse_with_diagnostics(text, page_offsets, base_offset, enable_semantic_validation)
+        result = self.parse_with_diagnostics(text, page_offsets, base_offset, enable_semantic_validation, context)
         self.diagnostics = result.diagnostics
         return result.questions
 
@@ -45,6 +46,7 @@ class QuestionParser:
         page_offsets: List[Tuple[int, int]],
         base_offset: int = 0,
         enable_semantic_validation: bool = False,
+        context: Optional[ParsingContext] = None
     ) -> QuestionParseResult:
         """
         Parses text and returns a QuestionParseResult that bundles the
@@ -99,12 +101,52 @@ class QuestionParser:
 
         parsed_questions = []
         hierarchy_stack: List[str] = []
-        
         validated_matches = []
-        for i, match in enumerate(all_potential_matches):
+        
+        context = context or ParsingContext()
+        
+        i = 0
+        while i < len(all_potential_matches):
+            match = all_potential_matches[i]
+            
+            # Check if this match falls inside a structured block (table region)
+            if self._is_inside_structured_block(match.start(), normalized_text):
+                context.inside_structured_block = True
+                raw_header = text[match.start():match.end()]
+                logger.debug("Ignoring candidate inside structured block: %s", raw_header)
+                diagnostics.rejected_headers.append({
+                    "header": raw_header,
+                    "reason": "inside structured block"
+                })
+                i += 1
+                continue
+            else:
+                context.inside_structured_block = False
+            
+            # Check if this match starts an MCQ sequence of options
+            if self._is_mcq_sequence_detected(all_potential_matches, i, normalized_text):
+                context.inside_mcq_sequence = True
+                
+                # Reject/skip these next 4 option matches
+                for skip_offset in range(4):
+                    opt_match = all_potential_matches[i + skip_offset]
+                    raw_opt_header = text[opt_match.start():opt_match.end()]
+                    logger.debug("Ignoring MCQ option candidate: %s", raw_opt_header)
+                    diagnostics.rejected_headers.append({
+                        "header": raw_opt_header,
+                        "reason": "MCQ option sequence detected"
+                    })
+                i += 4
+                continue
+                
             normalized_header = match.group(0)
             path = self.normalizer.normalize_header(normalized_header)
             
+            # Reset inside_mcq_sequence if a main question is encountered
+            candidate_level = self.validator._get_candidate_level(path)
+            if candidate_level == "main":
+                context.inside_mcq_sequence = False
+                
             # Decompose path to check levels
             main_num, alpha, roman = HierarchyUtils.decompose_path(path)
             level = self._get_level(path)
@@ -140,6 +182,7 @@ class QuestionParser:
                             "header": text[match.start():match.end()],
                             "reason": f"non-semantic question block (score: {score}, triggered: {score_reasons})"
                         })
+                        i += 1
                         continue
             
             # 2. Structural/Hierarchy Validation
@@ -165,7 +208,8 @@ class QuestionParser:
                     "header": raw_header, 
                     "reason": result.reason or "Unknown rejection"
                 })
- 
+            i += 1
+            
         diagnostics.validated_count = len(validated_matches)
         if not validated_matches:
             return QuestionParseResult(questions=[], diagnostics=diagnostics)
@@ -246,3 +290,70 @@ class QuestionParser:
         if len(path) >= 3: return QuestionLevel.SUB_SUB
         if len(path) == 2: return QuestionLevel.SUB
         return QuestionLevel.MAIN
+
+    def _is_mcq_sequence_detected(self, matches: List[re.Match], current_idx: int, text: str) -> bool:
+        if current_idx + 3 >= len(matches):
+            return False
+            
+        candidate_paths = []
+        for offset in range(4):
+            m = matches[current_idx + offset]
+            norm = self.normalizer.normalize_header(m.group(0))
+            candidate_paths.append(norm)
+            
+        decomposed = [HierarchyUtils.decompose_path(p) for p in candidate_paths]
+        alphas = [d[1] for d in decomposed]
+        mains = [d[0] for d in decomposed]
+        romans = [d[2] for d in decomposed]
+        
+        # Verify consecutive 'a', 'b', 'c', 'd'
+        expected_seq = ['a', 'b', 'c', 'd']
+        is_seq = True
+        for offset, expected in enumerate(expected_seq):
+            if alphas[offset] != expected or mains[offset] is not None or romans[offset] is not None:
+                is_seq = False
+                break
+                
+        # Verify consecutive 'i', 'ii', 'iii', 'iv'
+        expected_roman_seq = ['i', 'ii', 'iii', 'iv']
+        is_roman_seq = True
+        for offset, expected in enumerate(expected_roman_seq):
+            if romans[offset] != expected or mains[offset] is not None or alphas[offset] is not None:
+                is_roman_seq = False
+                break
+                
+        if not is_seq and not is_roman_seq:
+            return False
+            
+        # Parent question stem keyword check
+        parent_match = matches[current_idx - 1] if current_idx > 0 else None
+        if parent_match:
+            parent_text = text[parent_match.end():matches[current_idx].start()].lower()
+            mcq_keywords = ["option", "choose", "select", "correct", "incorrect", "which of the following", "multiple choice", "value of"]
+            if any(kw in parent_text for kw in mcq_keywords):
+                return True
+                
+        # Option texts check (if no keywords matched)
+        option_texts = []
+        for offset in range(4):
+            m_start = matches[current_idx + offset].end()
+            m_end = matches[current_idx + offset + 1].start() if current_idx + offset + 1 < len(matches) else len(text)
+            option_texts.append(text[m_start:m_end].strip())
+            
+        verbs = r"(?i)\b(Explain|Discuss|Determine|State|Compute|Prepare|Journalise|Describe|Analyse|Evaluate|Identify|Compare|Distinguish)\b"
+        for opt_text in option_texts:
+            if len(opt_text) > 220:
+                return False
+            if re.search(verbs, opt_text):
+                return False
+                
+        return True
+
+    def _is_inside_structured_block(self, start_idx: int, text: str) -> bool:
+        last_start = text.rfind("[STRUCTURED_START]", 0, start_idx)
+        if last_start == -1:
+            return False
+        last_end = text.rfind("[STRUCTURED_END]", 0, start_idx)
+        return last_start > last_end
+
+

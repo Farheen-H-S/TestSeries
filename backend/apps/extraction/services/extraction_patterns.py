@@ -33,6 +33,8 @@ ANSWER_HEADER_PATTERNS = [
     r"(?i)^\s*Ans\.?\s*(\d+)(?:\(([a-z])\))?",                                       # Ans. 1(a)
     r"(?i)^\s*Solution\s*(\d+)(?:\(([a-z])\))?",                                     # Solution 1(a)
     r"^\s*(\d+)[.)](?:\s*\(([a-z])\))?",                                             # 1. or 1.(a)
+    r"^\s*\(([a-zA-Z])\)",                                                           # (a)
+    r"^\s*\(([ivxIVX]+)\)",                                                          # (i), (ii), (iv)
 ]
 
 # Marks Extraction Patterns

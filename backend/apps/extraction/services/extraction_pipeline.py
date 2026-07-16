@@ -11,7 +11,7 @@ from .html_formatter import text_to_html
 from .chapter_mapper import map_question_to_chapter, get_prepared_chapters
 
 # Phase 3D Services
-from .types import LayoutType, QuestionLevel
+from .types import LayoutType, QuestionLevel, ParsingContext
 from .layout_detector import DocumentLayoutDetector
 from .section_splitter import SectionSplitter
 from .question_parser import QuestionParser
@@ -115,16 +115,17 @@ def extract_document(document: Document, temp_file_path: str = None):
             enable_semantic = False
             
         # 4. Parsing with Config and Base Offsets
+        context = ParsingContext()
         q_parser = QuestionParser(config)
         a_parser = AnswerParser(config)
         
-        parsed_questions = q_parser.parse(q_part, page_offsets, base_offset=q_base_offset, enable_semantic_validation=enable_semantic)
+        parsed_questions = q_parser.parse(q_part, page_offsets, base_offset=q_base_offset, enable_semantic_validation=enable_semantic, context=context)
         
         # Best-effort Answer Parsing for UNKNOWN layout
         parsed_answers = []
         # UNKNOWN should require actual header signals to avoid false positives (e.g. "Answer the following")
         if layout_res.layout != LayoutType.UNKNOWN:
-            parsed_answers = a_parser.parse(a_part, page_offsets, base_offset=a_base_offset)
+            parsed_answers = a_parser.parse(a_part, page_offsets, base_offset=a_base_offset, context=context)
         else:
             # Best effort: require at least 2 distinct answer headers
             signals = 0
@@ -133,7 +134,7 @@ def extract_document(document: Document, temp_file_path: str = None):
                 if signals >= 2: break
                 
             if signals >= 2:
-                parsed_answers = a_parser.parse(a_part, page_offsets, base_offset=a_base_offset)
+                parsed_answers = a_parser.parse(a_part, page_offsets, base_offset=a_base_offset, context=context)
 
         # 5. Matching using Canonical Hierarchy Paths
         matcher = AnswerMatcher()
@@ -242,11 +243,29 @@ def extract_document(document: Document, temp_file_path: str = None):
             
             # hierarchy_map: tuple(path) -> Question object
             hierarchy_map = {}
+            active_chapter = None
 
-            # Sort questions by hierarchy depth then order to ensure parents are created first
-            # But the parser already handles them in order.
-            for pq in parsed_questions:
+            for idx, pq in enumerate(parsed_questions):
                 # 7.1 Enrichment
+                # Sequential Chapter Mapping: Scan gap text preceding this question
+                gap_start = 0 if idx == 0 else parsed_questions[idx-1].end_offset
+                gap_text = full_text[gap_start:pq.start_offset].strip()
+                if gap_text:
+                    temp_chapter = None
+                    try:
+                        temp_chapter = map_question_to_chapter(
+                            gap_text,
+                            prepared_chapters=prepared_chapters
+                        )
+                    except Exception:
+                        logger.exception("Sequential chapter mapping failed at offset %d", gap_start)
+                    
+                    if temp_chapter:
+                        active_chapter = temp_chapter
+                        logger.info("Sequential chapter state updated | chapter=%s | offset=%d", active_chapter.name, gap_start)
+
+                matched_chapter = active_chapter
+
                 marks = None
                 try:
                     # Provide larger context to marks extractor
@@ -260,6 +279,7 @@ def extract_document(document: Document, temp_file_path: str = None):
                 except Exception:
                     logger.exception("Classification failed for %s", pq.raw_header)
                 
+                # ... rest of loop
                 instr = None
                 try:
                     instr = instr_det.detect(pq.text)
@@ -273,16 +293,6 @@ def extract_document(document: Document, temp_file_path: str = None):
                 # HTML Formatting
                 q_content = text_to_html(pq.text)
                 a_content = text_to_html(ans_text) if ans_text else ""
-                
-                # Chapter Mapping
-                matched_chapter = None
-                try:
-                    matched_chapter = map_question_to_chapter(
-                        pq.text,
-                        prepared_chapters=prepared_chapters
-                    )
-                except Exception:
-                    logger.exception("Chapter mapping failed for %s", pq.raw_header)
 
                 # 7.2 Resolve Parent deterministically
                 parent_q = None
