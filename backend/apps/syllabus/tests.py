@@ -231,3 +231,74 @@ class SyllabusTests(APITestCase):
         response = self.client.post(url, data, format='multipart')
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
         self.assertIn('exam_month', response.json())
+
+    def test_invalid_reorder_direction(self):
+        subject = Subject.objects.create(name="Audit", exam_level="Intermediate")
+        ch1 = Chapter.objects.create(subject=subject, chapter_name="Chapter 1", chapter_order=1)
+        reorder_url = reverse('chapter-reorder', kwargs={"chapter_id": ch1.chapter_id})
+        res = self.client.post(reorder_url, {"direction": "left"}, format='json') # Invalid direction
+        self.assertEqual(res.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("detail", res.json())
+
+    def test_chapter_search(self):
+        subject = Subject.objects.create(name="Audit", exam_level="Intermediate")
+        Chapter.objects.create(subject=subject, chapter_name="Partnership Accounts", chapter_order=1)
+        Chapter.objects.create(subject=subject, chapter_name="Company Law", chapter_order=2)
+
+        url = reverse('chapter-list-create', kwargs={"subject_id": subject.subject_id})
+        
+        # Search match
+        res1 = self.client.get(f"{url}?q=partnership")
+        self.assertEqual(res1.status_code, status.HTTP_200_OK)
+        self.assertEqual(len(res1.json()), 1)
+        self.assertEqual(res1.json()[0]['chapter_name'], "Partnership Accounts")
+
+        # Search mismatch
+        res2 = self.client.get(f"{url}?q=not_found")
+        self.assertEqual(res2.status_code, status.HTTP_200_OK)
+        self.assertEqual(len(res2.json()), 0)
+
+    def test_empty_subject_name(self):
+        url = reverse('subject-list-create')
+        res = self.client.post(url, {
+            "name": "     ",
+            "exam_level": "Intermediate"
+        }, format='json')
+        self.assertEqual(res.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertTrue(len(res.json().get('name', [])) > 0)
+
+    def test_empty_chapter_name(self):
+        subject = Subject.objects.create(name="Audit", exam_level="Intermediate")
+        url = reverse('chapter-list-create', kwargs={"subject_id": subject.subject_id})
+        res = self.client.post(url, {
+            "chapter_name": "     "
+        }, format='json')
+        self.assertEqual(res.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertTrue(len(res.json().get('chapter_name', [])) > 0)
+
+    def test_same_chapter_name_in_different_subjects(self):
+        subject1 = Subject.objects.create(name="Audit", exam_level="Intermediate")
+        subject2 = Subject.objects.create(name="Law", exam_level="Intermediate")
+
+        url1 = reverse('chapter-list-create', kwargs={"subject_id": subject1.subject_id})
+        url2 = reverse('chapter-list-create', kwargs={"subject_id": subject2.subject_id})
+
+        res1 = self.client.post(url1, {"chapter_name": "Introduction"}, format='json')
+        self.assertEqual(res1.status_code, status.HTTP_201_CREATED)
+
+        # Same chapter name under different subject should succeed
+        res2 = self.client.post(url2, {"chapter_name": "Introduction"}, format='json')
+        self.assertEqual(res2.status_code, status.HTTP_201_CREATED)
+
+    def test_subject_update_changing_exam_level(self):
+        # Create 'Audit' in Intermediate
+        sub1 = Subject.objects.create(name="Audit", exam_level="Intermediate")
+        # Create another 'Audit' in Final
+        Subject.objects.create(name="Audit", exam_level="Final")
+
+        url = reverse('subject-detail', kwargs={"subject_id": sub1.subject_id})
+
+        # Try to change sub1's exam level to 'Final', which causes duplicate collision
+        res = self.client.patch(url, {"exam_level": "Final"}, format='json')
+        self.assertEqual(res.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertTrue("name" in res.json() or "non_field_errors" in res.json())

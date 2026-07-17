@@ -87,7 +87,9 @@ class ChapterViewSet(viewsets.ModelViewSet):
 
         search_query = self.request.query_params.get('q')
         if search_query:
-            queryset = queryset.filter(chapter_name__icontains=search_query.strip())
+            search_query = search_query.strip()
+            if search_query:
+                queryset = queryset.filter(chapter_name__icontains=search_query)
 
         return queryset.order_by(F("chapter_order").asc(nulls_last=True))
 
@@ -120,9 +122,12 @@ class ChapterViewSet(viewsets.ModelViewSet):
             F('chapter_order').asc(nulls_last=True), 'created_at'
         ))
 
-        # Re-index to guarantee continuous 1..N order with no duplicates/gaps
+        # Check if safe-healing is needed (if orders are not 1, 2, ..., N)
+        needs_healing = False
         for idx, ch in enumerate(chapters):
-            ch.chapter_order = idx + 1
+            if ch.chapter_order != idx + 1:
+                needs_healing = True
+                break
 
         # Locate the chapter index in the list
         curr_idx = -1
@@ -137,17 +142,33 @@ class ChapterViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_404_NOT_FOUND
             )
 
-        # Swap ordering values if a swap is possible
-        if direction == 'up' and curr_idx > 0:
-            chapters[curr_idx].chapter_order, chapters[curr_idx - 1].chapter_order = \
-                chapters[curr_idx - 1].chapter_order, chapters[curr_idx].chapter_order
-        elif direction == 'down' and curr_idx < len(chapters) - 1:
-            chapters[curr_idx].chapter_order, chapters[curr_idx + 1].chapter_order = \
-                chapters[curr_idx + 1].chapter_order, chapters[curr_idx].chapter_order
+        if needs_healing:
+            # Safe-heal: re-assign contiguous orders from 1 to N
+            if direction == 'up' and curr_idx > 0:
+                chapters[curr_idx], chapters[curr_idx - 1] = chapters[curr_idx - 1], chapters[curr_idx]
+            elif direction == 'down' and curr_idx < len(chapters) - 1:
+                chapters[curr_idx], chapters[curr_idx + 1] = chapters[curr_idx + 1], chapters[curr_idx]
 
-        # Atomically save updated order indices in bulk
-        with transaction.atomic():
-            Chapter.objects.bulk_update(chapters, ['chapter_order'])
+            for idx, ch in enumerate(chapters):
+                ch.chapter_order = idx + 1
+
+            with transaction.atomic():
+                Chapter.objects.bulk_update(chapters, ['chapter_order'])
+        else:
+            # No gaps/duplicates: just swap the order values of the two affected chapters and bulk_update them
+            to_update = []
+            if direction == 'up' and curr_idx > 0:
+                chapters[curr_idx].chapter_order, chapters[curr_idx - 1].chapter_order = \
+                    chapters[curr_idx - 1].chapter_order, chapters[curr_idx].chapter_order
+                to_update = [chapters[curr_idx], chapters[curr_idx - 1]]
+            elif direction == 'down' and curr_idx < len(chapters) - 1:
+                chapters[curr_idx].chapter_order, chapters[curr_idx + 1].chapter_order = \
+                    chapters[curr_idx + 1].chapter_order, chapters[curr_idx].chapter_order
+                to_update = [chapters[curr_idx], chapters[curr_idx + 1]]
+
+            if to_update:
+                with transaction.atomic():
+                    Chapter.objects.bulk_update(to_update, ['chapter_order'])
 
         return Response({"detail": "Chapter reordered successfully."})
 
@@ -168,14 +189,19 @@ class ChapterViewSet(viewsets.ModelViewSet):
         subject = chapter.subject
         chapter.delete()
 
-        # Re-index remaining chapters to keep contiguous ordering
+        # Re-index remaining chapters to keep contiguous ordering, but only update modified ones
         remaining = list(Chapter.objects.filter(subject=subject).order_by(
             F('chapter_order').asc(nulls_last=True), 'created_at'
         ))
+        to_update = []
         for idx, ch in enumerate(remaining):
-            ch.chapter_order = idx + 1
+            expected_order = idx + 1
+            if ch.chapter_order != expected_order:
+                ch.chapter_order = expected_order
+                to_update.append(ch)
             
-        with transaction.atomic():
-            Chapter.objects.bulk_update(remaining, ['chapter_order'])
+        if to_update:
+            with transaction.atomic():
+                Chapter.objects.bulk_update(to_update, ['chapter_order'])
 
         return Response(status=status.HTTP_204_NO_CONTENT)
