@@ -4,6 +4,7 @@ import Input from '../components/common/Input';
 import Select from '../components/common/Select';
 import SearchableSelect from '../components/common/SearchableSelect';
 import Button from '../components/common/Button';
+import LoadingSpinner from '../components/common/LoadingSpinner';
 import documentService from '../services/documentService';
 import subjectService from '../services/subjectService';
 import { DOCUMENT_TYPES, EXAM_MONTHS } from '../constants/documentConstants';
