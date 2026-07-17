@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useMemo } from 'react';
 import './SearchableSelect.css';
 
 /**
@@ -48,13 +48,29 @@ const SearchableSelect = ({
 
   const normalizedSearch = normalizeText(searchTerm);
 
-  // Filter options based on search term (using normalized comparison)
-  const filteredOptions = options.filter((opt) =>
-    normalizeText(opt.label).includes(normalizedSearch)
-  );
+  // Filter options based on search term (using normalized comparison), startsWith matches first
+  const filteredOptions = useMemo(() => {
+    if (!normalizedSearch) return options;
+    const startsWithMatches = [];
+    const containsMatches = [];
+    
+    options.forEach((opt) => {
+      const optNormalized = normalizeText(opt.label);
+      if (optNormalized.startsWith(normalizedSearch)) {
+        startsWithMatches.push(opt);
+      } else if (optNormalized.includes(normalizedSearch)) {
+        containsMatches.push(opt);
+      }
+    });
+    
+    return [...startsWithMatches, ...containsMatches];
+  }, [options, normalizedSearch]);
 
   // Check if an exact normalized match already exists in options
   const hasExactMatch = options.some((opt) => normalizeText(opt.label) === normalizedSearch);
+
+  // Compute canCreate once
+  const canCreate = !!(onCreateOption && normalizedSearch && !hasExactMatch);
 
   // Close dropdown when clicking outside
   useEffect(() => {
@@ -126,7 +142,7 @@ const SearchableSelect = ({
       e.preventDefault();
       if (isOpen && highlightedIndex >= 0 && highlightedIndex < filteredOptions.length) {
         selectOption(filteredOptions[highlightedIndex]);
-      } else if (isOpen && filteredOptions.length === 0 && onCreateOption && normalizedSearch && !hasExactMatch) {
+      } else if (isOpen && filteredOptions.length === 0 && canCreate) {
         onCreateOption(searchTerm.trim());
         closeDropdown();
       } else if (!isOpen) {
@@ -207,7 +223,7 @@ const SearchableSelect = ({
                   </li>
                 );
               })
-            ) : onCreateOption && normalizedSearch && !hasExactMatch ? (
+            ) : canCreate ? (
               <li
                 onClick={() => {
                   onCreateOption(searchTerm.trim());

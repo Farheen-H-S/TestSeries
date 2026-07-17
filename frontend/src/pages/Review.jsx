@@ -88,10 +88,24 @@ const Review = () => {
     fetchData();
   }, [fetchData]);
 
+  // Check if the current edit form is actually dirty compared to the original values
+  const isFormDirty = useMemo(() => {
+    if (editingQuestionId === null) return false;
+    const originalQ = questions.find(q => q.question_id === editingQuestionId);
+    if (!originalQ) return false;
+    
+    return (
+      editForm.question_number !== (originalQ.question_number || '') ||
+      editForm.question_text !== (originalQ.question_text || '') ||
+      editForm.answer_text !== (originalQ.answer_text || '') ||
+      Number(editForm.chapter) !== (originalQ.chapter || '')
+    );
+  }, [editingQuestionId, editForm, questions]);
+
   // React Router v7 SPA Navigation Blocker
   const blocker = useBlocker(
     ({ currentLocation, nextLocation }) =>
-      editingQuestionId !== null && currentLocation.pathname !== nextLocation.pathname
+      isFormDirty && currentLocation.pathname !== nextLocation.pathname
   );
 
   useEffect(() => {
@@ -105,25 +119,27 @@ const Review = () => {
         blocker.reset();
       }
     }
-  }, [blocker, editingQuestionId]);
+  }, [blocker, isFormDirty]);
 
   // Browser reload / tab close warning
   useBeforeUnload(
     useCallback(
       (e) => {
-        if (editingQuestionId !== null) {
+        if (isFormDirty) {
           e.preventDefault();
         }
       },
-      [editingQuestionId]
+      [isFormDirty]
     )
   );
 
   // Toggle expanded state for a single question card
   const toggleCard = (qId) => {
-    if (editingQuestionId !== null && editingQuestionId !== qId) {
-      const confirmDiscard = window.confirm('You are editing another question. Discard changes?');
+    if (isFormDirty && editingQuestionId !== qId) {
+      const confirmDiscard = window.confirm('You have unsaved edits on another question. Discard changes?');
       if (!confirmDiscard) return;
+      setEditingQuestionId(null);
+    } else if (editingQuestionId !== null && editingQuestionId !== qId) {
       setEditingQuestionId(null);
     }
     setExpandedCards(prev => ({
@@ -195,7 +211,10 @@ const Review = () => {
     if (searchQuery.trim() !== '') {
       const query = searchQuery.toLowerCase();
       result = result.filter(q => 
-        q.question_text && q.question_text.toLowerCase().includes(query)
+        (q.question_text && q.question_text.toLowerCase().includes(query)) ||
+        (q.question_number && q.question_number.toLowerCase().includes(query)) ||
+        (q.answer_text && q.answer_text.toLowerCase().includes(query)) ||
+        (q.chapter_name && q.chapter_name.toLowerCase().includes(query))
       );
     }
 
@@ -238,12 +257,13 @@ const Review = () => {
 
   // Navigation handlers
   const handleBackToDocuments = () => {
-    if (editingQuestionId !== null) {
+    if (isFormDirty) {
       if (window.confirm("You have unsaved changes. Are you sure you want to leave?")) {
         setEditingQuestionId(null);
         navigate('/');
       }
     } else {
+      setEditingQuestionId(null);
       navigate('/');
     }
   };
@@ -344,7 +364,11 @@ const Review = () => {
         const fieldErrors = err.response.data;
         const mappedErrors = {};
         Object.keys(fieldErrors).forEach(key => {
-          mappedErrors[key] = Array.isArray(fieldErrors[key]) ? fieldErrors[key][0] : fieldErrors[key];
+          if (key === 'non_field_errors') {
+            setEditGeneralError(Array.isArray(fieldErrors[key]) ? fieldErrors[key][0] : fieldErrors[key]);
+          } else {
+            mappedErrors[key] = Array.isArray(fieldErrors[key]) ? fieldErrors[key][0] : fieldErrors[key];
+          }
         });
         setEditErrors(mappedErrors);
       } else {

@@ -32,45 +32,49 @@ class QuestionSerializer(serializers.ModelSerializer):
         return getattr(chapter, "chapter_name", None)
 
     def validate(self, attrs):
-        # 1. Normalize whitespace from text fields if they are supplied
-        if 'question_number' in attrs and attrs['question_number'] is not None:
-            attrs['question_number'] = " ".join(attrs['question_number'].strip().split())
+        # 1. Structural checks on update inputs (only if supplied in attrs)
+        if 'question_number' in attrs:
+            val = attrs['question_number']
+            if val is None or str(val).strip() == "":
+                raise serializers.ValidationError({"question_number": "Question number cannot be blank."})
 
-        for field in ['question_text', 'answer_text']:
-            if field in attrs and attrs[field] is not None:
-                attrs[field] = attrs[field].strip()
+        if 'question_text' in attrs:
+            val = attrs['question_text']
+            if val is None or str(val).strip() == "":
+                raise serializers.ValidationError({"question_text": "Question text cannot be blank."})
 
-        # If it's an update request (we have an instance), validate required fields
-        if self.instance:
-            question_number = attrs.get('question_number', self.instance.question_number)
-            question_text = attrs.get('question_text', self.instance.question_text)
-            answer_text = attrs.get('answer_text', self.instance.answer_text)
-            chapter = attrs.get('chapter', self.instance.chapter)
+        if 'answer_text' in attrs:
+            val = attrs['answer_text']
+            if val is None or str(val).strip() == "":
+                raise serializers.ValidationError({"answer_text": "Answer text cannot be blank."})
 
-            if not question_number or question_number.strip() == "":
-                raise serializers.ValidationError({"question_number": "Question number is required."})
-            if not question_text or question_text.strip() == "":
-                raise serializers.ValidationError({"question_text": "Question text is required."})
-            if not answer_text or answer_text.strip() == "":
-                raise serializers.ValidationError({"answer_text": "Answer text is required."})
+        if 'chapter' in attrs:
+            chapter = attrs['chapter']
             if chapter is None:
                 raise serializers.ValidationError({"chapter": "Chapter is required."})
 
             # Check that the chapter belongs to the subject associated with the question's document
-            document = attrs.get('document', self.instance.document)
-            if chapter and document and chapter.subject_id != document.subject_id:
-                raise serializers.ValidationError({
-                    "chapter": f"Chapter '{chapter.chapter_name}' does not belong to the subject '{document.subject.name}'."
-                })
-
+            if self.instance:
+                document = attrs.get('document', self.instance.document)
+                if document and chapter.subject_id != document.subject_id:
+                    raise serializers.ValidationError({
+                        "chapter": f"Chapter '{chapter.chapter_name}' does not belong to the subject '{document.subject.name}'."
+                    })
         return attrs
 
     def update(self, instance, validated_data):
-        # Regenerate HTML formatted fields only when corresponding plain text fields are explicitly updated
-        if 'question_text' in validated_data:
+        # 2. Perform whitespace trimming / normalization mutations inside update()
+        if 'question_number' in validated_data and validated_data['question_number'] is not None:
+            validated_data['question_number'] = validated_data['question_number'].strip()
+
+        if 'question_text' in validated_data and validated_data['question_text'] is not None:
+            validated_data['question_text'] = validated_data['question_text'].strip()
             validated_data['question_content'] = text_to_html(validated_data['question_text'])
-        if 'answer_text' in validated_data:
+
+        if 'answer_text' in validated_data and validated_data['answer_text'] is not None:
+            validated_data['answer_text'] = validated_data['answer_text'].strip()
             validated_data['answer_content'] = text_to_html(validated_data['answer_text'])
+
         return super().update(instance, validated_data)
 
 class GeneratedPaperSerializer(serializers.ModelSerializer):
