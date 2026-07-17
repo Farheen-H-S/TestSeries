@@ -1,9 +1,11 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, useBlocker, useBeforeUnload } from 'react-router-dom';
 import documentService from '../services/documentService';
 import questionService from '../services/questionService';
+import subjectService from '../services/subjectService';
 import Button from '../components/common/Button';
 import EmptyState from '../components/common/EmptyState';
+import SearchableSelect from '../components/common/SearchableSelect';
 import './Review.css';
 
 // Helper to strip HTML tags safely for text preview
@@ -13,7 +15,6 @@ const stripHtml = (htmlString) => {
     const doc = new DOMParser().parseFromString(htmlString, 'text/html');
     return doc.body.textContent || '';
   } catch (e) {
-    // Fallback if DOMParser fails or is unavailable
     return htmlString.replace(/<\/?[^>]+(>|$)/g, "");
   }
 };
@@ -26,6 +27,7 @@ const Review = () => {
   const [document, setDocument] = useState(null);
   const [questions, setQuestions] = useState([]);
   const [logs, setLogs] = useState([]);
+  const [chapters, setChapters] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   
@@ -38,7 +40,24 @@ const Review = () => {
   // Expanded states for cards (keyed by question_id)
   const [expandedCards, setExpandedCards] = useState({});
 
-  // Fetch both document details and questions concurrently (wrapped in useCallback to prevent recreate triggers)
+  // Inline Question Edit States
+  const [editingQuestionId, setEditingQuestionId] = useState(null);
+  const [editForm, setEditForm] = useState({
+    question_number: '',
+    question_text: '',
+    answer_text: '',
+    chapter: ''
+  });
+  const [editErrors, setEditErrors] = useState({});
+  const [isSaving, setIsSaving] = useState(false);
+  const [editGeneralError, setEditGeneralError] = useState(null);
+
+  // Inline Chapter Creation States
+  const [pendingChapterName, setPendingChapterName] = useState('');
+  const [isCreatingChapter, setIsCreatingChapter] = useState(false);
+  const [chapterCreationError, setChapterCreationError] = useState(null);
+
+  // Fetch document, questions, logs, and subject chapters
   const fetchData = useCallback(async () => {
     setLoading(true);
     setError(null);
@@ -52,6 +71,11 @@ const Review = () => {
       setDocument(docData);
       setQuestions(questionsData);
       setLogs(logsData);
+
+      if (docData?.subject?.subject_id) {
+        const chaptersData = await subjectService.getSubjectChapters(docData.subject.subject_id);
+        setChapters(chaptersData);
+      }
     } catch (err) {
       console.error('Error fetching review data:', err);
       setError('Unable to load this document.');
@@ -64,8 +88,44 @@ const Review = () => {
     fetchData();
   }, [fetchData]);
 
+  // React Router v7 SPA Navigation Blocker
+  const blocker = useBlocker(
+    ({ currentLocation, nextLocation }) =>
+      editingQuestionId !== null && currentLocation.pathname !== nextLocation.pathname
+  );
+
+  useEffect(() => {
+    if (blocker.state === 'blocked') {
+      const confirmLeave = window.confirm(
+        'You have unsaved changes. Are you sure you want to leave?'
+      );
+      if (confirmLeave) {
+        blocker.proceed();
+      } else {
+        blocker.reset();
+      }
+    }
+  }, [blocker, editingQuestionId]);
+
+  // Browser reload / tab close warning
+  useBeforeUnload(
+    useCallback(
+      (e) => {
+        if (editingQuestionId !== null) {
+          e.preventDefault();
+        }
+      },
+      [editingQuestionId]
+    )
+  );
+
   // Toggle expanded state for a single question card
   const toggleCard = (qId) => {
+    if (editingQuestionId !== null && editingQuestionId !== qId) {
+      const confirmDiscard = window.confirm('You are editing another question. Discard changes?');
+      if (!confirmDiscard) return;
+      setEditingQuestionId(null);
+    }
     setExpandedCards(prev => ({
       ...prev,
       [qId]: !prev[qId]
@@ -77,7 +137,7 @@ const Review = () => {
     return answerText === null || answerText === undefined || answerText.trim() === '';
   };
 
-  // 1. Statistics Calculations (based on all fetched questions)
+  // Statistics Calculations
   const stats = useMemo(() => {
     const parentQuestions = questions.filter(q => q.parent_question === null || q.parent_question === undefined);
     const total = parentQuestions.length;
@@ -117,7 +177,7 @@ const Review = () => {
     return { duration, matches, rejections, raw: message };
   }, [logs]);
 
-  // 2. Extract dynamic marks options from current questions
+  // Extract dynamic marks options
   const marksOptions = useMemo(() => {
     const marksSet = new Set();
     questions.forEach(q => {
@@ -128,11 +188,10 @@ const Review = () => {
     return Array.from(marksSet).sort((a, b) => a - b);
   }, [questions]);
 
-  // 3. Filtering and Sorting logic (client-side only for speed)
+  // Filtering and Sorting logic
   const processedQuestions = useMemo(() => {
     let result = [...questions];
 
-    // Filter by search query (case-insensitive search on question_text only)
     if (searchQuery.trim() !== '') {
       const query = searchQuery.toLowerCase();
       result = result.filter(q => 
@@ -140,20 +199,17 @@ const Review = () => {
       );
     }
 
-    // Filter by answer status
     if (statusFilter === 'ANSWERED') {
       result = result.filter(q => !isAnswerMissing(q.answer_text));
     } else if (statusFilter === 'MISSING') {
       result = result.filter(q => isAnswerMissing(q.answer_text));
     }
 
-    // Filter by marks
     if (marksFilter !== 'ALL') {
       const targetMarks = parseInt(marksFilter, 10);
       result = result.filter(q => q.marks === targetMarks);
     }
 
-    // Sorting logic
     result.sort((a, b) => {
       if (sortBy === 'Q_NUM_ASC' || sortBy === 'Q_NUM_DESC') {
         const numA = a.question_number || '';
@@ -166,7 +222,6 @@ const Review = () => {
         const marksA = a.marks ?? Number.POSITIVE_INFINITY;
         const marksB = b.marks ?? Number.POSITIVE_INFINITY;
         if (marksA === marksB) {
-          // Secondary sort by question number if marks are equal
           return (a.question_number || '').localeCompare(b.question_number || '', undefined, { numeric: true });
         }
         if (sortBy === 'MARKS_ASC') {
@@ -175,19 +230,159 @@ const Review = () => {
           return marksA > marksB ? -1 : 1;
         }
       }
-
       return 0;
     });
 
     return result;
   }, [questions, searchQuery, statusFilter, marksFilter, sortBy]);
 
-  // Navigate back to documents list
+  // Navigation handlers
   const handleBackToDocuments = () => {
-    navigate('/');
+    if (editingQuestionId !== null) {
+      if (window.confirm("You have unsaved changes. Are you sure you want to leave?")) {
+        setEditingQuestionId(null);
+        navigate('/');
+      }
+    } else {
+      navigate('/');
+    }
   };
 
-  // Helper class resolver for extraction status
+  const handleClearFilters = () => {
+    setSearchQuery('');
+    setStatusFilter('ALL');
+    setMarksFilter('ALL');
+  };
+
+  // Card-Level Edit Handlers
+  const startEditQuestion = (q, e) => {
+    e.stopPropagation(); // Avoid collapsing the card
+    setEditErrors({});
+    setEditGeneralError(null);
+    setEditingQuestionId(q.question_id);
+    setEditForm({
+      question_number: q.question_number || '',
+      question_text: q.question_text || '',
+      answer_text: q.answer_text || '',
+      chapter: q.chapter || ''
+    });
+  };
+
+  const cancelEditQuestion = (e) => {
+    if (e) e.stopPropagation();
+    setEditingQuestionId(null);
+    setEditErrors({});
+    setEditGeneralError(null);
+  };
+
+  const handleFormChange = (e) => {
+    const { name, value } = e.target;
+    setEditForm(prev => ({ ...prev, [name]: value }));
+    if (editErrors[name]) {
+      setEditErrors(prev => {
+        const next = { ...prev };
+        delete next[name];
+        return next;
+      });
+    }
+  };
+
+  const handleChapterDropdownChange = (e) => {
+    const val = e.target.value;
+    setEditForm(prev => ({ ...prev, chapter: val }));
+    if (editErrors.chapter) {
+      setEditErrors(prev => {
+        const next = { ...prev };
+        delete next.chapter;
+        return next;
+      });
+    }
+  };
+
+  const validateEditForm = () => {
+    const errors = {};
+    if (!editForm.question_number.trim()) {
+      errors.question_number = 'Question number is required.';
+    }
+    if (!editForm.question_text.trim()) {
+      errors.question_text = 'Question content is required.';
+    }
+    if (!editForm.answer_text.trim()) {
+      errors.answer_text = 'Answer content is required.';
+    }
+    if (!editForm.chapter) {
+      errors.chapter = 'Chapter mapping is required.';
+    }
+    return errors;
+  };
+
+  const saveEditQuestion = async (qId, e) => {
+    if (e) e.stopPropagation();
+    const errors = validateEditForm();
+    if (Object.keys(errors).length > 0) {
+      setEditErrors(errors);
+      return;
+    }
+
+    setIsSaving(true);
+    setEditGeneralError(null);
+
+    try {
+      const updatedQ = await questionService.updateQuestion(qId, {
+        question_number: editForm.question_number.trim(),
+        question_text: editForm.question_text,
+        answer_text: editForm.answer_text,
+        chapter: Number(editForm.chapter)
+      });
+
+      // Update question locally inside state (no reload)
+      setQuestions(prev => prev.map(q => q.question_id === qId ? updatedQ : q));
+      setEditingQuestionId(null);
+    } catch (err) {
+      console.error('Error saving question edits:', err);
+      if (err.response && err.response.status === 400) {
+        const fieldErrors = err.response.data;
+        const mappedErrors = {};
+        Object.keys(fieldErrors).forEach(key => {
+          mappedErrors[key] = Array.isArray(fieldErrors[key]) ? fieldErrors[key][0] : fieldErrors[key];
+        });
+        setEditErrors(mappedErrors);
+      } else {
+        setEditGeneralError(err.response?.data?.detail || 'An unexpected error occurred while saving.');
+      }
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  // Inline Chapter Creation logic
+  const handleCreateChapterPrompt = (chapterName) => {
+    setPendingChapterName(chapterName);
+    setChapterCreationError(null);
+  };
+
+  const confirmCreateChapter = async () => {
+    if (!pendingChapterName.trim() || !document?.subject?.subject_id) return;
+    setIsCreatingChapter(true);
+    setChapterCreationError(null);
+
+    try {
+      const newChapter = await subjectService.createChapter(document.subject.subject_id, {
+        chapter_name: pendingChapterName.trim()
+      });
+
+      // Update local chapters list and select it in the form
+      setChapters(prev => [...prev, newChapter]);
+      setEditForm(prev => ({ ...prev, chapter: newChapter.chapter_id }));
+      setPendingChapterName('');
+    } catch (err) {
+      console.error('Error creating chapter inline:', err);
+      setChapterCreationError(err.response?.data?.chapter_name || err.response?.data?.detail || 'Duplicate or invalid chapter name.');
+    } finally {
+      setIsCreatingChapter(false);
+    }
+  };
+
   const getStatusColorClass = (status) => {
     switch (status) {
       case 'COMPLETED': return 'status-completed-text';
@@ -196,7 +391,6 @@ const Review = () => {
     }
   };
 
-  // Generate the collapsed preview safely from question_content or question_text
   const getQuestionPreview = (q) => {
     if (q.question_content && q.question_content.trim() !== '') {
       return stripHtml(q.question_content);
@@ -204,32 +398,31 @@ const Review = () => {
     return q.question_text || '';
   };
 
-  // Reset all filters in client-side search toolbar
-  const handleClearFilters = () => {
-    setSearchQuery('');
-    setStatusFilter('ALL');
-    setMarksFilter('ALL');
+  const formatCardDate = (dateStr) => {
+    if (!dateStr) return '—';
+    try {
+      const options = { year: 'numeric', month: 'short', day: 'numeric' };
+      return new Date(dateStr).toLocaleDateString(undefined, options);
+    } catch {
+      return dateStr;
+    }
   };
 
-  // Loading skeleton placeholder render helper
+  const chapterOptions = chapters.map(ch => ({
+    value: ch.chapter_id,
+    label: ch.chapter_name
+  }));
+
+  // Loading skeleton
   if (loading) {
     return (
-      <div className="review-container">
-        <div className="review-header">
-          <div className="skeleton-block skeleton-text skeleton-header-title"></div>
-          <div className="skeleton-block skeleton-text skeleton-back-btn"></div>
-        </div>
-
-        <div className="overview-section">
+      <div className="review-split-layout">
+        <div className="pdf-panel-loading skeleton-block"></div>
+        <div className="review-panel review-container">
+          <div className="review-header">
+            <div className="skeleton-block skeleton-text skeleton-header-title"></div>
+          </div>
           <div className="skeleton-card skeleton-block"></div>
-          <div className="skeleton-card skeleton-block"></div>
-        </div>
-
-        <div className="skeleton-card skeleton-block skeleton-toolbar"></div>
-
-        <div className="skeleton-container">
-          <div className="skeleton-list-item skeleton-block"></div>
-          <div className="skeleton-list-item skeleton-block"></div>
           <div className="skeleton-list-item skeleton-block"></div>
         </div>
       </div>
@@ -241,7 +434,7 @@ const Review = () => {
     return (
       <div className="error-state-card">
         <h2 className="error-state-title">Unable to load this document.</h2>
-        <p className="error-state-desc">The request failed. Please check your connection or retry loading the document detail.</p>
+        <p className="error-state-desc">The request failed. Please check your connection or retry loading.</p>
         <div className="error-actions">
           <Button variant="outline" onClick={handleBackToDocuments}>
             Back to Documents
@@ -254,7 +447,7 @@ const Review = () => {
     );
   }
 
-  // Empty State Render (No document metadata found or document doesn't exist)
+  // Empty State
   if (!document) {
     return (
       <div className="error-state-card">
@@ -267,319 +460,442 @@ const Review = () => {
     );
   }
 
-  // Date formatter helper
-  const formatDate = (dateStr) => {
-    if (!dateStr) return '—';
-    try {
-      const options = { year: 'numeric', month: 'short', day: 'numeric' };
-      return new Date(dateStr).toLocaleDateString(undefined, options);
-    } catch {
-      return dateStr;
-    }
-  };
-
   return (
-    <div className="review-container">
-      {/* Top Header */}
-      <div className="review-header">
-        <h1 className="review-header-title">Review Paper</h1>
-        <Button variant="outline" onClick={handleBackToDocuments}>
-          Back to Documents
-        </Button>
-      </div>
-
-      {/* Document Overview Layout */}
-      <section className="overview-section">
-        {/* Metadata Details Card */}
-        <div className="overview-card">
-          <h3 className="overview-card-title">Document Overview</h3>
-          <div className="metadata-grid">
-            <div className="metadata-item">
-              <span className="metadata-label">Title</span>
-              <span className="metadata-value highlight">{document.title || '—'}</span>
-            </div>
-            <div className="metadata-item">
-              <span className="metadata-label">Subject</span>
-              <span className="metadata-value">{document.subject?.name || '—'}</span>
-            </div>
-            <div className="metadata-item">
-              <span className="metadata-label">Exam Level</span>
-              <span className="metadata-value">{document.subject?.exam_level || '—'}</span>
-            </div>
-            <div className="metadata-item">
-              <span className="metadata-label">Document Type</span>
-              <span className="metadata-value">{document.document_type || '—'}</span>
-            </div>
-            <div className="metadata-item">
-              <span className="metadata-label">Paper Year / Session</span>
-              <span className="metadata-value">
-                {document.paper_year || '—'} {document.paper_session ? `/ ${document.paper_session}` : ''}
-              </span>
-            </div>
-            <div className="metadata-item">
-              <span className="metadata-label">Uploaded Date</span>
-              <span className="metadata-value">{formatDate(document.uploaded_at)}</span>
-            </div>
-            <div className="metadata-item">
-              <span className="metadata-label">Extraction Status</span>
-              <span className={`metadata-value highlight ${getStatusColorClass(document.extraction_status)}`}>
-                {document.extraction_status || '—'}
-              </span>
-            </div>
-            <div className="metadata-item">
-              <span className="metadata-label">Total Pages</span>
-              <span className="metadata-value highlight">{document.total_pages ?? '—'}</span>
-            </div>
-          </div>
-        </div>
-
-        {/* Statistics Overview Card */}
-        <div className="overview-card">
-          <h3 className="overview-card-title">Extraction Results</h3>
-          <div className="stats-grid">
-            <div className="stat-item">
-              <span className="stat-number">{stats.total}</span>
-              <span className="stat-label">Questions Extracted</span>
-            </div>
-            <div className="stat-item">
-              <span className="stat-number">{stats.withAnswers}</span>
-              <span className="stat-label">Questions with Answers</span>
-            </div>
-            <div className="stat-item">
-              <span className="stat-number">{stats.withoutAnswers}</span>
-              <span className="stat-label">Questions without Answers</span>
-            </div>
-          </div>
-        </div>
-
-        {/* Diagnostics Card */}
-        {diagnostics && (
-          <div className="overview-card">
-            <h3 className="overview-card-title">Extraction Diagnostics</h3>
-            <div className="diagnostics-grid">
-              <div className="diag-meta">
-                <span>Duration: <strong>{diagnostics.duration}</strong></span>
-                <span>Answer Matches: <strong>{diagnostics.matches}</strong></span>
-              </div>
-              {diagnostics.rejections.length > 0 ? (
-                <div className="rejections-section">
-                  <span className="rejections-title">Rejected Candidate Headers:</span>
-                  <div className="rejections-list">
-                    {diagnostics.rejections.map((rej, index) => (
-                      <div key={index} className="rejection-item">
-                        <span className="rejection-reason">{rej.reason}</span>
-                        <span className="rejection-badge">{rej.count}</span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              ) : (
-                <div className="rejections-empty">No candidate headers were rejected.</div>
-              )}
-            </div>
-          </div>
-        )}
-      </section>
-
-      {/* Filters & Sorting Toolbar */}
-      <section className="toolbar-card">
-        <div className="toolbar-grid">
-          {/* Search Box */}
-          <div className="toolbar-field-group">
-            <label htmlFor="search" className="toolbar-field-label">Search</label>
-            <input
-              id="search"
-              type="text"
-              className="input-field"
-              placeholder="Search question text..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-            />
-          </div>
-
-          {/* Status Tab Group */}
-          <div className="toolbar-field-group">
-            <label className="toolbar-field-label">Answer Status</label>
-            <div className="status-filter-group">
-              <button 
-                className={`status-tab-btn ${statusFilter === 'ALL' ? 'active' : ''}`}
-                onClick={() => setStatusFilter('ALL')}
-              >
-                All
-              </button>
-              <button 
-                className={`status-tab-btn ${statusFilter === 'ANSWERED' ? 'active' : ''}`}
-                onClick={() => setStatusFilter('ANSWERED')}
-              >
-                Answered
-              </button>
-              <button 
-                className={`status-tab-btn ${statusFilter === 'MISSING' ? 'active' : ''}`}
-                onClick={() => setStatusFilter('MISSING')}
-              >
-                Missing
-              </button>
-            </div>
-          </div>
-
-          {/* Dynamic Marks Filter */}
-          <div className="toolbar-field-group">
-            <label htmlFor="marks-filter" className="toolbar-field-label">Marks</label>
-            <div className="select-wrapper">
-              <select
-                id="marks-filter"
-                className="select-field"
-                value={marksFilter}
-                onChange={(e) => setMarksFilter(e.target.value)}
-              >
-                <option value="ALL">All Marks</option>
-                {marksOptions.map(marks => (
-                  <option key={marks} value={marks.toString()}>
-                    {marks} Marks
-                  </option>
-                ))}
-              </select>
-            </div>
-          </div>
-
-          {/* Sorting Dropdown */}
-          <div className="toolbar-field-group">
-            <label htmlFor="sort-by" className="toolbar-field-label">Sort By</label>
-            <div className="select-wrapper">
-              <select
-                id="sort-by"
-                className="select-field"
-                value={sortBy}
-                onChange={(e) => setSortBy(e.target.value)}
-              >
-                <option value="Q_NUM_ASC">Question Number (Asc)</option>
-                <option value="Q_NUM_DESC">Question Number (Desc)</option>
-                <option value="MARKS_ASC">Marks (Asc)</option>
-                <option value="MARKS_DESC">Marks (Desc)</option>
-              </select>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* Extracted Questions list */}
-      <section className="questions-section">
-        <div className="questions-count-label">
-          <span>Questions list</span>
-          <span style={{ fontSize: '0.9rem', color: 'var(--text-secondary)' }}>
-            Showing {processedQuestions.length} of {stats.total}
-          </span>
-        </div>
-
-        {questions.length === 0 ? (
-          <EmptyState
-            title="No questions extracted"
-            message="No questions were extracted from this document. The extraction may have failed or produced no usable content."
-            actionText="Back to Documents"
-            onAction={handleBackToDocuments}
-          />
-        ) : processedQuestions.length === 0 ? (
-          <EmptyState
-            title="No questions match filters"
-            message="No questions were extracted from this document that match your current search, answer status, or marks filter settings."
-            actionText="Clear Filters"
-            onAction={handleClearFilters}
+    <div className="review-split-layout">
+      {/* LEFT COLUMN: PDF VIEWER PANEL */}
+      <section className="pdf-viewer-panel">
+        {document.file_url ? (
+          <iframe
+            src={`${document.file_url}#toolbar=0`}
+            title={document.title}
+            className="pdf-iframe-frame"
           />
         ) : (
-          processedQuestions.map((q) => {
-            const isExpanded = !!expandedCards[q.question_id];
-            const answerMissing = isAnswerMissing(q.answer_text);
-            const questionPreview = getQuestionPreview(q);
-            
-            return (
-              <div 
-                key={q.question_id} 
-                className={`question-review-card ${isExpanded ? 'expanded' : ''}`}
-              >
-                {/* Header: Clickable triggers expansion */}
-                <div 
-                  className="question-card-header"
-                  onClick={() => toggleCard(q.question_id)}
-                >
-                  <div className="question-header-left">
-                    <span className="question-number-title">
-                      Question {q.question_number ?? '—'}
-                    </span>
-                    {q.marks !== null && q.marks !== undefined && (
-                      <span className="doc-type-badge" style={{ textTransform: 'lowercase' }}>
-                        {q.marks} marks
-                      </span>
-                    )}
-                  </div>
-                  <div className="question-header-right">
-                    <span className={`question-badge ${answerMissing ? 'badge-missing' : 'badge-available'}`}>
-                      {answerMissing ? 'Answer missing' : 'Answer available'}
-                    </span>
-                    {/* Chevron arrow icon */}
-                    <svg viewBox="0 0 24 24" className="chevron-icon" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                      <polyline points="6 9 12 15 18 9"></polyline>
-                    </svg>
-                  </div>
-                </div>
-
-                {/* Collapsed Snippet Preview */}
-                {!isExpanded && questionPreview && (
-                  <div className="question-preview-content">
-                    {questionPreview}
-                  </div>
-                )}
-
-                {/* Expanded content */}
-                {isExpanded && (
-                  <div className="question-card-body">
-                    {/* Chapter Detail */}
-                    <div className="question-field-group">
-                      <span className="question-field-label">Chapter</span>
-                      <span className="metadata-value" style={{ fontWeight: 600 }}>
-                        {q.chapter_name || 'Not Assigned'}
-                      </span>
-                    </div>
-
-                    {/* Question text box */}
-                    <div className="question-field-group">
-                      <span className="question-field-label">Question</span>
-                      {q.question_content ? (
-                        <div 
-                          className="question-text-box"
-                          dangerouslySetInnerHTML={{ __html: q.question_content }}
-                        />
-                      ) : (
-                        <div className="question-text-box">
-                          {q.question_text || '—'}
-                        </div>
-                      )}
-                    </div>
-
-                    {/* Answer text box */}
-                    <div className="question-field-group">
-                      <span className="question-field-label">Answer</span>
-                      {answerMissing ? (
-                        <div className="question-text-box warning-box">
-                          Answer not available
-                        </div>
-                      ) : q.answer_content ? (
-                        <div 
-                          className="question-text-box"
-                          dangerouslySetInnerHTML={{ __html: q.answer_content }}
-                        />
-                      ) : (
-                        <div className="question-text-box">
-                          {q.answer_text}
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                )}
-              </div>
-            );
-          })
+          <div className="pdf-no-file-msg">PDF file is not available.</div>
         )}
       </section>
+
+      {/* RIGHT COLUMN: REVIEW LIST PANEL */}
+      <section className="review-panel-scrollable">
+        <div className="review-container">
+          {/* Top Informational Banner */}
+          <div className="review-info-banner">
+            <svg className="info-banner-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <circle cx="12" cy="12" r="10"></circle>
+              <line x1="12" y1="16" x2="12" y2="12"></line>
+              <line x1="12" y1="8" x2="12.01" y2="8"></line>
+            </svg>
+            <p className="info-banner-text">
+              Review extracted content before using it. Correcting OCR errors and assigning the correct chapters improves the accuracy of generated question papers and future extraction quality.
+            </p>
+          </div>
+
+          {/* Top Header */}
+          <div className="review-header">
+            <h2 className="review-header-title">Review Extracted Paper</h2>
+            <Button variant="outline" onClick={handleBackToDocuments}>
+              Back to Documents
+            </Button>
+          </div>
+
+          {/* Document Overview Layout */}
+          <section className="overview-section">
+            <div className="overview-card">
+              <h3 className="overview-card-title">Document Overview</h3>
+              <div className="metadata-grid">
+                <div className="metadata-item">
+                  <span className="metadata-label">Title</span>
+                  <span className="metadata-value highlight">{document.title || '—'}</span>
+                </div>
+                <div className="metadata-item">
+                  <span className="metadata-label">Subject</span>
+                  <span className="metadata-value">{document.subject?.name || '—'}</span>
+                </div>
+                <div className="metadata-item">
+                  <span className="metadata-label">Exam Level</span>
+                  <span className="metadata-value">{document.subject?.exam_level || '—'}</span>
+                </div>
+                <div className="metadata-item">
+                  <span className="metadata-label">Document Type</span>
+                  <span className="metadata-value">{document.document_type || '—'}</span>
+                </div>
+                <div className="metadata-item">
+                  <span className="metadata-label">Paper Year / Month</span>
+                  <span className="metadata-value">
+                    {document.paper_year || '—'} {document.exam_month ? `/ ${document.exam_month}` : ''}
+                  </span>
+                </div>
+                <div className="metadata-item">
+                  <span className="metadata-label">Extraction Status</span>
+                  <span className={`metadata-value highlight ${getStatusColorClass(document.extraction_status)}`}>
+                    {document.extraction_status || '—'}
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            {/* Statistics Card */}
+            <div className="overview-card">
+              <h3 className="overview-card-title">Extraction Results</h3>
+              <div className="stats-grid">
+                <div className="stat-item">
+                  <span className="stat-number">{stats.total}</span>
+                  <span className="stat-label">Questions</span>
+                </div>
+                <div className="stat-item">
+                  <span className="stat-number">{stats.withAnswers}</span>
+                  <span className="stat-label">With Answers</span>
+                </div>
+                <div className="stat-item">
+                  <span className="stat-number">{stats.withoutAnswers}</span>
+                  <span className="stat-label">Missing Answers</span>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          {/* Filters & Sorting Toolbar */}
+          <section className="toolbar-card">
+            <div className="toolbar-grid">
+              {/* Search Box */}
+              <div className="toolbar-field-group">
+                <label htmlFor="search" className="toolbar-field-label">Search</label>
+                <input
+                  id="search"
+                  type="text"
+                  className="input-field"
+                  placeholder="Search question text..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                />
+              </div>
+
+              {/* Status Tabs */}
+              <div className="toolbar-field-group">
+                <label className="toolbar-field-label">Answer Status</label>
+                <div className="status-filter-group">
+                  <button 
+                    className={`status-tab-btn ${statusFilter === 'ALL' ? 'active' : ''}`}
+                    onClick={() => setStatusFilter('ALL')}
+                  >
+                    All
+                  </button>
+                  <button 
+                    className={`status-tab-btn ${statusFilter === 'ANSWERED' ? 'active' : ''}`}
+                    onClick={() => setStatusFilter('ANSWERED')}
+                  >
+                    Answered
+                  </button>
+                  <button 
+                    className={`status-tab-btn ${statusFilter === 'MISSING' ? 'active' : ''}`}
+                    onClick={() => setStatusFilter('MISSING')}
+                  >
+                    Missing
+                  </button>
+                </div>
+              </div>
+
+              {/* Dynamic Marks Filter */}
+              <div className="toolbar-field-group">
+                <label htmlFor="marks-filter" className="toolbar-field-label">Marks</label>
+                <div className="select-wrapper">
+                  <select
+                    id="marks-filter"
+                    className="select-field"
+                    value={marksFilter}
+                    onChange={(e) => setMarksFilter(e.target.value)}
+                  >
+                    <option value="ALL">All Marks</option>
+                    {marksOptions.map(marks => (
+                      <option key={marks} value={marks.toString()}>
+                        {marks} Marks
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              {/* Sorting Dropdown */}
+              <div className="toolbar-field-group">
+                <label htmlFor="sort-by" className="toolbar-field-label">Sort By</label>
+                <div className="select-wrapper">
+                  <select
+                    id="sort-by"
+                    className="select-field"
+                    value={sortBy}
+                    onChange={(e) => setSortBy(e.target.value)}
+                  >
+                    <option value="Q_NUM_ASC">Question Number (Asc)</option>
+                    <option value="Q_NUM_DESC">Question Number (Desc)</option>
+                    <option value="MARKS_ASC">Marks (Asc)</option>
+                    <option value="MARKS_DESC">Marks (Desc)</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          {/* Extracted Questions list */}
+          <section className="questions-section">
+            <div className="questions-count-label">
+              <span>Questions list</span>
+              <span style={{ fontSize: '0.9rem', color: 'var(--text-secondary)' }}>
+                Showing {processedQuestions.length} of {stats.total}
+              </span>
+            </div>
+
+            {questions.length === 0 ? (
+              <EmptyState
+                title="No questions extracted"
+                message="No questions were extracted from this document."
+                actionText="Back to Documents"
+                onAction={handleBackToDocuments}
+              />
+            ) : processedQuestions.length === 0 ? (
+              <EmptyState
+                title="No questions match filters"
+                message="No questions matched your search criteria."
+                actionText="Clear Filters"
+                onAction={handleClearFilters}
+              />
+            ) : (
+              processedQuestions.map((q) => {
+                const isExpanded = !!expandedCards[q.question_id];
+                const isEditing = editingQuestionId === q.question_id;
+                const answerMissing = isAnswerMissing(q.answer_text);
+                const questionPreview = getQuestionPreview(q);
+                
+                return (
+                  <div 
+                    key={q.question_id} 
+                    className={`question-review-card ${isExpanded ? 'expanded' : ''} ${isEditing ? 'card-editing' : ''}`}
+                  >
+                    {/* Header */}
+                    <div 
+                      className="question-card-header"
+                      onClick={() => toggleCard(q.question_id)}
+                    >
+                      <div className="question-header-left">
+                        <span className="question-number-title">
+                          Question {q.question_number ?? '—'}
+                        </span>
+                        {q.marks !== null && q.marks !== undefined && (
+                          <span className="doc-type-badge" style={{ textTransform: 'lowercase' }}>
+                            {q.marks} marks
+                          </span>
+                        )}
+                      </div>
+                      <div className="question-header-right">
+                        <span className={`question-badge ${answerMissing ? 'badge-missing' : 'badge-available'}`}>
+                          {answerMissing ? 'Answer missing' : 'Answer available'}
+                        </span>
+                        {isExpanded && !isEditing && (
+                          <button
+                            className="card-edit-trigger-btn"
+                            onClick={(e) => startEditQuestion(q, e)}
+                          >
+                            Edit
+                          </button>
+                        )}
+                        <svg viewBox="0 0 24 24" className="chevron-icon" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                          <polyline points="6 9 12 15 18 9"></polyline>
+                        </svg>
+                      </div>
+                    </div>
+
+                    {/* Collapsed Preview */}
+                    {!isExpanded && questionPreview && (
+                      <div className="question-preview-content">
+                        {questionPreview}
+                      </div>
+                    )}
+
+                    {/* Expanded Content */}
+                    {isExpanded && (
+                      <div className="question-card-body">
+                        {editGeneralError && isEditing && (
+                          <div className="edit-general-error alert-error">
+                            {editGeneralError}
+                          </div>
+                        )}
+
+                        {isEditing ? (
+                          /* EDITING FORM INTERFACE */
+                          <div className="edit-question-fields">
+                            <div className="edit-field-row">
+                              <div className="edit-input-wrapper">
+                                <label className="field-label">Question Number <span className="req">*</span></label>
+                                <input
+                                  type="text"
+                                  name="question_number"
+                                  value={editForm.question_number}
+                                  onChange={handleFormChange}
+                                  className={`input-field ${editErrors.question_number ? 'input-error' : ''}`}
+                                />
+                                {editErrors.question_number && (
+                                  <span className="field-error-text">{editErrors.question_number}</span>
+                                )}
+                              </div>
+
+                              <div className="edit-input-wrapper">
+                                <SearchableSelect
+                                  label="Chapter Mapping"
+                                  id={`edit-chapter-${q.question_id}`}
+                                  name="chapter"
+                                  placeholder="Search chapters..."
+                                  options={chapterOptions}
+                                  value={editForm.chapter}
+                                  onChange={handleChapterDropdownChange}
+                                  error={editErrors.chapter}
+                                  onCreateOption={handleCreateChapterPrompt}
+                                  required
+                                />
+                              </div>
+                            </div>
+
+                            <div className="edit-textarea-wrapper">
+                              <label className="field-label">Question Text <span className="req">*</span></label>
+                              <textarea
+                                name="question_text"
+                                value={editForm.question_text}
+                                onChange={handleFormChange}
+                                rows="6"
+                                className={`textarea-field ${editErrors.question_text ? 'input-error' : ''}`}
+                                placeholder="Enter plain question text"
+                              />
+                              {editErrors.question_text && (
+                                <span className="field-error-text">{editErrors.question_text}</span>
+                              )}
+                            </div>
+
+                            <div className="edit-textarea-wrapper">
+                              <label className="field-label">Answer Text <span className="req">*</span></label>
+                              <textarea
+                                name="answer_text"
+                                value={editForm.answer_text}
+                                onChange={handleFormChange}
+                                rows="6"
+                                className={`textarea-field ${editErrors.answer_text ? 'input-error' : ''}`}
+                                placeholder="Enter plain answer text"
+                              />
+                              {editErrors.answer_text && (
+                                <span className="field-error-text">{editErrors.answer_text}</span>
+                              )}
+                            </div>
+
+                            <div className="edit-actions-panel">
+                              <Button
+                                type="button"
+                                variant="outline"
+                                onClick={cancelEditQuestion}
+                                disabled={isSaving}
+                              >
+                                Cancel
+                              </Button>
+                              <Button
+                                type="button"
+                                variant="primary"
+                                onClick={(e) => saveEditQuestion(q.question_id, e)}
+                                disabled={isSaving}
+                              >
+                                {isSaving ? 'Saving...' : 'Save'}
+                              </Button>
+                            </div>
+                          </div>
+                        ) : (
+                          /* READ ONLY VIEW MODE */
+                          <>
+                            <div className="question-field-group">
+                              <span className="question-field-label">Chapter</span>
+                              <span className="metadata-value" style={{ fontWeight: 600 }}>
+                                {q.chapter_name || 'Not Assigned'}
+                              </span>
+                            </div>
+
+                            <div className="question-field-group">
+                              <span className="question-field-label">Question</span>
+                              {q.question_content ? (
+                                <div 
+                                  className="question-text-box"
+                                  dangerouslySetInnerHTML={{ __html: q.question_content }}
+                                />
+                              ) : (
+                                <div className="question-text-box">
+                                  {q.question_text || '—'}
+                                </div>
+                              )}
+                            </div>
+
+                            <div className="question-field-group">
+                              <span className="question-field-label">Answer</span>
+                              {answerMissing ? (
+                                <div className="question-text-box warning-box">
+                                  Answer not available
+                                </div>
+                              ) : q.answer_content ? (
+                                <div 
+                                  className="question-text-box"
+                                  dangerouslySetInnerHTML={{ __html: q.answer_content }}
+                                />
+                              ) : (
+                                <div className="question-text-box">
+                                  {q.answer_text}
+                                </div>
+                              )}
+                            </div>
+                          </>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                );
+              })
+            )}
+          </section>
+        </div>
+      </section>
+
+      {/* INLINE CHAPTER CREATION CONFIRMATION DIALOG MODAL */}
+      {pendingChapterName && (
+        <div className="modal-backdrop">
+          <div className="modal-card inline-create-modal">
+            <div className="modal-header">
+              <h3>Create New Chapter</h3>
+              <button className="close-modal-btn" onClick={() => setPendingChapterName('')}>
+                &times;
+              </button>
+            </div>
+            <div className="modal-body">
+              <p>
+                The chapter <strong>"{pendingChapterName}"</strong> does not exist in this subject. Would you like to create it?
+              </p>
+              {chapterCreationError && (
+                <div className="alert-error" style={{ fontSize: '0.85rem', marginTop: '0.5rem', padding: '0.5rem' }}>
+                  {chapterCreationError}
+                </div>
+              )}
+            </div>
+            <div className="modal-footer">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setPendingChapterName('')}
+                disabled={isCreatingChapter}
+              >
+                Cancel
+              </Button>
+              <Button
+                type="button"
+                variant="primary"
+                onClick={confirmCreateChapter}
+                disabled={isCreatingChapter}
+              >
+                {isCreatingChapter ? 'Creating...' : 'Create'}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

@@ -63,6 +63,7 @@ class DocumentUploadSerializer(serializers.ModelSerializer):
 
 class DocumentListSerializer(serializers.ModelSerializer):
     subject = SubjectSerializer(read_only=True)
+    file_url = serializers.SerializerMethodField()
 
     class Meta:
         model = Document
@@ -75,5 +76,9 @@ class DocumentListSerializer(serializers.ModelSerializer):
             'exam_month', 
             'extraction_status', 
             'uploaded_at',
-            'total_pages'
+            'total_pages',
+            'file_url'
         ]
+
+    def get_file_url(self, obj):
+        return f"{settings.MEDIA_URL}{obj.storage_path}"

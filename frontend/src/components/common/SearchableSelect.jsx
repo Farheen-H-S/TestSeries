@@ -21,6 +21,7 @@ const SearchableSelect = ({
   placeholder = 'Select an option',
   disabled = false,
   className = '',
+  onCreateOption = null, // Optional callback: (text) => void
 }) => {
   const [isOpen, setIsOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
@@ -114,6 +115,9 @@ const SearchableSelect = ({
       e.preventDefault();
       if (isOpen && highlightedIndex >= 0 && highlightedIndex < filteredOptions.length) {
         selectOption(filteredOptions[highlightedIndex]);
+      } else if (isOpen && filteredOptions.length === 0 && onCreateOption && searchTerm.trim()) {
+        onCreateOption(searchTerm.trim());
+        closeDropdown();
       } else if (!isOpen) {
         setIsOpen(true);
       }
@@ -192,6 +196,21 @@ const SearchableSelect = ({
                   </li>
                 );
               })
+            ) : onCreateOption && searchTerm.trim() ? (
+              <li
+                onClick={() => {
+                  onCreateOption(searchTerm.trim());
+                  closeDropdown();
+                }}
+                className="search-select-option-item option-highlighted"
+              >
+                <div className="option-content">
+                  <span className="option-label">No chapter found.</span>
+                  <span className="option-sublabel" style={{ fontWeight: 600, color: 'var(--accent-color)', marginTop: '0.125rem' }}>
+                    Create "{searchTerm.trim()}"?
+                  </span>
+                </div>
+              </li>
             ) : (
               <li className="search-select-no-results">No options match search</li>
             )}

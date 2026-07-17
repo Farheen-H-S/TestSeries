@@ -14,6 +14,17 @@ const questionService = {
     });
     return response.data;
   },
+
+  /**
+   * Update an individual question
+   * @param {number|string} questionId
+   * @param {Object} data - fields to partially update
+   * @returns {Promise<Object>} Updated question details
+   */
+  updateQuestion: async (questionId, data) => {
+    const response = await api.patch(`/questions/${questionId}/`, data);
+    return response.data;
+  },
 };
 
 export default questionService;

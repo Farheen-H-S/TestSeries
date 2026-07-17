@@ -527,3 +527,261 @@
   text-align: center;
   padding: 1rem 0;
 }
+
+/* Two-Panel Split Layout Styles */
+.review-split-layout {
+  display: grid;
+  grid-template-columns: 1.2fr 1fr;
+  height: calc(100vh - var(--navbar-height));
+  overflow: hidden;
+  font-family: var(--font-family);
+  background-color: var(--background-color);
+}
+
+@media (max-width: 992px) {
+  .review-split-layout {
+    grid-template-columns: 1fr;
+    height: auto;
+    overflow: visible;
+  }
+  
+  .pdf-viewer-panel {
+    height: 50vh;
+    border-right: none;
+    border-bottom: 2px solid var(--border-color);
+  }
+}
+
+.pdf-viewer-panel {
+  background-color: #f1f5f9;
+  border-right: 1px solid var(--border-color);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  height: 100%;
+}
+
+.pdf-iframe-frame {
+  width: 100%;
+  height: 100%;
+  border: none;
+}
+
+.pdf-no-file-msg {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  height: 100%;
+  color: var(--text-muted);
+  font-size: 1.1rem;
+  font-weight: 500;
+}
+
+.review-panel-scrollable {
+  overflow-y: auto;
+  height: 100%;
+}
+
+/* Top Informational Banner */
+.review-info-banner {
+  display: flex;
+  gap: 0.75rem;
+  align-items: flex-start;
+  padding: 1rem;
+  background-color: #f0f9ff;
+  border: 1px solid #bae6fd;
+  border-radius: var(--border-radius-md);
+  color: #0369a1;
+  margin-top: 1rem;
+}
+
+.info-banner-icon {
+  width: 20px;
+  height: 20px;
+  flex-shrink: 0;
+  color: #0284c7;
+  margin-top: 0.1rem;
+}
+
+.info-banner-text {
+  font-size: 0.85rem;
+  margin: 0;
+  line-height: 1.5;
+  font-weight: 500;
+}
+
+/* Card Inline Edit Mode */
+.question-review-card.card-editing {
+  border-color: var(--primary-color);
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
+}
+
+.card-edit-trigger-btn {
+  background-color: transparent;
+  border: 1px solid var(--border-color);
+  color: var(--text-secondary);
+  padding: 0.35rem 0.75rem;
+  border-radius: var(--border-radius);
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  margin-right: 0.75rem;
+  transition: all var(--transition-fast);
+}
+
+.card-edit-trigger-btn:hover {
+  background-color: var(--background-color);
+  border-color: var(--text-muted);
+  color: var(--text-primary);
+}
+
+.edit-question-fields {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+  margin-top: 1rem;
+  border-top: 1px solid var(--border-color);
+  padding-top: 1.25rem;
+}
+
+.edit-field-row {
+  display: grid;
+  grid-template-columns: 1fr 1.5fr;
+  gap: 1rem;
+}
+
+@media (max-width: 576px) {
+  .edit-field-row {
+    grid-template-columns: 1fr;
+  }
+}
+
+.edit-input-wrapper {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.field-label {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.field-label .req {
+  color: #ef4444;
+  margin-left: 0.15rem;
+}
+
+.field-error-text {
+  font-size: 0.75rem;
+  color: #ef4444;
+  font-weight: 500;
+  margin-top: 0.25rem;
+}
+
+.edit-textarea-wrapper {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.edit-actions-panel {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.75rem;
+  border-top: 1px solid var(--border-color);
+  padding-top: 1rem;
+  margin-top: 0.5rem;
+}
+
+.edit-general-error {
+  font-size: 0.85rem;
+  padding: 0.75rem;
+  border-radius: var(--border-radius);
+  margin-bottom: 1rem;
+  border: 1px solid #fecaca;
+  background-color: #fef2f2;
+  color: #b91c1c;
+  font-weight: 500;
+}
+
+/* Modal overlays for Chapter Creation Confirmation */
+.modal-backdrop {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(15, 23, 42, 0.6);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 1000;
+  backdrop-filter: blur(4px);
+}
+
+.modal-card.inline-create-modal {
+  background-color: var(--surface-color);
+  border-radius: var(--border-radius-lg);
+  box-shadow: var(--shadow-lg);
+  width: 90%;
+  max-width: 450px;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border: 1px solid var(--border-color);
+  animation: modalFadeIn 0.2s ease-out;
+}
+
+@keyframes modalFadeIn {
+  from {
+    opacity: 0;
+    transform: scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 1.25rem;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.modal-header h3 {
+  font-size: 1.15rem;
+  font-weight: 700;
+  color: var(--text-primary);
+  margin: 0;
+}
+
+.close-modal-btn {
+  background: none;
+  border: none;
+  font-size: 1.5rem;
+  cursor: pointer;
+  color: var(--text-muted);
+  line-height: 1;
+}
+
+.modal-body {
+  padding: 1.5rem;
+  font-size: 0.95rem;
+  color: var(--text-secondary);
+  line-height: 1.6;
+}
+
+.modal-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.75rem;
+  padding: 1rem 1.5rem;
+  background-color: var(--background-color);
+  border-top: 1px solid var(--border-color);
+}
+

@@ -40,3 +40,14 @@ class GeneratedPaperQuestionListView(generics.ListAPIView):
     queryset = GeneratedPaperQuestion.objects.all().order_by('question_order')
     serializer_class = GeneratedPaperQuestionSerializer
     permission_classes = [AllowAny]
+
+
+class QuestionDetailView(generics.RetrieveUpdateAPIView):
+    """
+    API view to retrieve and update (PATCH only) an individual question.
+    """
+    queryset = Question.objects.all()
+    serializer_class = QuestionSerializer
+    permission_classes = [AllowAny]
+    lookup_field = 'question_id'
+    http_method_names = ['get', 'patch']
