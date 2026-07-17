@@ -95,9 +95,9 @@ const Review = () => {
     if (!originalQ) return false;
     
     return (
-      editForm.question_number !== (originalQ.question_number || '') ||
-      editForm.question_text !== (originalQ.question_text || '') ||
-      editForm.answer_text !== (originalQ.answer_text || '') ||
+      String(editForm.question_number ?? '') !== String(originalQ.question_number ?? '') ||
+      String(editForm.question_text ?? '') !== String(originalQ.question_text ?? '') ||
+      String(editForm.answer_text ?? '') !== String(originalQ.answer_text ?? '') ||
       String(editForm.chapter ?? '') !== String(originalQ.chapter ?? '')
     );
   }, [editingQuestionId, editForm, questions]);
@@ -395,8 +395,12 @@ const Review = () => {
         chapter_name: pendingChapterName.trim()
       });
 
-      // Update local chapters list and select it in the form
-      setChapters(prev => [...prev, newChapter]);
+      // Update local chapters list (sorted) and select it in the form
+      setChapters(prev => 
+        [...prev, newChapter].sort((a, b) => 
+          a.chapter_name.localeCompare(b.chapter_name, undefined, { numeric: true, sensitivity: 'base' })
+        )
+      );
       setEditForm(prev => ({ ...prev, chapter: newChapter.chapter_id }));
       setPendingChapterName('');
     } catch (err) {

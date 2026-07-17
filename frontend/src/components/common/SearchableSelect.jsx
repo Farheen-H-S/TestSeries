@@ -30,7 +30,10 @@ const SearchableSelect = ({
   const inputRef = useRef(null);
 
   // Synchronize search term with initial selection or changes
-  const selectedOption = options.find((opt) => opt.value === value);
+  const selectedOption = useMemo(
+    () => options.find((opt) => opt.value === value),
+    [options, value]
+  );
 
   useEffect(() => {
     if (selectedOption) {
@@ -38,7 +41,7 @@ const SearchableSelect = ({
     } else {
       setSearchTerm('');
     }
-  }, [value, selectedOption]);
+  }, [selectedOption]);
 
   // Helper to normalize strings: trim, collapse spaces, lowercase
   const normalizeText = (text) => {
@@ -72,26 +75,8 @@ const SearchableSelect = ({
   // Compute canCreate once
   const canCreate = !!(onCreateOption && normalizedSearch && !hasExactMatch);
 
-  // Close dropdown when clicking outside
-  useEffect(() => {
-    const handleClickOutside = (event) => {
-      if (containerRef.current && !containerRef.current.contains(event.target)) {
-        closeDropdown();
-      }
-    };
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, [searchTerm, selectedOption]);
-
-  const openDropdown = () => {
-    if (disabled) return;
-    setIsOpen(true);
-    setHighlightedIndex(-1);
-    // Focus and select all text to make it easy to clear/type
-    if (inputRef.current) {
-      inputRef.current.select();
-    }
-  };
+  // Close dropdown mutable ref setup to keep window event dependency array []
+  const closeDropdownRef = useRef();
 
   const closeDropdown = () => {
     setIsOpen(false);
@@ -100,6 +85,33 @@ const SearchableSelect = ({
       setSearchTerm(selectedOption.label);
     } else {
       setSearchTerm('');
+    }
+  };
+
+  useEffect(() => {
+    closeDropdownRef.current = closeDropdown;
+  });
+
+  // Close dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (containerRef.current && !containerRef.current.contains(event.target)) {
+        if (closeDropdownRef.current) {
+          closeDropdownRef.current();
+        }
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  const openDropdown = () => {
+    if (disabled) return;
+    setIsOpen(true);
+    setHighlightedIndex(-1);
+    // Focus and select all text to make it easy to clear/type
+    if (inputRef.current) {
+      inputRef.current.select();
     }
   };
 
@@ -185,7 +197,13 @@ const SearchableSelect = ({
         />
         
         {/* Dropdown Toggle Indicator */}
-        <span className="search-select-arrow" onClick={openDropdown}>
+        <span 
+          className="search-select-arrow" 
+          onClick={(e) => {
+            e.stopPropagation();
+            isOpen ? closeDropdown() : openDropdown();
+          }}
+        >
           <svg
             className={`arrow-icon ${isOpen ? 'arrow-icon-open' : ''}`}
             viewBox="0 0 20 20"
