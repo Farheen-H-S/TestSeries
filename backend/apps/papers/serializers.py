@@ -1,5 +1,6 @@
 from rest_framework import serializers
 from .models import Question, GeneratedPaper, GeneratedPaperQuestion
+from apps.extraction.services.html_formatter import text_to_html
 
 class QuestionSerializer(serializers.ModelSerializer):
     chapter_name = serializers.SerializerMethodField()
@@ -62,16 +63,15 @@ class QuestionSerializer(serializers.ModelSerializer):
                     "chapter": f"Chapter '{chapter.chapter_name}' does not belong to the subject '{document.subject.name}'."
                 })
 
-        # 2. Synchronize content HTML only when text updates are supplied
-        if 'question_text' in attrs:
-            from apps.extraction.services.html_formatter import text_to_html
-            attrs['question_content'] = text_to_html(attrs['question_text'])
-            
-        if 'answer_text' in attrs:
-            from apps.extraction.services.html_formatter import text_to_html
-            attrs['answer_content'] = text_to_html(attrs['answer_text'])
-
         return attrs
+
+    def update(self, instance, validated_data):
+        # Regenerate HTML formatted fields only when corresponding plain text fields are explicitly updated
+        if 'question_text' in validated_data:
+            validated_data['question_content'] = text_to_html(validated_data['question_text'])
+        if 'answer_text' in validated_data:
+            validated_data['answer_content'] = text_to_html(validated_data['answer_text'])
+        return super().update(instance, validated_data)
 
 class GeneratedPaperSerializer(serializers.ModelSerializer):
     class Meta:

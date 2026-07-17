@@ -40,10 +40,21 @@ const SearchableSelect = ({
     }
   }, [value, selectedOption]);
 
-  // Filter options based on search term
+  // Helper to normalize strings: trim, collapse spaces, lowercase
+  const normalizeText = (text) => {
+    if (!text) return '';
+    return text.trim().toLowerCase().replace(/\s+/g, ' ');
+  };
+
+  const normalizedSearch = normalizeText(searchTerm);
+
+  // Filter options based on search term (using normalized comparison)
   const filteredOptions = options.filter((opt) =>
-    opt.label.toLowerCase().includes(searchTerm.toLowerCase())
+    normalizeText(opt.label).includes(normalizedSearch)
   );
+
+  // Check if an exact normalized match already exists in options
+  const hasExactMatch = options.some((opt) => normalizeText(opt.label) === normalizedSearch);
 
   // Close dropdown when clicking outside
   useEffect(() => {
@@ -115,7 +126,7 @@ const SearchableSelect = ({
       e.preventDefault();
       if (isOpen && highlightedIndex >= 0 && highlightedIndex < filteredOptions.length) {
         selectOption(filteredOptions[highlightedIndex]);
-      } else if (isOpen && filteredOptions.length === 0 && onCreateOption && searchTerm.trim()) {
+      } else if (isOpen && filteredOptions.length === 0 && onCreateOption && normalizedSearch && !hasExactMatch) {
         onCreateOption(searchTerm.trim());
         closeDropdown();
       } else if (!isOpen) {
@@ -196,7 +207,7 @@ const SearchableSelect = ({
                   </li>
                 );
               })
-            ) : onCreateOption && searchTerm.trim() ? (
+            ) : onCreateOption && normalizedSearch && !hasExactMatch ? (
               <li
                 onClick={() => {
                   onCreateOption(searchTerm.trim());
