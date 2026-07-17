@@ -1,4 +1,4 @@
-import { BrowserRouter, Routes, Route } from 'react-router-dom';
+import { createBrowserRouter, RouterProvider } from 'react-router-dom';
 import MainLayout from '../components/layout/MainLayout';
 import Home from '../pages/Home';
 import Subjects from '../pages/Subjects';
@@ -9,26 +9,28 @@ import QuestionBank from '../pages/QuestionBank';
 import Generate from '../pages/Generate';
 import PracticePaper from '../pages/PracticePaper';
 
+const router = createBrowserRouter([
+  {
+    path: '/',
+    element: <MainLayout />,
+    children: [
+      { index: true, element: <Home /> },
+      { path: 'subjects', element: <Subjects /> },
+      { path: 'upload', element: <Upload /> },
+      { path: 'processing/:documentId', element: <Processing /> },
+      { path: 'review/:documentId', element: <Review /> },
+      { path: 'question-bank', element: <QuestionBank /> },
+      { path: 'generate', element: <Generate /> },
+      { path: 'practice-paper/:paperId', element: <PracticePaper /> }
+    ]
+  }
+]);
+
 /**
  * Main application router utilizing React Router
  */
 const AppRouter = () => {
-  return (
-    <BrowserRouter>
-      <Routes>
-        <Route path="/" element={<MainLayout />}>
-          <Route index element={<Home />} />
-          <Route path="subjects" element={<Subjects />} />
-          <Route path="upload" element={<Upload />} />
-          <Route path="processing/:documentId" element={<Processing />} />
-          <Route path="review/:documentId" element={<Review />} />
-          <Route path="question-bank" element={<QuestionBank />} />
-          <Route path="generate" element={<Generate />} />
-          <Route path="practice-paper/:paperId" element={<PracticePaper />} />
-        </Route>
-      </Routes>
-    </BrowserRouter>
-  );
+  return <RouterProvider router={router} />;
 };
 
 export default AppRouter;
