@@ -98,7 +98,7 @@ const Review = () => {
       editForm.question_number !== (originalQ.question_number || '') ||
       editForm.question_text !== (originalQ.question_text || '') ||
       editForm.answer_text !== (originalQ.answer_text || '') ||
-      Number(editForm.chapter) !== (originalQ.chapter || '')
+      String(editForm.chapter ?? '') !== String(originalQ.chapter ?? '')
     );
   }, [editingQuestionId, editForm, questions]);
 

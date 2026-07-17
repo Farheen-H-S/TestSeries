@@ -116,7 +116,7 @@ const SearchableSelect = ({
     if (!isOpen) {
       setIsOpen(true);
     }
-    setHighlightedIndex(0);
+    setHighlightedIndex(-1);
   };
 
   const handleKeyDown = (e) => {
