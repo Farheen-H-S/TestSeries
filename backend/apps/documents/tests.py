@@ -36,6 +36,10 @@ class DocumentUploadTests(APITestCase):
         super().tearDownClass()
         
     def test_document_upload_flow(self):
+        # Create subjects
+        subject_inter = Subject.objects.create(name='Financial Management', exam_level='Intermediate')
+        subject_final = Subject.objects.create(name='Financial Management', exam_level='Final')
+
         # Create a dummy PDF file
         pdf_file = SimpleUploadedFile(
             "test_paper.pdf",
@@ -43,82 +47,71 @@ class DocumentUploadTests(APITestCase):
             content_type="application/pdf"
         )
         
-        # 1. Upload a document with a new subject and level
+        # 1. Upload a document with a subject reference and custom title
         url = reverse('document-upload')
         data = {
-            'subject_name': '   financial   management  ',
-            'exam_level': 'Intermediate',
+            'subject': subject_inter.subject_id,
             'title': 'FM Nov 2025 Paper',
             'document_type': 'PYQ',
             'paper_year': 2025,
-            'paper_session': 'November',
+            'exam_month': 'November',
             'file': pdf_file
         }
         
         response = self.client.post(url, data, format='multipart')
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
         
-        # Verify Subject was created and normalized to Title Case
-        subject = Subject.objects.get(name='Financial Management', exam_level='Intermediate')
-        self.assertEqual(subject.name, 'Financial Management')
-        self.assertEqual(subject.exam_level, 'Intermediate')
-        
         # Verify response structure
         res_data = response.json()
         self.assertIn('document_id', res_data)
         self.assertEqual(res_data['title'], 'FM Nov 2025 Paper')
         self.assertEqual(res_data['status'], 'PENDING')
-        self.assertEqual(res_data['subject']['subject_id'], subject.subject_id)
+        self.assertEqual(res_data['subject']['subject_id'], subject_inter.subject_id)
         self.assertEqual(res_data['subject']['name'], 'Financial Management')
         self.assertEqual(res_data['subject']['exam_level'], 'Intermediate')
         self.assertIn('uploaded_at', res_data)
         
-        # 2. Upload another document with the same subject name (different casing/spacing) and same level
+        # 2. Upload another document without custom title (verifies auto-title fallback)
         pdf_file_2 = SimpleUploadedFile(
             "test_paper_2.pdf",
             b"%PDF-1.4 ... dummy content 2 ...",
             content_type="application/pdf"
         )
         data_2 = {
-            'subject_name': 'FINANCIAL   management',
-            'exam_level': 'Intermediate',
-            'title': 'FM May 2025 Paper',
+            'subject': subject_inter.subject_id,
             'document_type': 'PYQ',
             'paper_year': 2025,
-            'paper_session': 'May',
+            'exam_month': 'May',
             'file': pdf_file_2
         }
         
         response_2 = self.client.post(url, data_2, format='multipart')
         self.assertEqual(response_2.status_code, status.HTTP_201_CREATED)
         
-        # Verify no duplicate subject was created (still 1 Subject)
-        self.assertEqual(Subject.objects.filter(name='Financial Management').count(), 1)
+        # Verify subject is correct and title was auto-generated
         res_data_2 = response_2.json()
-        self.assertEqual(res_data_2['subject']['subject_id'], subject.subject_id)
+        self.assertEqual(res_data_2['title'], 'Financial Management - PYQ - May 2025')
+        self.assertEqual(res_data_2['subject']['subject_id'], subject_inter.subject_id)
         
-        # 3. Upload another document with the same subject name but different exam level
+        # 3. Upload another document with a different exam level subject
         pdf_file_3 = SimpleUploadedFile(
             "test_paper_3.pdf",
             b"%PDF-1.4 ... dummy content 3 ...",
             content_type="application/pdf"
         )
         data_3 = {
-            'subject_name': 'financial management',
-            'exam_level': 'Final',
+            'subject': subject_final.subject_id,
             'title': 'FM Final May 2025 Paper',
             'document_type': 'PYQ',
             'paper_year': 2025,
-            'paper_session': 'May',
+            'exam_month': 'May',
             'file': pdf_file_3
         }
         
         response_3 = self.client.post(url, data_3, format='multipart')
         self.assertEqual(response_3.status_code, status.HTTP_201_CREATED)
         
-        # Verify a new subject was created for Final
-        self.assertEqual(Subject.objects.filter(name='Financial Management').count(), 2)
-        subject_final = Subject.objects.get(name='Financial Management', exam_level='Final')
+        # Verify subject final was linked
         res_data_3 = response_3.json()
         self.assertEqual(res_data_3['subject']['subject_id'], subject_final.subject_id)
         self.assertIn('uploaded_at', res_data_3)
@@ -131,6 +124,7 @@ class DocumentUploadTests(APITestCase):
         # Setup mock delay to raise a connection/broker exception
         self.mock_delay.side_effect = RuntimeError("Broker connection refused")
         
+        subject_inter = Subject.objects.create(name='Financial Management', exam_level='Intermediate')
         pdf_file = SimpleUploadedFile(
             "test_paper_fail.pdf",
             b"%PDF-1.4 ... dummy content ...",
@@ -139,18 +133,16 @@ class DocumentUploadTests(APITestCase):
         
         url = reverse('document-upload')
         data = {
-            'subject_name': 'Financial Management',
-            'exam_level': 'Intermediate',
+            'subject': subject_inter.subject_id,
             'title': 'FM Queue Fail Paper',
             'document_type': 'PYQ',
             'paper_year': 2025,
-            'paper_session': 'November',
+            'exam_month': 'November',
             'file': pdf_file
         }
         
         response = self.client.post(url, data, format='multipart')
-        # The upload view should handle broker failure gracefully, returning 201 Created,
-        # but leaving the document status as PENDING and creating an ExtractionLog detailing the failure.
+        # The upload view should handle broker failure gracefully, returning 201 Created
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
         
         res_data = response.json()
@@ -167,7 +159,7 @@ class DocumentUploadTests(APITestCase):
         self.assertIn("Failed to queue background extraction task", log.message)
         self.assertIn("Broker connection refused", log.message)
 
-    def test_document_upload_blank_subject(self):
+    def test_document_upload_missing_subject(self):
         url = reverse('document-upload')
         pdf_file = SimpleUploadedFile(
             "test_paper.pdf",
@@ -175,17 +167,15 @@ class DocumentUploadTests(APITestCase):
             content_type="application/pdf"
         )
         
-        # Test spaces-only subject_name
+        # Test request without subject reference
         data = {
-            'subject_name': '     ',
-            'exam_level': 'Intermediate',
             'title': 'FM Nov 2025 Paper',
             'document_type': 'PYQ',
             'paper_year': 2025,
-            'paper_session': 'November',
+            'exam_month': 'November',
             'file': pdf_file
         }
         
         response = self.client.post(url, data, format='multipart')
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
-        self.assertIn('subject_name', response.json())
+        self.assertIn('subject', response.json())

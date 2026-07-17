@@ -9,7 +9,7 @@ class DocumentAdmin(admin.ModelAdmin):
         'subject',
         'document_type',
         'paper_year',
-        'paper_session',
+        'exam_month',
         'extraction_status',
         'uploaded_at'
     )

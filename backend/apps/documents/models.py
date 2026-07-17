@@ -32,9 +32,24 @@ class Document(models.Model):
         choices=DocumentType.choices
     )
     paper_year = models.PositiveIntegerField()
-    paper_session = models.CharField(
-        max_length=20, 
-        null=True, 
+    class ExamMonth(models.TextChoices):
+        JANUARY = "January", "January"
+        FEBRUARY = "February", "February"
+        MARCH = "March", "March"
+        APRIL = "April", "April"
+        MAY = "May", "May"
+        JUNE = "June", "June"
+        JULY = "July", "July"
+        AUGUST = "August", "August"
+        SEPTEMBER = "September", "September"
+        OCTOBER = "October", "October"
+        NOVEMBER = "November", "November"
+        DECEMBER = "December", "December"
+
+    exam_month = models.CharField(
+        max_length=20,
+        choices=ExamMonth.choices,
+        null=True,
         blank=True
     )
     storage_path = models.TextField(editable=False)

@@ -1,5 +1,5 @@
 import { NavLink } from 'react-router-dom';
-import { FiHome, FiUpload, FiDatabase, FiFileText } from 'react-icons/fi';
+import { FiHome, FiUpload, FiDatabase, FiFileText, FiBookOpen } from 'react-icons/fi';
 import './Sidebar.css';
 
 /**
@@ -11,6 +11,7 @@ import './Sidebar.css';
 const Sidebar = ({ isOpen, isCollapsed, onClose }) => {
   const navItems = [
     { path: '/', name: 'Home', icon: <FiHome /> },
+    { path: '/subjects', name: 'Subjects', icon: <FiBookOpen /> },
     { path: '/upload', name: 'Upload Paper', icon: <FiUpload /> },
     { path: '/question-bank', name: 'Question Bank', icon: <FiDatabase /> },
     { path: '/generate', name: 'Generate Paper', icon: <FiFileText /> },

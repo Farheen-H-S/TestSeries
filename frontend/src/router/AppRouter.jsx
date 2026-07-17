@@ -1,6 +1,7 @@
 import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import MainLayout from '../components/layout/MainLayout';
 import Home from '../pages/Home';
+import Subjects from '../pages/Subjects';
 import Upload from '../pages/Upload';
 import Processing from '../pages/Processing';
 import Review from '../pages/Review';
@@ -17,6 +18,7 @@ const AppRouter = () => {
       <Routes>
         <Route path="/" element={<MainLayout />}>
           <Route index element={<Home />} />
+          <Route path="subjects" element={<Subjects />} />
           <Route path="upload" element={<Upload />} />
           <Route path="processing/:documentId" element={<Processing />} />
           <Route path="review/:documentId" element={<Review />} />
