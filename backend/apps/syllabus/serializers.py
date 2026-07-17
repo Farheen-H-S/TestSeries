@@ -14,8 +14,8 @@ class SubjectSerializer(serializers.ModelSerializer):
         exam_level = attrs.get('exam_level')
 
         if name is not None:
-            # Trim, collapse spaces, and normalize to Title Case
-            name = " ".join(name.strip().split()).title()
+            # Trim and collapse spaces, preserving original capitalization
+            name = " ".join(name.strip().split())
             attrs['name'] = name
 
             if not name:
@@ -49,8 +49,8 @@ class ChapterSerializer(serializers.ModelSerializer):
         chapter_name = attrs.get('chapter_name')
 
         if chapter_name is not None:
-            # Trim, collapse spaces, and normalize to Title Case
-            chapter_name = " ".join(chapter_name.strip().split()).title()
+            # Trim and collapse spaces, preserving original capitalization
+            chapter_name = " ".join(chapter_name.strip().split())
             attrs['chapter_name'] = chapter_name
 
             if not chapter_name:

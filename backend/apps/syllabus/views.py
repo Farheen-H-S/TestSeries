@@ -145,10 +145,9 @@ class ChapterViewSet(viewsets.ModelViewSet):
             chapters[curr_idx].chapter_order, chapters[curr_idx + 1].chapter_order = \
                 chapters[curr_idx + 1].chapter_order, chapters[curr_idx].chapter_order
 
-        # Atomically save updated order indices
+        # Atomically save updated order indices in bulk
         with transaction.atomic():
-            for ch in chapters:
-                ch.save(update_fields=['chapter_order'])
+            Chapter.objects.bulk_update(chapters, ['chapter_order'])
 
         return Response({"detail": "Chapter reordered successfully."})
 
@@ -170,12 +169,13 @@ class ChapterViewSet(viewsets.ModelViewSet):
         chapter.delete()
 
         # Re-index remaining chapters to keep contiguous ordering
-        remaining = Chapter.objects.filter(subject=subject).order_by(
+        remaining = list(Chapter.objects.filter(subject=subject).order_by(
             F('chapter_order').asc(nulls_last=True), 'created_at'
-        )
+        ))
+        for idx, ch in enumerate(remaining):
+            ch.chapter_order = idx + 1
+            
         with transaction.atomic():
-            for idx, ch in enumerate(remaining):
-                ch.chapter_order = idx + 1
-                ch.save(update_fields=['chapter_order'])
+            Chapter.objects.bulk_update(remaining, ['chapter_order'])
 
         return Response(status=status.HTTP_204_NO_CONTENT)
