@@ -185,23 +185,23 @@ class ChapterViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST
             )
 
-        # Proceed with deletion
+        # Proceed with deletion and re-indexing within a single transaction boundary
         subject = chapter.subject
-        chapter.delete()
+        with transaction.atomic():
+            chapter.delete()
 
-        # Re-index remaining chapters to keep contiguous ordering, but only update modified ones
-        remaining = list(Chapter.objects.filter(subject=subject).order_by(
-            F('chapter_order').asc(nulls_last=True), 'created_at'
-        ))
-        to_update = []
-        for idx, ch in enumerate(remaining):
-            expected_order = idx + 1
-            if ch.chapter_order != expected_order:
-                ch.chapter_order = expected_order
-                to_update.append(ch)
-            
-        if to_update:
-            with transaction.atomic():
+            # Re-index remaining chapters to keep contiguous ordering, but only update modified ones
+            remaining = list(Chapter.objects.filter(subject=subject).order_by(
+                F('chapter_order').asc(nulls_last=True), 'created_at'
+            ))
+            to_update = []
+            for idx, ch in enumerate(remaining):
+                expected_order = idx + 1
+                if ch.chapter_order != expected_order:
+                    ch.chapter_order = expected_order
+                    to_update.append(ch)
+                
+            if to_update:
                 Chapter.objects.bulk_update(to_update, ['chapter_order'])
 
         return Response(status=status.HTTP_204_NO_CONTENT)

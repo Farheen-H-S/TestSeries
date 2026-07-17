@@ -1,7 +1,7 @@
 from rest_framework import serializers
 from .models import Subject, Chapter
 
-def normalize_name(value):
+def normalize_whitespace(value):
     if value is None:
         return None
     return " ".join(value.strip().split())
@@ -20,7 +20,7 @@ class SubjectSerializer(serializers.ModelSerializer):
         exam_level = attrs.get('exam_level')
 
         if name is not None:
-            name = normalize_name(name)
+            name = normalize_whitespace(name)
             attrs['name'] = name
 
             if not name:
@@ -54,7 +54,7 @@ class ChapterSerializer(serializers.ModelSerializer):
         chapter_name = attrs.get('chapter_name')
 
         if chapter_name is not None:
-            chapter_name = normalize_name(chapter_name)
+            chapter_name = normalize_whitespace(chapter_name)
             attrs['chapter_name'] = chapter_name
 
             if not chapter_name:
