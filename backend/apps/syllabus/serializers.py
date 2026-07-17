@@ -14,8 +14,8 @@ class SubjectSerializer(serializers.ModelSerializer):
         exam_level = attrs.get('exam_level')
 
         if name is not None:
-            # Trim and collapse spaces
-            name = " ".join(name.strip().split())
+            # Trim, collapse spaces, and normalize to Title Case
+            name = " ".join(name.strip().split()).title()
             attrs['name'] = name
 
             if not name:
@@ -26,9 +26,9 @@ class SubjectSerializer(serializers.ModelSerializer):
             name = name if name is not None else self.instance.name
             exam_level = exam_level if exam_level is not None else self.instance.exam_level
 
-        # Case-insensitive duplicate check within the same exam_level
+        # Case-insensitive duplicate check within the same exam_level (checking all records to prevent DB unique constraint violation)
         if name and exam_level:
-            qs = Subject.objects.filter(name__iexact=name, exam_level=exam_level, is_active=True)
+            qs = Subject.objects.filter(name__iexact=name, exam_level=exam_level)
             if self.instance:
                 qs = qs.exclude(pk=self.instance.pk)
             if qs.exists():
@@ -49,8 +49,8 @@ class ChapterSerializer(serializers.ModelSerializer):
         chapter_name = attrs.get('chapter_name')
 
         if chapter_name is not None:
-            # Trim and collapse spaces
-            chapter_name = " ".join(chapter_name.strip().split())
+            # Trim, collapse spaces, and normalize to Title Case
+            chapter_name = " ".join(chapter_name.strip().split()).title()
             attrs['chapter_name'] = chapter_name
 
             if not chapter_name:

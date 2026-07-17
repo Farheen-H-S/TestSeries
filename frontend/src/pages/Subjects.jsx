@@ -296,8 +296,9 @@ const Subjects = () => {
     const createStr = createDate.toLocaleDateString('en-GB', options);
     const updateStr = updateDate.toLocaleDateString('en-GB', options);
 
-    // Exact equality comparison
-    if (subject.created_at === subject.updated_at) {
+    // If updated_at is within a threshold of 5 seconds of created_at, treat as "Created"
+    const diffInSeconds = Math.abs(updateDate - createDate) / 1000;
+    if (diffInSeconds < 5) {
       return `Created ${createStr}`;
     }
     return `Last updated ${updateStr}`;
