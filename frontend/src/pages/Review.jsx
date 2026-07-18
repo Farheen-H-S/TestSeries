@@ -19,6 +19,13 @@ const stripHtml = (htmlString) => {
   }
 };
 
+// Helper to check if HTML contains meaningful text content
+const hasMeaningfulHtml = (html) => {
+  if (!html) return false;
+  const text = stripHtml(html).trim();
+  return text.length > 0;
+};
+
 const Review = () => {
   const { documentId } = useParams();
   const navigate = useNavigate();
@@ -154,10 +161,9 @@ const Review = () => {
   };
 
   // Statistics Calculations
-  // Statistics Calculations
   const stats = useMemo(() => {
     const reviewableQuestions = questions.filter(q => {
-      const hasContent = (q.question_text && q.question_text.trim() !== '') || (q.question_content && q.question_content.trim() !== '');
+      const hasContent = (q.question_text && q.question_text.trim() !== '') || hasMeaningfulHtml(q.question_content);
       const isContainer = questions.some(child => child.parent_question === q.question_id);
       return hasContent || !isContainer;
     });
@@ -214,7 +220,7 @@ const Review = () => {
   const processedQuestions = useMemo(() => {
     // Hide parent container questions only if they have no text/content of their own
     let result = questions.filter(q => {
-      const hasContent = (q.question_text && q.question_text.trim() !== '') || (q.question_content && q.question_content.trim() !== '');
+      const hasContent = (q.question_text && q.question_text.trim() !== '') || hasMeaningfulHtml(q.question_content);
       const isContainer = questions.some(child => child.parent_question === q.question_id);
       return hasContent || !isContainer;
     });
@@ -431,7 +437,7 @@ const Review = () => {
   };
 
   const getQuestionPreview = (q) => {
-    if (q.question_content && q.question_content.trim() !== '') {
+    if (hasMeaningfulHtml(q.question_content)) {
       return stripHtml(q.question_content);
     }
     return q.question_text || '';
@@ -857,7 +863,7 @@ const Review = () => {
 
                             <div className="question-field-group">
                               <span className="question-field-label">Question</span>
-                              {q.question_content && q.question_content.trim().length > 0 ? (
+                              {hasMeaningfulHtml(q.question_content) ? (
                                 <div 
                                   className="question-text-box"
                                   dangerouslySetInnerHTML={{ __html: q.question_content }}
@@ -875,7 +881,7 @@ const Review = () => {
                                 <div className="question-text-box warning-box">
                                   Answer not available
                                 </div>
-                              ) : q.answer_content && q.answer_content.trim().length > 0 ? (
+                              ) : hasMeaningfulHtml(q.answer_content) ? (
                                 <div 
                                   className="question-text-box"
                                   dangerouslySetInnerHTML={{ __html: q.answer_content }}

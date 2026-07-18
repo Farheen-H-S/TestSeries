@@ -47,11 +47,11 @@ def markdown_table_to_html(markdown_table: str) -> str:
                 continue
             
             if not has_header:
-                header_cells = "".join([f"<th>{cell}</th>" for cell in cells])
+                header_cells = "".join([f"<th>{html.escape(cell)}</th>" for cell in cells])
                 thead_rows.append(f"<tr>{header_cells}</tr>")
                 has_header = True
             else:
-                body_cells = "".join([f"<td>{cell}</td>" for cell in cells])
+                body_cells = "".join([f"<td>{html.escape(cell)}</td>" for cell in cells])
                 tbody_rows.append(f"<tr>{body_cells}</tr>")
                 
     if not thead_rows and not tbody_rows:
