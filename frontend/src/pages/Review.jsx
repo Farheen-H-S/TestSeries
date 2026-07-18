@@ -154,11 +154,18 @@ const Review = () => {
   };
 
   // Statistics Calculations
+  // Statistics Calculations
   const stats = useMemo(() => {
+    const reviewableQuestions = questions.filter(q => {
+      const hasContent = (q.question_text && q.question_text.trim() !== '') || (q.question_content && q.question_content.trim() !== '');
+      const isContainer = questions.some(child => child.parent_question === q.question_id);
+      return hasContent || !isContainer;
+    });
     const total = questions.length;
-    const withAnswers = questions.filter(q => !isAnswerMissing(q.answer_text)).length;
-    const withoutAnswers = total - withAnswers;
-    return { total, withAnswers, withoutAnswers };
+    const reviewable = reviewableQuestions.length;
+    const withAnswers = reviewableQuestions.filter(q => !isAnswerMissing(q.answer_text)).length;
+    const withoutAnswers = reviewable - withAnswers;
+    return { total, reviewable, withAnswers, withoutAnswers };
   }, [questions]);
 
   // Diagnostics Calculations
@@ -572,7 +579,11 @@ const Review = () => {
               <div className="stats-grid">
                 <div className="stat-item">
                   <span className="stat-number">{stats.total}</span>
-                  <span className="stat-label">Questions</span>
+                  <span className="stat-label">Total Extracted</span>
+                </div>
+                <div className="stat-item">
+                  <span className="stat-number">{stats.reviewable}</span>
+                  <span className="stat-label">Reviewable</span>
                 </div>
                 <div className="stat-item">
                   <span className="stat-number">{stats.withAnswers}</span>
@@ -846,7 +857,7 @@ const Review = () => {
 
                             <div className="question-field-group">
                               <span className="question-field-label">Question</span>
-                              {q.question_content ? (
+                              {q.question_content && q.question_content.trim().length > 0 ? (
                                 <div 
                                   className="question-text-box"
                                   dangerouslySetInnerHTML={{ __html: q.question_content }}
@@ -864,7 +875,7 @@ const Review = () => {
                                 <div className="question-text-box warning-box">
                                   Answer not available
                                 </div>
-                              ) : q.answer_content ? (
+                              ) : q.answer_content && q.answer_content.trim().length > 0 ? (
                                 <div 
                                   className="question-text-box"
                                   dangerouslySetInnerHTML={{ __html: q.answer_content }}

@@ -27,13 +27,14 @@ def preserve_paragraphs(text: str) -> str:
 
 def markdown_table_to_html(markdown_table: str) -> str:
     """
-    Parses a simple markdown table into a semantic HTML table.
+    Parses a simple markdown table into a semantic HTML table with thead and tbody.
     """
     lines = [line.strip() for line in markdown_table.strip().split('\n') if line.strip()]
     if not lines:
         return ""
     
-    html_rows = []
+    thead_rows = []
+    tbody_rows = []
     has_header = False
     
     for line in lines:
@@ -47,16 +48,28 @@ def markdown_table_to_html(markdown_table: str) -> str:
             
             if not has_header:
                 header_cells = "".join([f"<th>{cell}</th>" for cell in cells])
-                html_rows.append(f"<tr>{header_cells}</tr>")
+                thead_rows.append(f"<tr>{header_cells}</tr>")
                 has_header = True
             else:
                 body_cells = "".join([f"<td>{cell}</td>" for cell in cells])
-                html_rows.append(f"<tr>{body_cells}</tr>")
+                tbody_rows.append(f"<tr>{body_cells}</tr>")
                 
-    if not html_rows:
+    if not thead_rows and not tbody_rows:
         return ""
         
-    return f'<div class="table-container"><table class="structured-table">{"".join(html_rows)}</table></div>'
+    html_parts = ['<div class="table-container">', '<table class="structured-table">']
+    if thead_rows:
+        html_parts.append('<thead>')
+        html_parts.extend(thead_rows)
+        html_parts.append('</thead>')
+    if tbody_rows:
+        html_parts.append('<tbody>')
+        html_parts.extend(tbody_rows)
+        html_parts.append('</tbody>')
+    html_parts.append('</table>')
+    html_parts.append('</div>')
+    
+    return "".join(html_parts)
 
 def text_to_html(text: str) -> str:
     """
