@@ -155,9 +155,9 @@ const Review = () => {
 
   // Statistics Calculations
   const stats = useMemo(() => {
-    const parentQuestions = questions.filter(q => q.parent_question === null || q.parent_question === undefined);
-    const total = parentQuestions.length;
-    const withAnswers = parentQuestions.filter(q => !isAnswerMissing(q.answer_text)).length;
+    const activeQuestions = questions.filter(q => q.question_text && q.question_text.trim() !== '');
+    const total = activeQuestions.length;
+    const withAnswers = activeQuestions.filter(q => !isAnswerMissing(q.answer_text)).length;
     const withoutAnswers = total - withAnswers;
     return { total, withAnswers, withoutAnswers };
   }, [questions]);
@@ -206,7 +206,8 @@ const Review = () => {
 
   // Filtering and Sorting logic
   const processedQuestions = useMemo(() => {
-    let result = [...questions];
+    // Filter out empty parent container questions
+    let result = questions.filter(q => q.question_text && q.question_text.trim() !== '');
 
     if (searchQuery.trim() !== '') {
       const query = searchQuery.toLowerCase();
@@ -705,7 +706,7 @@ const Review = () => {
                     >
                       <div className="question-header-left">
                         <span className="question-number-title">
-                          Question {q.question_number ?? '—'}
+                          Question {q.question_number ?? '—'}{q.sub_question_label ? ` (${q.sub_question_label})` : ''}
                         </span>
                         {q.marks !== null && q.marks !== undefined && (
                           <span className="doc-type-badge" style={{ textTransform: 'lowercase' }}>
