@@ -155,9 +155,8 @@ const Review = () => {
 
   // Statistics Calculations
   const stats = useMemo(() => {
-    const activeQuestions = questions.filter(q => q.question_text && q.question_text.trim() !== '');
-    const total = activeQuestions.length;
-    const withAnswers = activeQuestions.filter(q => !isAnswerMissing(q.answer_text)).length;
+    const total = questions.length;
+    const withAnswers = questions.filter(q => !isAnswerMissing(q.answer_text)).length;
     const withoutAnswers = total - withAnswers;
     return { total, withAnswers, withoutAnswers };
   }, [questions]);
@@ -206,8 +205,12 @@ const Review = () => {
 
   // Filtering and Sorting logic
   const processedQuestions = useMemo(() => {
-    // Filter out empty parent container questions
-    let result = questions.filter(q => q.question_text && q.question_text.trim() !== '');
+    // Hide parent container questions only if they have no text/content of their own
+    let result = questions.filter(q => {
+      const hasContent = (q.question_text && q.question_text.trim() !== '') || (q.question_content && q.question_content.trim() !== '');
+      const isContainer = questions.some(child => child.parent_question === q.question_id);
+      return hasContent || !isContainer;
+    });
 
     if (searchQuery.trim() !== '') {
       const query = searchQuery.toLowerCase();

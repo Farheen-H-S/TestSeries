@@ -60,42 +60,33 @@ def markdown_table_to_html(markdown_table: str) -> str:
 
 def text_to_html(text: str) -> str:
     """
-    Convert plain text to HTML. Converts structured markdown tables and escapes normal text safely.
+    Convert plain text to HTML. Converts structured markdown tables and escapes normal text safely,
+    ensuring tables are not nested inside paragraphs.
     """
     if not text:
         return ""
         
-    # 1. Extract structured table blocks and replace with placeholders
-    placeholders = []
+    # Split by structured table blocks
+    parts = re.split(r"(\[STRUCTURED_START\].*?\[STRUCTURED_END\])", text, flags=re.DOTALL)
+    html_parts = []
     
-    def table_replacer(match):
-        markdown_table = match.group(1)
-        html_table = markdown_table_to_html(markdown_table)
-        placeholder = f"__TABLE_PLACEHOLDER_{len(placeholders)}__"
-        placeholders.append(html_table)
-        return placeholder
-
-    # Find [STRUCTURED_START]...[STRUCTURED_END] using DOTALL so it matches multiline
-    pattern = re.compile(r"\[STRUCTURED_START\](.*?)\[STRUCTURED_END\]", re.DOTALL)
-    processed_text = pattern.sub(table_replacer, text)
-    
-    # 2. Escape HTML for safety
-    escaped_text = html.escape(processed_text)
-    
-    # 3. Format as paragraphs
-    html_content = preserve_paragraphs(escaped_text)
-    
-    # 4. Convert escaped literal br strings back to actual <br /> tags
-    html_content = html_content.replace("&lt;br&gt;", "<br />")
-    html_content = html_content.replace("&lt;br /&gt;", "<br />")
-    html_content = html_content.replace("&lt;br/&gt;", "<br />")
-    
-    # 5. Restore the HTML table placeholders
-    for idx, html_table in enumerate(placeholders):
-        # We need to replace the escaped version of the placeholder
-        escaped_placeholder = html.escape(f"__TABLE_PLACEHOLDER_{idx}__")
-        html_content = html_content.replace(escaped_placeholder, html_table)
-        # Also handle unescaped just in case
-        html_content = html_content.replace(f"__TABLE_PLACEHOLDER_{idx}__", html_table)
-        
-    return html_content
+    for part in parts:
+        if not part:
+            continue
+            
+        if part.startswith("[STRUCTURED_START]") and part.endswith("[STRUCTURED_END]"):
+            # Extract markdown table segment
+            m_table = part.replace("[STRUCTURED_START]", "").replace("[STRUCTURED_END]", "").strip()
+            html_parts.append(markdown_table_to_html(m_table))
+        else:
+            # Escape HTML
+            escaped = html.escape(part)
+            # Convert escaped literal br strings back to actual <br /> tags
+            escaped = escaped.replace("&lt;br&gt;", "<br />")
+            escaped = escaped.replace("&lt;br /&gt;", "<br />")
+            escaped = escaped.replace("&lt;br/&gt;", "<br />")
+            
+            # Format paragraphs
+            html_parts.append(preserve_paragraphs(escaped))
+            
+    return "\n".join(html_parts)
