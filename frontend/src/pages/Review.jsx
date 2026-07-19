@@ -26,6 +26,18 @@ const hasMeaningfulHtml = (html) => {
   return text.length > 0;
 };
 
+// Helper to extract table HTML block from parsed content
+const extractTableHtml = (htmlString) => {
+  if (!htmlString) return '';
+  try {
+    const doc = new DOMParser().parseFromString(htmlString, 'text/html');
+    const container = doc.querySelector('.table-container');
+    return container ? container.outerHTML : '';
+  } catch (e) {
+    return '';
+  }
+};
+
 const Review = () => {
   const { documentId } = useParams();
   const navigate = useNavigate();
@@ -54,6 +66,10 @@ const Review = () => {
     question_text: '',
     answer_text: '',
     chapter: ''
+  });
+  const [preservedTables, setPreservedTables] = useState({
+    question_tables: '',
+    answer_tables: ''
   });
   const [editErrors, setEditErrors] = useState({});
   const [isSaving, setIsSaving] = useState(false);
@@ -296,12 +312,27 @@ const Review = () => {
     e.stopPropagation(); // Avoid collapsing the card
     setEditErrors({});
     setEditGeneralError(null);
+    
+    const structuredRegex = /\[STRUCTURED_START\][\s\S]*?\[STRUCTURED_END\]/g;
+    
+    const qText = q.question_text || '';
+    const qTables = qText.match(structuredRegex) || [];
+    const cleanQText = qText.replace(structuredRegex, '').trim();
+    
+    const aText = q.answer_text || '';
+    const aTables = aText.match(structuredRegex) || [];
+    const cleanAText = aText.replace(structuredRegex, '').trim();
+    
     setEditingQuestionId(q.question_id);
     setEditForm({
       question_number: q.question_number || '',
-      question_text: q.question_text || '',
-      answer_text: q.answer_text || '',
+      question_text: cleanQText,
+      answer_text: cleanAText,
       chapter: q.chapter || ''
+    });
+    setPreservedTables({
+      question_tables: qTables.join('\n\n'),
+      answer_tables: aTables.join('\n\n')
     });
   };
 
@@ -310,6 +341,7 @@ const Review = () => {
     setEditingQuestionId(null);
     setEditErrors({});
     setEditGeneralError(null);
+    setPreservedTables({ question_tables: '', answer_tables: '' });
   };
 
   const handleFormChange = (e) => {
@@ -364,17 +396,21 @@ const Review = () => {
     setIsSaving(true);
     setEditGeneralError(null);
 
+    const finalQuestionText = (editForm.question_text.trim() + '\n\n' + (preservedTables.question_tables || '')).trim();
+    const finalAnswerText = (editForm.answer_text.trim() + '\n\n' + (preservedTables.answer_tables || '')).trim();
+
     try {
       const updatedQ = await questionService.updateQuestion(qId, {
         question_number: editForm.question_number.trim(),
-        question_text: editForm.question_text,
-        answer_text: editForm.answer_text,
+        question_text: finalQuestionText,
+        answer_text: finalAnswerText,
         chapter: Number(editForm.chapter)
       });
 
       // Update question locally inside state (no reload)
       setQuestions(prev => prev.map(q => q.question_id === qId ? updatedQ : q));
       setEditingQuestionId(null);
+      setPreservedTables({ question_tables: '', answer_tables: '' });
     } catch (err) {
       console.error('Error saving question edits:', err);
       if (err.response && err.response.status === 400) {
@@ -709,200 +745,235 @@ const Review = () => {
               />
             ) : (
               processedQuestions.map((q) => {
-                const isExpanded = !!expandedCards[q.question_id];
-                const isEditing = editingQuestionId === q.question_id;
-                const answerMissing = isAnswerMissing(q.answer_text);
-                const questionPreview = getQuestionPreview(q);
-                
-                return (
-                  <div 
-                    key={q.question_id} 
-                    className={`question-review-card ${isExpanded ? 'expanded' : ''} ${isEditing ? 'card-editing' : ''}`}
-                  >
-                    {/* Header */}
-                    <div 
-                      className="question-card-header"
-                      onClick={() => toggleCard(q.question_id)}
-                    >
-                      <div className="question-header-left">
-                        <span className="question-number-title">
-                          Question {q.question_number ?? '—'}{q.sub_question_label ? ` (${q.sub_question_label})` : ''}
-                        </span>
-                        {q.marks !== null && q.marks !== undefined && (
-                          <span className="doc-type-badge" style={{ textTransform: 'lowercase' }}>
-                            {q.marks} marks
-                          </span>
-                        )}
-                      </div>
-                      <div className="question-header-right">
-                        <span className={`question-badge ${answerMissing ? 'badge-missing' : 'badge-available'}`}>
-                          {answerMissing ? 'Answer missing' : 'Answer available'}
-                        </span>
-                        {isExpanded && !isEditing && (
-                          <button
-                            className="card-edit-trigger-btn"
-                            onClick={(e) => startEditQuestion(q, e)}
-                          >
-                            Edit
-                          </button>
-                        )}
-                        <svg viewBox="0 0 24 24" className="chevron-icon" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                          <polyline points="6 9 12 15 18 9"></polyline>
-                        </svg>
-                      </div>
-                    </div>
-
-                    {/* Collapsed Preview */}
-                    {!isExpanded && questionPreview && (
-                      <div className="question-preview-content">
-                        {questionPreview}
-                      </div>
-                    )}
-
-                    {/* Expanded Content */}
-                    {isExpanded && (
-                      <div className="question-card-body">
-                        {editGeneralError && isEditing && (
-                          <div className="edit-general-error alert-error">
-                            {editGeneralError}
-                          </div>
-                        )}
-
-                        {isEditing ? (
-                          /* EDITING FORM INTERFACE */
-                          <div className="edit-question-fields">
-                            <div className="edit-field-row">
-                              <div className="edit-input-wrapper">
-                                <label className="field-label">Question Number <span className="req">*</span></label>
-                                <input
-                                  type="text"
-                                  name="question_number"
-                                  value={editForm.question_number}
-                                  onChange={handleFormChange}
-                                  className={`input-field ${editErrors.question_number ? 'input-error' : ''}`}
-                                />
-                                {editErrors.question_number && (
-                                  <span className="field-error-text">{editErrors.question_number}</span>
-                                )}
-                              </div>
-
-                              <div className="edit-input-wrapper">
-                                <SearchableSelect
-                                  label="Chapter Mapping"
-                                  id={`edit-chapter-${q.question_id}`}
-                                  name="chapter"
-                                  placeholder="Search chapters..."
-                                  options={chapterOptions}
-                                  value={editForm.chapter}
-                                  onChange={handleChapterDropdownChange}
-                                  error={editErrors.chapter}
-                                  onCreateOption={handleCreateChapterPrompt}
-                                  required
-                                />
-                              </div>
-                            </div>
-
-                            <div className="edit-textarea-wrapper">
-                              <label className="field-label">Question Text <span className="req">*</span></label>
-                              <textarea
-                                name="question_text"
-                                value={editForm.question_text}
-                                onChange={handleFormChange}
-                                rows="6"
-                                className={`textarea-field ${editErrors.question_text ? 'input-error' : ''}`}
-                                placeholder="Enter plain question text"
-                              />
-                              {editErrors.question_text && (
-                                <span className="field-error-text">{editErrors.question_text}</span>
-                              )}
-                            </div>
-
-                            <div className="edit-textarea-wrapper">
-                              <label className="field-label">Answer Text <span className="req">*</span></label>
-                              <textarea
-                                name="answer_text"
-                                value={editForm.answer_text}
-                                onChange={handleFormChange}
-                                rows="6"
-                                className={`textarea-field ${editErrors.answer_text ? 'input-error' : ''}`}
-                                placeholder="Enter plain answer text"
-                              />
-                              {editErrors.answer_text && (
-                                <span className="field-error-text">{editErrors.answer_text}</span>
-                              )}
-                            </div>
-
-                            <div className="edit-actions-panel">
-                              <Button
-                                type="button"
-                                variant="outline"
-                                onClick={cancelEditQuestion}
-                                disabled={isSaving}
-                              >
-                                Cancel
-                              </Button>
-                              <Button
-                                type="button"
-                                variant="primary"
-                                onClick={(e) => saveEditQuestion(q.question_id, e)}
-                                disabled={isSaving}
-                              >
-                                {isSaving ? 'Saving...' : 'Save'}
-                              </Button>
-                            </div>
-                          </div>
-                        ) : (
-                          /* READ ONLY VIEW MODE */
-                          <>
-                            <div className="question-field-group">
-                              <span className="question-field-label">Chapter</span>
-                              <span className="metadata-value" style={{ fontWeight: 600 }}>
-                                {q.chapter_name || 'Not Assigned'}
-                              </span>
-                            </div>
-
-                            <div className="question-field-group">
-                              <span className="question-field-label">Question</span>
-                              {hasMeaningfulHtml(q.question_content) ? (
-                                <div 
-                                  className="question-text-box"
-                                  dangerouslySetInnerHTML={{ __html: q.question_content }}
-                                />
-                              ) : (
-                                <div className="question-text-box">
-                                  {q.question_text || '—'}
-                                </div>
-                              )}
-                            </div>
-
-                            <div className="question-field-group">
-                              <span className="question-field-label">Answer</span>
-                              {answerMissing ? (
-                                <div className="question-text-box warning-box">
-                                  Answer not available
-                                </div>
-                              ) : hasMeaningfulHtml(q.answer_content) ? (
-                                <div 
-                                  className="question-text-box"
-                                  dangerouslySetInnerHTML={{ __html: q.answer_content }}
-                                />
-                              ) : (
-                                <div className="question-text-box">
-                                  {q.answer_text}
-                                </div>
-                              )}
-                            </div>
-                          </>
-                        )}
-                      </div>
+            const isExpanded = !!expandedCards[q.question_id];
+            const isEditing = editingQuestionId === q.question_id;
+            const answerMissing = isAnswerMissing(q.answer_text);
+            const questionPreview = getQuestionPreview(q);
+            
+            const qTableHtml = extractTableHtml(q.question_content);
+            const aTableHtml = extractTableHtml(q.answer_content);
+            
+            return (
+              <div 
+                key={q.question_id} 
+                className={`question-review-card ${isExpanded ? 'expanded' : ''} ${isEditing ? 'card-editing' : ''}`}
+              >
+                {/* Header */}
+                <div 
+                  className="question-card-header"
+                  onClick={() => toggleCard(q.question_id)}
+                >
+                  <div className="question-header-left">
+                    <span className="question-number-title">
+                      Question {q.question_number ?? '—'}{q.sub_question_label ? ` (${q.sub_question_label})` : ''}
+                    </span>
+                    {q.marks !== null && q.marks !== undefined && (
+                      <span className="doc-type-badge" style={{ textTransform: 'lowercase' }}>
+                        {q.marks} marks
+                      </span>
                     )}
                   </div>
-                );
-              })
-            )}
-          </section>
-        </div>
+                  <div className="question-header-right">
+                    <span className={`question-badge ${answerMissing ? 'badge-missing' : 'badge-available'}`}>
+                      {answerMissing ? 'Answer missing' : 'Answer available'}
+                    </span>
+                    <svg viewBox="0 0 24 24" className="chevron-icon" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                      <polyline points="6 9 12 15 18 9"></polyline>
+                    </svg>
+                  </div>
+                </div>
+
+                {/* Collapsed Preview */}
+                {!isExpanded && questionPreview && (
+                  <div className="question-preview-content">
+                    {questionPreview}
+                  </div>
+                )}
+
+                {/* Expanded Content */}
+                {isExpanded && (
+                  <div className="question-card-body">
+                    {editGeneralError && isEditing && (
+                      <div className="edit-general-error alert-error">
+                        {editGeneralError}
+                      </div>
+                    )}
+
+                    {isEditing ? (
+                      /* EDITING FORM INTERFACE */
+                      <div className="edit-question-fields">
+                        <div className="edit-field-row">
+                          <div className="edit-input-wrapper">
+                            <label className="field-label">Question Number <span className="req">*</span></label>
+                            <input
+                              type="text"
+                              name="question_number"
+                              value={editForm.question_number}
+                              onChange={handleFormChange}
+                              className={`input-field ${editErrors.question_number ? 'input-error' : ''}`}
+                            />
+                            {editErrors.question_number && (
+                              <span className="field-error-text">{editErrors.question_number}</span>
+                            )}
+                          </div>
+
+                          <div className="edit-input-wrapper">
+                            <SearchableSelect
+                              label="Chapter Mapping"
+                              id={`edit-chapter-${q.question_id}`}
+                              name="chapter"
+                              placeholder="Search chapters..."
+                              options={chapterOptions}
+                              value={editForm.chapter}
+                              onChange={handleChapterDropdownChange}
+                              error={editErrors.chapter}
+                              onCreateOption={handleCreateChapterPrompt}
+                              required
+                            />
+                          </div>
+                        </div>
+
+                        <div className="edit-textarea-wrapper">
+                          <label className="field-label">Question Text <span className="req">*</span></label>
+                          <textarea
+                            name="question_text"
+                            value={editForm.question_text}
+                            onChange={handleFormChange}
+                            rows="6"
+                            className={`textarea-field ${editErrors.question_text ? 'input-error' : ''}`}
+                            placeholder="Enter plain question text"
+                          />
+                          {editErrors.question_text && (
+                            <span className="field-error-text">{editErrors.question_text}</span>
+                          )}
+                          {qTableHtml && (
+                            <div className="preserved-table-preview-group">
+                              <span className="preserved-table-label">
+                                <svg className="preserved-table-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ width: '14px', height: '14px', marginRight: '6px' }}>
+                                  <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
+                                  <line x1="9" y1="3" x2="9" y2="21"></line>
+                                  <line x1="15" y1="3" x2="15" y2="21"></line>
+                                  <line x1="3" y1="9" x2="21" y2="9"></line>
+                                  <line x1="3" y1="15" x2="21" y2="15"></line>
+                                </svg>
+                                Preserved Question Table (Read-Only)
+                              </span>
+                              <div dangerouslySetInnerHTML={{ __html: qTableHtml }} />
+                            </div>
+                          )}
+                        </div>
+
+                        <div className="edit-textarea-wrapper">
+                          <label className="field-label">Answer Text <span className="req">*</span></label>
+                          <textarea
+                            name="answer_text"
+                            value={editForm.answer_text}
+                            onChange={handleFormChange}
+                            rows="6"
+                            className={`textarea-field ${editErrors.answer_text ? 'input-error' : ''}`}
+                            placeholder="Enter plain answer text"
+                          />
+                          {editErrors.answer_text && (
+                            <span className="field-error-text">{editErrors.answer_text}</span>
+                          )}
+                          {aTableHtml && (
+                            <div className="preserved-table-preview-group">
+                              <span className="preserved-table-label">
+                                <svg className="preserved-table-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ width: '14px', height: '14px', marginRight: '6px' }}>
+                                  <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
+                                  <line x1="9" y1="3" x2="9" y2="21"></line>
+                                  <line x1="15" y1="3" x2="15" y2="21"></line>
+                                  <line x1="3" y1="9" x2="21" y2="9"></line>
+                                  <line x1="3" y1="15" x2="21" y2="15"></line>
+                                </svg>
+                                Preserved Answer Table (Read-Only)
+                              </span>
+                              <div dangerouslySetInnerHTML={{ __html: aTableHtml }} />
+                            </div>
+                          )}
+                        </div>
+
+                        <div className="edit-actions-panel">
+                          <Button
+                            type="button"
+                            variant="outline"
+                            onClick={cancelEditQuestion}
+                            disabled={isSaving}
+                          >
+                            Cancel
+                          </Button>
+                          <Button
+                            type="button"
+                            variant="primary"
+                            onClick={(e) => saveEditQuestion(q.question_id, e)}
+                            disabled={isSaving}
+                          >
+                            {isSaving ? 'Saving...' : 'Save'}
+                          </Button>
+                        </div>
+                      </div>
+                    ) : (
+                      /* READ ONLY VIEW MODE */
+                      <>
+                        <div className="question-field-group">
+                          <span className="question-field-label">Chapter</span>
+                          <span className="metadata-value" style={{ fontWeight: 600 }}>
+                            {q.chapter_name || 'Not Assigned'}
+                          </span>
+                        </div>
+
+                        <div className="question-field-group">
+                          <span className="question-field-label">Question</span>
+                          {hasMeaningfulHtml(q.question_content) ? (
+                            <div 
+                              className="question-text-box"
+                              dangerouslySetInnerHTML={{ __html: q.question_content }}
+                            />
+                          ) : (
+                            <div className="question-text-box">
+                              {q.question_text || '—'}
+                            </div>
+                          )}
+                        </div>
+
+                        <div className="question-field-group">
+                          <span className="question-field-label">Answer</span>
+                          {answerMissing ? (
+                            <div className="question-text-box warning-box">
+                              Answer not available
+                            </div>
+                          ) : hasMeaningfulHtml(q.answer_content) ? (
+                            <div 
+                              className="question-text-box"
+                              dangerouslySetInnerHTML={{ __html: q.answer_content }}
+                            />
+                          ) : (
+                            <div className="question-text-box">
+                              {q.answer_text}
+                            </div>
+                          )}
+                        </div>
+
+                        <div className="card-actions-footer">
+                          <Button
+                            type="button"
+                            variant="outline"
+                            onClick={(e) => startEditQuestion(q, e)}
+                          >
+                            Edit Question
+                          </Button>
+                        </div>
+                      </>
+                    )}
+                  </div>
+                )}
+              </div>
+            );
+          })
+        )}
       </section>
+    </div>
+  </section>
 
       {/* INLINE CHAPTER CREATION CONFIRMATION DIALOG MODAL */}
       {pendingChapterName && (

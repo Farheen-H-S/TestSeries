@@ -42,7 +42,7 @@
 
 @media (min-width: 1024px) {
   .overview-section {
-    grid-template-columns: 2fr 1fr 1fr;
+    grid-template-columns: 2fr 1.2fr;
   }
 }
 
@@ -97,9 +97,15 @@
 
 /* Stats Cards */
 .stats-grid {
-  display: flex;
-  flex-direction: column;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
   gap: 1rem;
+}
+
+@media (max-width: 480px) {
+  .stats-grid {
+    grid-template-columns: 1fr;
+  }
 }
 
 .stat-item {
@@ -823,5 +829,32 @@
 
 .structured-table tr:hover {
   background-color: rgba(0, 0, 0, 0.02);
+}
+
+.card-actions-footer {
+  display: flex;
+  justify-content: flex-end;
+  border-top: 1px dashed var(--border-color);
+  padding-top: 1rem;
+  margin-top: 0.5rem;
+}
+
+.preserved-table-preview-group {
+  margin-top: 0.75rem;
+  padding: 1rem;
+  background-color: var(--background-color);
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius-md);
+}
+
+.preserved-table-label {
+  display: inline-flex;
+  align-items: center;
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: var(--accent-color);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-bottom: 0.75rem;
 }
 
