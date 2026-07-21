@@ -535,9 +535,48 @@ class ParserRegressionTests(unittest.TestCase):
         self.assertIsNone(parsed[7].shared_context)
         self.assertIsNone(parsed[8].shared_context)
 
+    def test_word_boundary_strong_header(self):
+        from apps.extraction.services.header_validator import HeaderValidator
+        validator = HeaderValidator()
+        
+        # Genuine strong headers
+        self.assertTrue(validator.is_strong_header("Question 1"))
+        self.assertTrue(validator.is_strong_header("Answer 5"))
+        self.assertTrue(validator.is_strong_header("Solution 3"))
+        
+        # Words containing substrings should NOT be strong headers
+        self.assertFalse(validator.is_strong_header("Questionnaire"))
+        self.assertFalse(validator.is_strong_header("Answered"))
+        self.assertFalse(validator.is_strong_header("Consolidated"))
+
+    def test_working_notes_auto_recovery_on_ocr_corruption(self):
+        # Configure a short max_working_notes_length to test self-healing auto-recovery
+        self.config.max_working_notes_length = 100
+        
+        text = textwrap.dedent("""
+            Question 10
+            Main answer text for question 10.
+
+            Working Notes:
+            1. Note item 1
+            Calculation details.
+
+            corrupted_header_ll_fails_validation
+            Filling 150 characters of padding text to trigger max distance threshold recovery in working notes zone...
+            Padding padding padding padding padding padding padding padding padding padding padding padding.
+
+            12.
+            Answer text for question 12 after recovery.
+        """).strip()
+
+        parsed = self.a_parser.parse(text, self.offsets)
+        # Verify Question 12 parsed successfully after auto-recovery
+        paths = [p.hierarchy_path for p in parsed]
+        self.assertIn(["12"], paths)
 
 
 if __name__ == "__main__":
     unittest.main()
+
 
 

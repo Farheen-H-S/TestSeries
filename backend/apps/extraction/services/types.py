@@ -133,6 +133,8 @@ class ParserConfig:
     semantic_score_threshold: int = 2
     # Compiled question start boundary patterns
     question_start_patterns: List[re.Pattern] = field(default_factory=list)
+    max_working_notes_length: int = 4000
+
 
 
 @dataclass

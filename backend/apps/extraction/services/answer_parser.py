@@ -104,8 +104,7 @@ class AnswerParser:
         working_notes_start_offset = 0
         prev_match_end = 0
 
-        # Maximum character length for a Working Notes zone before self-healing recovery
-        MAX_WORKING_NOTES_ZONE_LEN = 4000
+        max_wn_len = getattr(self.config, 'max_working_notes_length', 4000)
 
         for match in all_potential_matches:
             raw_header = text[match.start():match.end()]
@@ -138,10 +137,11 @@ class AnswerParser:
                 s_num = int(s_main) if s_main and s_main.isdigit() else 0
 
                 # Self-healing recovery if character distance threshold exceeded
-                distance_exceeded = (match.start() - working_notes_start_offset) > MAX_WORKING_NOTES_ZONE_LEN
+                distance_exceeded = (match.start() - working_notes_start_offset) > max_wn_len
 
                 if is_strong or (c_num > 0 and c_num > s_num) or distance_exceeded:
                     parser_state = ParserState.DEFAULT
+                    working_notes_start_offset = 0
                     if distance_exceeded:
                         logger.warning("Working Notes zone auto-recovered due to max distance threshold | start_offset=%d", match.start())
                 else:
@@ -152,6 +152,7 @@ class AnswerParser:
                     })
                     prev_match_end = match.end()
                     continue
+
 
             # 4. Check if this match falls inside a structured block (table region)
             inside_block = self._is_inside_structured_block(match.start(), normalized_text)
