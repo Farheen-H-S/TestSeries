@@ -89,19 +89,20 @@ class AnswerParser:
         hierarchy_stack: List[str] = []
         validated_matches = []
         
-        # Classify sections and extract working notes
+        # Classify sections
         sections = self._classify_sections(normalized_text)
 
         for match in all_potential_matches:
-            # Skip matches that fall inside a WORKING_NOTE section; they belong to the parent answer's working notes
-            if self._get_section_type(match.start(), sections) == AnswerSectionType.WORKING_NOTE:
+            # Skip matches that fall inside a local Working Notes zone; they belong to the parent answer's working notes
+            if self._is_inside_working_notes_zone(match.start(), text):
                 raw_header = text[match.start():match.end()]
-                logger.debug("Ignoring answer candidate inside WORKING_NOTE section: %s", raw_header)
+                logger.debug("Ignoring answer candidate inside Working Notes zone: %s", raw_header)
                 diagnostics.rejected_headers.append({
                     "header": raw_header,
-                    "reason": "inside WORKING_NOTE section"
+                    "reason": "inside Working Notes zone"
                 })
                 continue
+
 
             # Check if this match falls inside a structured block (table region)
             if self._is_inside_structured_block(match.start(), normalized_text):
@@ -246,11 +247,28 @@ class AnswerParser:
         return main_text, working_notes
 
 
+    def _is_inside_working_notes_zone(self, start_idx: int, text: str) -> bool:
+        """
+        Checks if a candidate match falls inside a local Working Notes zone
+        (preceded by 'Working Notes:' without an intervening top-level answer header).
+        """
+        last_wn = re.search(r"(?im)^[ \t]*(?:Working\s+Notes?|W\.?N\.?)\s*[:\-–—]?", text[:start_idx])
+        if not last_wn:
+            return False
+
+        wn_pos = last_wn.start()
+        intervening = re.search(
+            r"(?im)^[ \t]*(?:Answer\s+(?:to\s+)?(?:Question\s+)?|Ans\.?\s*|Solution\s*|Question\s+|Q\.?\s*)(?:No\.\s*)?\d+",
+            text[wn_pos:start_idx]
+        )
+        return intervening is None
+
     def _is_inside_structured_block(self, start_idx: int, text: str) -> bool:
         last_start = text.rfind("[STRUCTURED_START]", 0, start_idx)
         if last_start == -1:
             return False
         last_end = text.rfind("[STRUCTURED_END]", 0, start_idx)
         return last_start > last_end
+
 
 
