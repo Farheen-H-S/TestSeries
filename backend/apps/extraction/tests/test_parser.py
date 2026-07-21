@@ -495,7 +495,49 @@ class ParserRegressionTests(unittest.TestCase):
         self.assertEqual(parsed[0].working_notes[0].title, "Shareholding pattern")
         self.assertEqual(parsed[0].working_notes[0].content, "Calculation details here.")
 
+    def test_multi_group_context_isolation(self):
+        text = textwrap.dedent("""
+            Case Scenario A
+            Details for scenario A...
+            Based on the facts given above, answer Questions 1 to 4 below:
+
+            1. Question 1 text?
+            2. Question 2 text?
+            3. Question 3 text?
+            4. Question 4 text?
+
+            Case Scenario B
+            The following Balance Sheet relates to company B...
+            Based on the facts given above, answer Questions 5 to 7 below:
+
+            5. Question 5 text?
+            6. Question 6 text?
+            7. Question 7 text?
+
+            Part II - Descriptive Questions
+
+            8. Question 8 standalone text without scenario.
+            9. Question 9 standalone text without scenario.
+        """).strip()
+
+        parsed = self.q_parser.parse(text, self.offsets)
+        self.assertEqual(len(parsed), 9)
+
+        # Q1 to Q4 should have Context A
+        for i in range(4):
+            self.assertIn("Case Scenario A", parsed[i].shared_context)
+
+        # Q5 to Q7 should have Context B
+        for i in range(4, 7):
+            self.assertIn("Case Scenario B", parsed[i].shared_context)
+
+        # Q8 and Q9 are standalone and should NOT have shared_context
+        self.assertIsNone(parsed[7].shared_context)
+        self.assertIsNone(parsed[8].shared_context)
+
+
 
 if __name__ == "__main__":
     unittest.main()
+
 

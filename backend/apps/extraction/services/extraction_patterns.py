@@ -23,11 +23,11 @@ MCQ_ANSWER_SECTION_PATTERNS = [
 WORKING_NOTE_SECTION_PATTERNS = [
     r"(?i)^[ \t]*Working\s+Notes?(?:\s*[:\-–—])?",
     r"(?i)^[ \t]*W\.?N\.?\s*(?:\d+|[:\-–—])",
-    r"(?i)^[ \t]*Notes?(?:\s*[:\-–—])?",
     r"(?i)^[ \t]*Illustrations?(?:\s*[:\-–—])?",
     r"(?i)^[ \t]*Annexures?(?:\s*[:\-–—])?",
     r"(?i)^[ \t]*Appendix(?:\s*[:\-–—])?",
 ]
+
 
 WORKING_NOTE_HEADER_PATTERNS = [
     r"(?i)^[ \t]*(?:Working\s+Note|W\.?N\.?)\s*(\d+)(?:\s*[:\-–—\.]?\s*(.*?))?$",

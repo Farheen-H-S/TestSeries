@@ -275,6 +275,7 @@ class QuestionParser:
             return
 
         current_context = None
+        max_q_num = None
 
         # Check preamble before the first question
         first_start = validated_matches[0][0].start()
@@ -283,10 +284,14 @@ class QuestionParser:
             cleaned = self._clean_document_metadata(preamble_text)
             if cleaned:
                 current_context = cleaned
+                range_match = re.search(r"(?i)Questions?\s+\d+\s+to\s+(\d+)", preamble_text)
+                if range_match:
+                    max_q_num = int(range_match.group(1))
 
         for i, pq in enumerate(parsed_questions):
             # Check gap before main question i (where i > 0 and pq is a main question)
             if i > 0 and len(pq.hierarchy_path) == 1:
+                main_num = int(pq.hierarchy_path[0]) if pq.hierarchy_path[0].isdigit() else None
                 prev_match = validated_matches[i-1][0]
                 curr_match = validated_matches[i][0]
                 gap_raw = text[prev_match.end():curr_match.start()]
@@ -299,20 +304,28 @@ class QuestionParser:
                 if ctx_match:
                     # Text before ctx_match belongs to previous question
                     prev_extra = gap_raw[:ctx_match.start()].strip()
-                    if prev_extra and i > 0:
+                    if prev_extra:
                         parsed_questions[i-1].text = (parsed_questions[i-1].text + "\n" + prev_extra).strip()
                     
                     raw_context = gap_raw[ctx_match.start():].strip()
                     cleaned_context = self._clean_document_metadata(raw_context)
                     if cleaned_context:
                         current_context = cleaned_context
-                elif gap_raw.strip() and len(gap_raw.strip().split("\n")) > 2:
-                    # Unnumbered multi-line text block in gap
-                    cleaned_context = self._clean_document_metadata(gap_raw.strip())
-                    if cleaned_context and not re.search(r"(?i)\b(?:Marks|Page)\b", cleaned_context):
-                        current_context = cleaned_context
+                        range_match = re.search(r"(?i)Questions?\s+\d+\s+to\s+(\d+)", raw_context)
+                        max_q_num = int(range_match.group(1)) if range_match else None
+                elif max_q_num is not None and main_num is not None and main_num > max_q_num:
+                    # Beyond declared question range for this context
+                    current_context = None
+                    max_q_num = None
+                elif re.search(r"(?im)^[ \t]*(?:Part\b|Section\b|Descriptive\s+Questions)", gap_raw):
+                    # Section break in gap
+                    current_context = None
+                    max_q_num = None
+
 
             pq.shared_context = current_context
+
+
 
 
     def _score_semantics(self, text: str) -> Tuple[int, List[str]]:

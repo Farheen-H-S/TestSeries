@@ -35,20 +35,16 @@ class AnswerMatcher:
             if len(a_list) > 1:
                 diagnostics.duplicate_answer_ids.append("-".join(key))
 
-        # 3. Perform 1:1 Matching with Section-Aware Scoping
+        # 3. Perform strict 1:1 Matching
         matches: List[Tuple[ParsedQuestion, ParsedAnswer]] = []
-        from .types import AnswerSectionType
         
         all_keys = set(q_map.keys()) | set(a_map.keys())
         for key in all_keys:
             qs = q_map.get(key, [])
-            raw_as = a_map.get(key, [])
+            as_ = a_map.get(key, [])
             
             key_str = "-".join(key)
-            
-            # Prefer primary answer nodes (MCQ_ANSWER or MAIN_ANSWER) over isolated WORKING_NOTE nodes
-            primary_as = [a for a in raw_as if a.section_type in (AnswerSectionType.MCQ_ANSWER, AnswerSectionType.MAIN_ANSWER)]
-            as_ = primary_as if primary_as else raw_as
+
 
             if len(qs) == 1 and len(as_) == 1:
                 q = qs[0]
