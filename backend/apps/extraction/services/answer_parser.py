@@ -97,16 +97,41 @@ class AnswerParser:
             len(all_potential_matches)
         )
 
+        from .extraction_patterns import WORKING_NOTE_HEADER_PATTERNS, WORKING_NOTE_SECTION_PATTERNS
+
+        last_main_answer_start = 0
+
         for match in all_potential_matches:
-            # Skip matches that fall inside a local Working Notes zone; they belong to the parent answer's working notes
-            if self._is_inside_working_notes_zone(match.start(), normalized_text):
-                raw_header = text[match.start():match.end()]
-                logger.info("Answer candidate rejected | candidate=%r | reason=inside Working Notes zone | start_offset=%d", raw_header, match.start())
+            raw_header = text[match.start():match.end()]
+
+            # Skip matches that are explicit Working Note headers (e.g. "Working Note 1", "W.N. 1")
+            if any(re.search(pat, raw_header) for pat in WORKING_NOTE_HEADER_PATTERNS):
+                logger.info("Answer candidate rejected | candidate=%r | reason=explicit Working Note header | start_offset=%d", raw_header, match.start())
                 diagnostics.rejected_headers.append({
                     "header": raw_header,
-                    "reason": "inside Working Notes zone"
+                    "reason": "explicit Working Note header"
                 })
                 continue
+
+            # Check if Working Notes section header exists between last main answer and this candidate
+            segment = text[last_main_answer_start:match.start()]
+            has_wn_section = any(re.search(pat, segment, re.MULTILINE) for pat in WORKING_NOTE_SECTION_PATTERNS)
+            if has_wn_section:
+                is_explicit_main = bool(re.search(
+                    r"(?i)^[ \t]*(?:Answer\s+(?:to\s+)?(?:Question\s+)?|Ans\.?\s*|Solution\s*|Question\s+|Q\.?\s*)(?:No\.\s*)?\d+"
+                    r"|^[ \t]*(?:Suggested\s+Answers?|Suggested\s+Solutions?|Part\s+[I|V|X]+|Answers?\s+to\s+Questions?)",
+                    raw_header
+                ))
+                if not is_explicit_main:
+                    logger.info("Answer candidate rejected | candidate=%r | reason=item inside Working Notes section | start_offset=%d", raw_header, match.start())
+                    diagnostics.rejected_headers.append({
+                        "header": raw_header,
+                        "reason": "item inside Working Notes section"
+                    })
+                    continue
+
+
+
 
             # Check if this match falls inside a structured block (table region)
             if self._is_inside_structured_block(match.start(), normalized_text):
@@ -135,6 +160,8 @@ class AnswerParser:
                     old_stack, hierarchy_stack, normalized_header, match.start()
                 )
                 validated_matches.append((match, list(hierarchy_stack)))
+                last_main_answer_start = match.start()
+
             else:
                 raw_header = text[match.start():match.end()]
                 reason_str = result.reason or "Unknown rejection"
@@ -260,38 +287,10 @@ class AnswerParser:
 
         return main_text, working_notes
 
-
-    def _is_inside_working_notes_zone(self, start_idx: int, normalized_text: str) -> bool:
-        """
-        Checks if a candidate match falls inside a local Working Notes zone
-        (preceded by 'Working Notes:' without an intervening top-level answer header).
-        """
-        wn_matches = list(re.finditer(r"(?im)^[ \t]*(?:Working\s+Notes?|W\.?N\.?)\s*[:\-–—]?", normalized_text[:start_idx]))
-        if not wn_matches:
-            return False
-
-        last_wn = wn_matches[-1]
-        wn_pos = last_wn.start()
-        gap_segment = normalized_text[wn_pos:start_idx]
-
-        # Working notes zone is terminated by a top-level question/answer header or section header
-        top_level_pattern = re.compile(
-            r"(?im)^[ \t]*(?:Answer\s+(?:to\s+)?(?:Question\s+)?|Ans\.?\s*|Solution\s*|Question\s+|Q\.?\s*)(?:No\.\s*)?\d+"
-            r"|^[ \t]*(?:Suggested\s+Answers?|Suggested\s+Solutions?|Part\s+[I|V|X]+|Answers?\s+to\s+Questions?)"
-        )
-        if top_level_pattern.search(gap_segment):
-            return False
-
-        return True
-
-
-
     def _is_inside_structured_block(self, start_idx: int, text: str) -> bool:
         last_start = text.rfind("[STRUCTURED_START]", 0, start_idx)
         if last_start == -1:
             return False
         last_end = text.rfind("[STRUCTURED_END]", 0, start_idx)
-        return last_start > last_end
-
 
 
