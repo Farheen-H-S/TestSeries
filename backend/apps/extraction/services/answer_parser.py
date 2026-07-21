@@ -94,7 +94,8 @@ class AnswerParser:
 
         for match in all_potential_matches:
             # Skip matches that fall inside a local Working Notes zone; they belong to the parent answer's working notes
-            if self._is_inside_working_notes_zone(match.start(), text):
+            if self._is_inside_working_notes_zone(match.start(), normalized_text):
+
                 raw_header = text[match.start():match.end()]
                 logger.debug("Ignoring answer candidate inside Working Notes zone: %s", raw_header)
                 diagnostics.rejected_headers.append({
@@ -247,21 +248,30 @@ class AnswerParser:
         return main_text, working_notes
 
 
-    def _is_inside_working_notes_zone(self, start_idx: int, text: str) -> bool:
+    def _is_inside_working_notes_zone(self, start_idx: int, normalized_text: str) -> bool:
         """
         Checks if a candidate match falls inside a local Working Notes zone
         (preceded by 'Working Notes:' without an intervening top-level answer header).
         """
-        last_wn = re.search(r"(?im)^[ \t]*(?:Working\s+Notes?|W\.?N\.?)\s*[:\-–—]?", text[:start_idx])
-        if not last_wn:
+        wn_matches = list(re.finditer(r"(?im)^[ \t]*(?:Working\s+Notes?|W\.?N\.?)\s*[:\-–—]?", normalized_text[:start_idx]))
+        if not wn_matches:
             return False
 
+        last_wn = wn_matches[-1]
         wn_pos = last_wn.start()
-        intervening = re.search(
-            r"(?im)^[ \t]*(?:Answer\s+(?:to\s+)?(?:Question\s+)?|Ans\.?\s*|Solution\s*|Question\s+|Q\.?\s*)(?:No\.\s*)?\d+",
-            text[wn_pos:start_idx]
+        gap_segment = normalized_text[wn_pos:start_idx]
+
+        # Working notes zone is terminated by a top-level question/answer header or section header
+        top_level_pattern = re.compile(
+            r"(?im)^[ \t]*(?:Answer\s+(?:to\s+)?(?:Question\s+)?|Ans\.?\s*|Solution\s*|Question\s+|Q\.?\s*)(?:No\.\s*)?\d+"
+            r"|^[ \t]*(?:Suggested\s+Answers?|Suggested\s+Solutions?|Part\s+[I|V|X]+|Answers?\s+to\s+Questions?)"
         )
-        return intervening is None
+        if top_level_pattern.search(gap_segment):
+            return False
+
+        return True
+
+
 
     def _is_inside_structured_block(self, start_idx: int, text: str) -> bool:
         last_start = text.rfind("[STRUCTURED_START]", 0, start_idx)
