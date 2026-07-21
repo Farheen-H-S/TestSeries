@@ -17,8 +17,7 @@ class HeaderValidator:
         match: re.Match,
         path: List[str],
         current_stack: List[str],
-        full_text: str,
-        inside_working_notes: bool = False
+        full_text: str
     ) -> ValidationResult:
         """
         Validates if a potential header is structurally sound and logically follows the current hierarchy.
@@ -30,28 +29,10 @@ class HeaderValidator:
         raw_header = match.group(0)
         start_idx = match.start()
 
-        # 0. Working Notes Zone Validation
-        if inside_working_notes:
-            from .extraction_patterns import WORKING_NOTE_HEADER_PATTERNS
-            if any(re.search(pat, raw_header) for pat in WORKING_NOTE_HEADER_PATTERNS):
-                return ValidationResult(False, "explicit Working Note header")
-                
-            is_strong = self._is_strong_header(raw_header)
-            
-            c_main, _, _ = HierarchyUtils.decompose_path(path)
-            s_main, _, _ = HierarchyUtils.decompose_path(current_stack)
-            
-            c_num = int(c_main) if c_main and c_main.isdigit() else 0
-            s_num = int(s_main) if s_main and s_main.isdigit() else 0
-            
-            # Non-strong headers with numbers <= current stack main number belong to working notes
-            if not is_strong and (c_num == 0 or c_num <= s_num):
-                return ValidationResult(False, "item inside Working Notes section")
-            
         # 1. Structural Validation (Start of Line)
         if not self._is_start_of_line(start_idx, full_text):
             # Only allow if it's a "strong" header (e.g. "Question 1")
-            if not self._is_strong_header(raw_header):
+            if not self.is_strong_header(raw_header):
                 return ValidationResult(False, "not start of line")
 
         # 2. Hierarchy Validation
@@ -72,10 +53,12 @@ class HeaderValidator:
             check_idx -= 1
         return True
 
-    def _is_strong_header(self, raw_header: str) -> bool:
-        upper = raw_header.upper()
-        # Strong markers that can appear without being at start of line (rare)
-        return "QUESTION" in upper or "ANS" in upper or "SOL" in upper or "Q." in upper
+    def is_strong_header(self, raw_header: str) -> bool:
+        """
+        Anchored word-boundary check for strong header keywords (QUESTION, ANSWER, SOL, etc.).
+        """
+        return bool(re.search(r"(?i)\b(?:QUESTION|ANSWER|ANS|SOL|SOLUTION|PART|SECTION)\b", raw_header))
+
 
     ALLOWED_PARENT_LEVELS = {
         "main": {"root", "main", "alpha", "roman"},

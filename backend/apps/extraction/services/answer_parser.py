@@ -97,20 +97,51 @@ class AnswerParser:
             len(all_potential_matches)
         )
 
-        from .extraction_patterns import WORKING_NOTE_SECTION_PATTERNS
+        from .extraction_patterns import WORKING_NOTE_HEADER_PATTERNS, WORKING_NOTE_SECTION_PATTERNS
 
         inside_working_notes_zone = False
         prev_match_end = 0
 
         for match in all_potential_matches:
             raw_header = text[match.start():match.end()]
+            normalized_header = match.group(0)
+            path = self.normalizer.normalize_header(normalized_header)
 
             # 1. Check if Working Notes section marker appears in gap between previous match end and current match start
             gap_text = normalized_text[prev_match_end:match.start()]
             if any(re.search(pat, gap_text, re.MULTILINE) for pat in WORKING_NOTE_SECTION_PATTERNS):
                 inside_working_notes_zone = True
 
-            # 2. Check if this match falls inside a structured block (table region)
+            # 2. Skip matches that are explicit Working Note headers (e.g. "Working Note 1", "W.N. 1")
+            if any(re.search(pat, raw_header) for pat in WORKING_NOTE_HEADER_PATTERNS):
+                logger.info("Answer candidate rejected | candidate=%r | reason=explicit Working Note header | start_offset=%d", raw_header, match.start())
+                diagnostics.rejected_headers.append({
+                    "header": raw_header,
+                    "reason": "explicit Working Note header"
+                })
+                prev_match_end = match.end()
+                continue
+
+            # 3. Handle Working Notes zone state transitions & filtering
+            if inside_working_notes_zone:
+                is_strong = self.validator.is_strong_header(raw_header)
+                c_main, _, _ = HierarchyUtils.decompose_path(path)
+                s_main, _, _ = HierarchyUtils.decompose_path(hierarchy_stack)
+                c_num = int(c_main) if c_main and c_main.isdigit() else 0
+                s_num = int(s_main) if s_main and s_main.isdigit() else 0
+
+                if is_strong or (c_num > 0 and c_num > s_num):
+                    inside_working_notes_zone = False
+                else:
+                    logger.info("Answer candidate rejected | candidate=%r | reason=item inside Working Notes section | start_offset=%d", raw_header, match.start())
+                    diagnostics.rejected_headers.append({
+                        "header": raw_header,
+                        "reason": "item inside Working Notes section"
+                    })
+                    prev_match_end = match.end()
+                    continue
+
+            # 4. Check if this match falls inside a structured block (table region)
             if self._is_inside_structured_block(match.start(), normalized_text):
                 if context:
                     context.inside_structured_block = True
@@ -125,16 +156,9 @@ class AnswerParser:
                 if context:
                     context.inside_structured_block = False
                     
-            normalized_header = match.group(0)
-            path = self.normalizer.normalize_header(normalized_header)
-            
-            # 3. Delegate structural & working note validation to HeaderValidator
-            result = self.validator.is_valid(
-                match, path, hierarchy_stack, normalized_text, inside_working_notes=inside_working_notes_zone
-            )
+            # 5. Pure structural and hierarchy validation using HeaderValidator
+            result = self.validator.is_valid(match, path, hierarchy_stack, normalized_text)
             if result.is_valid:
-                # Validated top-level answer header terminates the Working Notes zone
-                inside_working_notes_zone = False
                 old_stack = list(hierarchy_stack)
                 HierarchyUtils.update_hierarchy_stack(hierarchy_stack, path)
                 logger.debug(
@@ -154,6 +178,7 @@ class AnswerParser:
                     "reason": reason_str
                 })
                 prev_match_end = match.end()
+
 
 
 
