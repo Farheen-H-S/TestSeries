@@ -1,7 +1,8 @@
 import re
 import logging
 from typing import List, Tuple, Optional
-from .types import ParsedAnswer, ParserConfig, AnswerParseResult, ParsingDiagnostics, ParsingContext
+from .types import ParsedAnswer, ParserConfig, AnswerParseResult, ParsingDiagnostics, ParsingContext, AnswerSectionType
+
 from .normalizer import Normalizer
 from .hierarchy_utils import HierarchyUtils
 from .header_validator import HeaderValidator
@@ -88,7 +89,20 @@ class AnswerParser:
         hierarchy_stack: List[str] = []
         validated_matches = []
         
+        # Classify sections and extract working notes
+        sections = self._classify_sections(normalized_text)
+
         for match in all_potential_matches:
+            # Skip matches that fall inside a WORKING_NOTE section; they belong to the parent answer's working notes
+            if self._get_section_type(match.start(), sections) == AnswerSectionType.WORKING_NOTE:
+                raw_header = text[match.start():match.end()]
+                logger.debug("Ignoring answer candidate inside WORKING_NOTE section: %s", raw_header)
+                diagnostics.rejected_headers.append({
+                    "header": raw_header,
+                    "reason": "inside WORKING_NOTE section"
+                })
+                continue
+
             # Check if this match falls inside a structured block (table region)
             if self._is_inside_structured_block(match.start(), normalized_text):
                 if context:
@@ -126,7 +140,8 @@ class AnswerParser:
                     "header": raw_header,
                     "reason": result.reason or "Unknown rejection"
                 })
-                
+
+
         for i, (match, h_path) in enumerate(validated_matches):
             raw_header = text[match.start():match.end()]
             start_offset = base_offset + match.start()
@@ -136,6 +151,12 @@ class AnswerParser:
             
             block_text = text[match.end():next_match_start].strip()
             
+            # Determine section type based on match offset
+            sec_type = self._get_section_type(match.start(), sections)
+            
+            # Extract working notes inside this answer block if present
+            main_text, working_notes = self._extract_working_notes(block_text, base_offset + match.end())
+
             # Use centralized O(log n) page lookup from HierarchyUtils
             start_page = HierarchyUtils.get_page_num_fast(start_offset, page_offsets, page_keys)
             end_page = HierarchyUtils.get_page_num_fast(end_offset - 1, page_offsets, page_keys)
@@ -143,15 +164,87 @@ class AnswerParser:
             parsed_answers.append(ParsedAnswer(
                 hierarchy_path=h_path,
                 raw_header=raw_header,
-                text=block_text,
+                text=main_text,
                 start_offset=start_offset,
                 end_offset=end_offset,
                 start_page=start_page,
-                end_page=end_page
+                end_page=end_page,
+                section_type=sec_type,
+                working_notes=working_notes
             ))
             
         diagnostics.validated_count = len(parsed_answers)
         return AnswerParseResult(answers=parsed_answers, diagnostics=diagnostics)
+
+    def _classify_sections(self, text: str) -> List[Tuple[int, AnswerSectionType]]:
+        from .extraction_patterns import MCQ_ANSWER_SECTION_PATTERNS, WORKING_NOTE_SECTION_PATTERNS, MAIN_ANSWER_SECTION_PATTERNS
+        from .types import AnswerSectionType
+
+        section_matches = []
+
+        for pat in MCQ_ANSWER_SECTION_PATTERNS:
+            for m in re.finditer(pat, text, re.MULTILINE):
+                section_matches.append((m.start(), AnswerSectionType.MCQ_ANSWER))
+
+        for pat in WORKING_NOTE_SECTION_PATTERNS:
+            for m in re.finditer(pat, text, re.MULTILINE):
+                section_matches.append((m.start(), AnswerSectionType.WORKING_NOTE))
+
+        for pat in MAIN_ANSWER_SECTION_PATTERNS:
+            for m in re.finditer(pat, text, re.MULTILINE):
+                section_matches.append((m.start(), AnswerSectionType.MAIN_ANSWER))
+
+        section_matches.sort(key=lambda x: x[0])
+        return section_matches
+
+    def _get_section_type(self, offset: int, sections: List[Tuple[int, AnswerSectionType]]) -> AnswerSectionType:
+        from .types import AnswerSectionType
+        current_type = AnswerSectionType.MAIN_ANSWER
+        for sec_start, sec_type in sections:
+            if sec_start <= offset:
+                current_type = sec_type
+            else:
+                break
+        return current_type
+
+    def _extract_working_notes(self, block_text: str, base_offset: int) -> Tuple[str, List[WorkingNote]]:
+        from .types import WorkingNote
+        
+        wn_marker = re.search(r"(?im)^[ \t]*(?:Working\s+Notes?|W\.?N\.?)\s*[:\-–—]?", block_text)
+        if not wn_marker:
+            return block_text, []
+
+        main_text = block_text[:wn_marker.start()].strip()
+        wn_block = block_text[wn_marker.end():].strip()
+
+        wn_item_regex = re.compile(
+            r"(?im)^[ \t]*(?:Working\s+Note|W\.?N\.?|Note)?\s*(\d+)[.)]?\s*(.*?)$"
+        )
+        matches = list(wn_item_regex.finditer(wn_block))
+        if not matches:
+            # Fallback single working note if no numbered items found
+            return main_text, [WorkingNote(number="1", title=None, content=wn_block)]
+
+        working_notes = []
+        for idx, m in enumerate(matches):
+            num = m.group(1)
+            raw_title = m.group(2).strip() if m.group(2) else None
+            
+            start_pos = m.end()
+            end_pos = matches[idx+1].start() if idx + 1 < len(matches) else len(wn_block)
+            content = wn_block[start_pos:end_pos].strip()
+
+            title = raw_title if raw_title and len(raw_title) < 120 else None
+            working_notes.append(WorkingNote(
+                number=num,
+                title=title,
+                content=content,
+                start_offset=base_offset + wn_marker.end() + m.start(),
+                end_offset=base_offset + wn_marker.end() + end_pos
+            ))
+
+        return main_text, working_notes
+
 
     def _is_inside_structured_block(self, start_idx: int, text: str) -> bool:
         last_start = text.rfind("[STRUCTURED_START]", 0, start_idx)

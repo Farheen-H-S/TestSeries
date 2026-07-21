@@ -7,8 +7,9 @@ from apps.extraction.models import ExtractionLog
 from apps.papers.models import Question
 from .pdf_loader import load_pdf
 from .text_extractor import extract_text
-from .html_formatter import text_to_html
+from .html_formatter import text_to_html, format_question_content, format_answer_content
 from .chapter_mapper import map_question_to_chapter, get_prepared_chapters
+
 
 # Phase 3D Services
 from .types import LayoutType, QuestionLevel, ParsingContext
@@ -291,8 +292,10 @@ def extract_document(document: Document, temp_file_path: str = None):
                 ans_text = ans.text if ans else ""
                 
                 # HTML Formatting
-                q_content = text_to_html(pq.text)
-                a_content = text_to_html(ans_text) if ans_text else ""
+                q_content = format_question_content(pq.text, shared_context=pq.shared_context)
+                ans_working_notes = ans.working_notes if ans else []
+                a_content = format_answer_content(ans_text, working_notes=ans_working_notes) if (ans_text or ans_working_notes) else ""
+
 
                 # 7.2 Resolve Parent deterministically
                 parent_q = None

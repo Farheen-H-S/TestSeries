@@ -14,6 +14,43 @@ ANSWER_SECTION_DELIMITERS = [
     r"SUGGESTED SOLUTION"
 ]
 
+MCQ_ANSWER_SECTION_PATTERNS = [
+    r"(?i)^[ \t]*(?:Answer\s+to\s+)?Multiple\s+Choice\s+Questions(?:\s+Answers?)?",
+    r"(?i)^[ \t]*MCQ\s+Answers?",
+    r"(?i)^[ \t]*Part\s+I[-–—\s]+Multiple\s+Choice\s+Questions",
+]
+
+WORKING_NOTE_SECTION_PATTERNS = [
+    r"(?i)^[ \t]*Working\s+Notes?(?:\s*[:\-–—])?",
+    r"(?i)^[ \t]*W\.?N\.?\s*(?:\d+|[:\-–—])",
+    r"(?i)^[ \t]*Notes?(?:\s*[:\-–—])?",
+    r"(?i)^[ \t]*Illustrations?(?:\s*[:\-–—])?",
+    r"(?i)^[ \t]*Annexures?(?:\s*[:\-–—])?",
+    r"(?i)^[ \t]*Appendix(?:\s*[:\-–—])?",
+]
+
+WORKING_NOTE_HEADER_PATTERNS = [
+    r"(?i)^[ \t]*(?:Working\s+Note|W\.?N\.?)\s*(\d+)(?:\s*[:\-–—\.]?\s*(.*?))?$",
+]
+
+DOCUMENT_METADATA_PATTERNS = [
+    r"(?i)^[ \t]*(?:Revision\s+Test\s+Paper|Mock\s+Test\s+Paper|Model\s+Test\s+Paper)",
+    r"(?i)^[ \t]*(?:FINAL|INTERMEDIATE|FOUNDATION)\s+EXAMINATION",
+    r"(?i)^[ \t]*(?:Time\s+Allowed|Maximum\s+Marks|Max\s+Marks)",
+    r"(?i)^[ \t]*General\s+Instructions",
+    r"(?i)^[ \t]*Roll\s+No",
+]
+
+MAIN_ANSWER_SECTION_PATTERNS = [
+    r"(?i)^[ \t]*Suggested\s+Answers?",
+    r"(?i)^[ \t]*Suggested\s+Solutions?",
+    r"(?i)^[ \t]*Answers?\s+to\s+Questions?",
+    r"(?i)^[ \t]*Solutions?",
+    r"(?i)^[ \t]*Part\s+II[-–—\s]+Descriptive\s+Questions",
+]
+
+
+
 # Question Header Patterns
 # Matches: Question 1, Q1, Q.1, 1., 1(a), (a), (i)
 QUESTION_HEADER_PATTERNS = [
@@ -32,10 +69,12 @@ ANSWER_HEADER_PATTERNS = [
     r"(?i)^\s*Answer\s+(?:to\s+)?(?:Question\s+)?(?:No\.\s*)?(\d+)(?:\(([a-z])\))?", # Answer to Question 1(a)
     r"(?i)^\s*Ans\.?\s*(\d+)(?:\(([a-z])\))?",                                       # Ans. 1(a)
     r"(?i)^\s*Solution\s*(\d+)(?:\(([a-z])\))?",                                     # Solution 1(a)
+    r"(?i)^\s*(?:Question|Q\.?)\s*(?:No\.\s*)?(\d+)(?:\(([a-z])\))?",                # Question 1 or Q1
     r"^\s*(\d+)[.)](?:\s*\(([a-z])\))?",                                             # 1. or 1.(a)
     r"^\s*\(([a-zA-Z])\)",                                                           # (a)
     r"^\s*\(([ivxIVX]+)\)",                                                          # (i), (ii), (iv)
 ]
+
 
 # Marks Extraction Patterns
 MARKS_PATTERNS = [

@@ -401,6 +401,101 @@ class ParserRegressionTests(unittest.TestCase):
         self.assertEqual(key2, "1.a")
         self.assertEqual(key1, key2)
 
+    def test_shared_question_context_grouping(self):
+        text = textwrap.dedent("""
+            Revision Test Paper
+            Time Allowed: 3 Hours
+
+            Case Scenario A
+            An entity enters into a contract with customer A...
+            Based on the facts given above, answer Questions 1 to 2 below:
+
+            1. What is the standalone selling price?
+            2. How much revenue will be recognised?
+
+            Case Scenario B
+            The following Consolidated Balance Sheet relates to M Ltd...
+
+            3. Calculate goodwill of M Ltd.
+            4. Compute non-controlling interest.
+        """).strip()
+
+        parsed = self.q_parser.parse(text, self.offsets)
+        self.assertEqual(len(parsed), 4)
+
+        # Context A for Q1 & Q2
+        self.assertIn("Case Scenario A", parsed[0].shared_context)
+        self.assertIn("customer A", parsed[0].shared_context)
+        self.assertNotIn("Revision Test Paper", parsed[0].shared_context)
+        self.assertEqual(parsed[0].shared_context, parsed[1].shared_context)
+
+
+        # Context B for Q3 & Q4
+        self.assertIn("Case Scenario B", parsed[2].shared_context)
+        self.assertIn("Consolidated Balance Sheet", parsed[2].shared_context)
+        self.assertEqual(parsed[2].shared_context, parsed[3].shared_context)
+
+        # Verify Context A is terminated when Context B begins
+        self.assertNotEqual(parsed[0].shared_context, parsed[2].shared_context)
+
+    def test_hierarchical_answer_working_notes(self):
+        answer_text = textwrap.dedent("""
+            Answer to Multiple Choice Questions
+            1. Option (c) ₹ 12
+            2. Option (a) ₹ 188.68
+
+            Question 6
+            Consolidated Balance Sheet of M Ltd and its subsidiary N Ltd.
+
+            Working Notes:
+            1. Shareholding pattern
+            M Ltd holds 80% shares.
+            2. Analysis of Retained Earnings
+            Closing balance is ₹ 2,05,000.
+        """).strip()
+
+        parsed_a = self.a_parser.parse(answer_text, self.offsets)
+        matcher = AnswerMatcher()
+
+        # Questions Q1 and Q6
+        q1 = self.q_parser.parse("Question 1\nWhat is standalone price?", self.offsets)
+        q6 = self.q_parser.parse("Question 6\nPrepare Consolidated Balance Sheet.", self.offsets)
+
+        # Match Q1 & Q6
+        result1 = matcher.match(q1, parsed_a)
+        result6 = matcher.match(q6, parsed_a)
+
+        # Q1 should match Option (c), NOT Working Note 1
+        self.assertEqual(len(result1.matches), 1)
+        self.assertEqual(result1.matches[0][1].text, "Option (c) ₹ 12")
+
+        # Q6 should match Question 6 answer and contain WorkingNote objects
+        self.assertEqual(len(result6.matches), 1)
+        q6_ans = result6.matches[0][1]
+        self.assertEqual(len(q6_ans.working_notes), 2)
+        self.assertEqual(q6_ans.working_notes[0].number, "1")
+        self.assertEqual(q6_ans.working_notes[0].title, "Shareholding pattern")
+        self.assertIn("80% shares", q6_ans.working_notes[0].content)
+
+    def test_working_note_reference_preservation(self):
+        text = textwrap.dedent("""
+            Solution 6
+            Refer Working Note 1 for shareholding pattern calculations.
+
+            Working Notes:
+            1. Shareholding pattern
+            Calculation details here.
+        """).strip()
+
+        parsed = self.a_parser.parse(text, self.offsets)
+        self.assertEqual(len(parsed), 1)
+        self.assertIn("Refer Working Note 1", parsed[0].text)
+        self.assertEqual(len(parsed[0].working_notes), 1)
+        self.assertEqual(parsed[0].working_notes[0].number, "1")
+        self.assertEqual(parsed[0].working_notes[0].title, "Shareholding pattern")
+        self.assertEqual(parsed[0].working_notes[0].content, "Calculation details here.")
+
 
 if __name__ == "__main__":
     unittest.main()
+

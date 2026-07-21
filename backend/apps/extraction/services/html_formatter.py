@@ -103,3 +103,47 @@ def text_to_html(text: str) -> str:
             html_parts.append(preserve_paragraphs(escaped))
             
     return "\n".join(html_parts)
+
+def format_question_content(text: str, shared_context: Optional[str] = None) -> str:
+    """
+    Pure-renders question HTML content from text and optional shared context.
+    """
+    parts = []
+    if shared_context and shared_context.strip():
+        ctx_html = text_to_html(shared_context.strip())
+        parts.append(f'<div class="shared-context">\n{ctx_html}\n</div>')
+    
+    if text and text.strip():
+        parts.append(text_to_html(text.strip()))
+        
+    return "\n".join(parts)
+
+def format_answer_content(text: str, working_notes: Optional[list] = None) -> str:
+    """
+    Pure-renders answer HTML content from main answer text and optional working notes.
+    """
+    parts = []
+    if text and text.strip():
+        parts.append(text_to_html(text.strip()))
+        
+    if working_notes:
+        wn_parts = ['<div class="working-notes">', '<h4>Working Notes</h4>']
+        for wn in working_notes:
+            num = getattr(wn, 'number', '')
+            title = getattr(wn, 'title', None)
+            content = getattr(wn, 'content', str(wn))
+            
+            header_text = f"Working Note {num}" if num else "Working Note"
+            if title:
+                header_text += f": {title}"
+            
+            wn_parts.append('<div class="working-note-item">')
+            wn_parts.append(f'<strong>{html.escape(header_text)}</strong>')
+            wn_parts.append(text_to_html(content))
+            wn_parts.append('</div>')
+            
+        wn_parts.append('</div>')
+        parts.append("\n".join(wn_parts))
+        
+    return "\n".join(parts)
+

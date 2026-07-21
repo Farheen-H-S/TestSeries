@@ -8,10 +8,23 @@ class LayoutType(Enum):
     INTERLEAVED = "INTERLEAVED"
     UNKNOWN = "UNKNOWN"
 
+class AnswerSectionType(Enum):
+    MAIN_ANSWER = "MAIN_ANSWER"
+    MCQ_ANSWER = "MCQ_ANSWER"
+    WORKING_NOTE = "WORKING_NOTE"
+
 class QuestionLevel(Enum):
     MAIN = "MAIN"
     SUB = "SUB"
     SUB_SUB = "SUB_SUB"
+
+@dataclass
+class WorkingNote:
+    number: str
+    title: Optional[str] = None
+    content: str = ""
+    start_offset: int = 0
+    end_offset: int = 0
 
 @dataclass
 class LayoutResult:
@@ -29,6 +42,7 @@ class ParsedQuestion:
     start_page: int
     end_page: int
     level: QuestionLevel = QuestionLevel.MAIN
+    shared_context: Optional[str] = None
 
 @dataclass
 class ParsedAnswer:
@@ -39,6 +53,21 @@ class ParsedAnswer:
     end_offset: int    # Absolute offset in original document
     start_page: int
     end_page: int
+    section_type: AnswerSectionType = AnswerSectionType.MAIN_ANSWER
+    working_notes: List[WorkingNote] = field(default_factory=list)
+
+@dataclass
+class AnswerSection:
+    section_type: AnswerSectionType
+    raw_title: str
+    answers: List[ParsedAnswer] = field(default_factory=list)
+    start_offset: int = 0
+    end_offset: int = 0
+
+@dataclass
+class AnswerDocument:
+    sections: List[AnswerSection] = field(default_factory=list)
+
 
 @dataclass
 class ParsingDiagnostics:

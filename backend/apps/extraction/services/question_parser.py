@@ -241,8 +241,79 @@ class QuestionParser:
                 end_page=end_page,
                 level=level
             ))
-            
+
+        # Attach structural shared contexts to question groups
+        self._attach_shared_contexts(text, validated_matches, parsed_questions)
+
         return QuestionParseResult(questions=parsed_questions, diagnostics=diagnostics)
+
+    def _clean_document_metadata(self, text: str) -> str:
+        """
+        Strips document-level metadata (e.g. Revision Test Paper, Time Allowed: 3 Hours, Roll No)
+        from preamble text to isolate true shared question context.
+        """
+        from .extraction_patterns import DOCUMENT_METADATA_PATTERNS
+        lines = text.split("\n")
+        cleaned_lines = []
+        for line in lines:
+            is_meta = False
+            for pat in DOCUMENT_METADATA_PATTERNS:
+                if re.search(pat, line):
+                    is_meta = True
+                    break
+            if not is_meta:
+                cleaned_lines.append(line)
+        return "\n".join(cleaned_lines).strip()
+
+    def _attach_shared_contexts(
+        self,
+        text: str,
+        validated_matches: List[Tuple[re.Match, List[str]]],
+        parsed_questions: List[ParsedQuestion]
+    ) -> None:
+        if not validated_matches or not parsed_questions:
+            return
+
+        current_context = None
+
+        # Check preamble before the first question
+        first_start = validated_matches[0][0].start()
+        preamble_text = text[:first_start].strip()
+        if preamble_text:
+            cleaned = self._clean_document_metadata(preamble_text)
+            if cleaned:
+                current_context = cleaned
+
+        for i, pq in enumerate(parsed_questions):
+            # Check gap before main question i (where i > 0 and pq is a main question)
+            if i > 0 and len(pq.hierarchy_path) == 1:
+                prev_match = validated_matches[i-1][0]
+                curr_match = validated_matches[i][0]
+                gap_raw = text[prev_match.end():curr_match.start()]
+                
+                # Check for shared context headers in gap_raw
+                ctx_match = re.search(
+                    r"(?im)^[ \t]*(?:Case\s+(?:Scenario|Study)|Scenario|Read\s+the\s+following|Based\b|The\s+following\b)",
+                    gap_raw
+                )
+                if ctx_match:
+                    # Text before ctx_match belongs to previous question
+                    prev_extra = gap_raw[:ctx_match.start()].strip()
+                    if prev_extra and i > 0:
+                        parsed_questions[i-1].text = (parsed_questions[i-1].text + "\n" + prev_extra).strip()
+                    
+                    raw_context = gap_raw[ctx_match.start():].strip()
+                    cleaned_context = self._clean_document_metadata(raw_context)
+                    if cleaned_context:
+                        current_context = cleaned_context
+                elif gap_raw.strip() and len(gap_raw.strip().split("\n")) > 2:
+                    # Unnumbered multi-line text block in gap
+                    cleaned_context = self._clean_document_metadata(gap_raw.strip())
+                    if cleaned_context and not re.search(r"(?i)\b(?:Marks|Page)\b", cleaned_context):
+                        current_context = cleaned_context
+
+            pq.shared_context = current_context
+
 
     def _score_semantics(self, text: str) -> Tuple[int, List[str]]:
         score = 0
