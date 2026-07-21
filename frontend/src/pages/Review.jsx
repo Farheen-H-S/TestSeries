@@ -38,6 +38,8 @@ const extractTableHtml = (htmlString) => {
   }
 };
 
+
+
 const Review = () => {
   const { documentId } = useParams();
   const navigate = useNavigate();
@@ -67,9 +69,9 @@ const Review = () => {
     answer_text: '',
     chapter: ''
   });
-  const [preservedTables, setPreservedTables] = useState({
-    question_tables: '',
-    answer_tables: ''
+  const [editTables, setEditTables] = useState({
+    question_table: null,
+    answer_table: null
   });
   const [editErrors, setEditErrors] = useState({});
   const [isSaving, setIsSaving] = useState(false);
@@ -312,27 +314,12 @@ const Review = () => {
     e.stopPropagation(); // Avoid collapsing the card
     setEditErrors({});
     setEditGeneralError(null);
-    
-    const structuredRegex = /\[STRUCTURED_START\][\s\S]*?\[STRUCTURED_END\]/g;
-    
-    const qText = q.question_text || '';
-    const qTables = qText.match(structuredRegex) || [];
-    const cleanQText = qText.replace(structuredRegex, '').trim();
-    
-    const aText = q.answer_text || '';
-    const aTables = aText.match(structuredRegex) || [];
-    const cleanAText = aText.replace(structuredRegex, '').trim();
-    
     setEditingQuestionId(q.question_id);
     setEditForm({
       question_number: q.question_number || '',
-      question_text: cleanQText,
-      answer_text: cleanAText,
+      question_text: q.question_text || '',
+      answer_text: q.answer_text || '',
       chapter: q.chapter || ''
-    });
-    setPreservedTables({
-      question_tables: qTables.join('\n\n'),
-      answer_tables: aTables.join('\n\n')
     });
   };
 
@@ -341,7 +328,6 @@ const Review = () => {
     setEditingQuestionId(null);
     setEditErrors({});
     setEditGeneralError(null);
-    setPreservedTables({ question_tables: '', answer_tables: '' });
   };
 
   const handleFormChange = (e) => {
@@ -396,21 +382,17 @@ const Review = () => {
     setIsSaving(true);
     setEditGeneralError(null);
 
-    const finalQuestionText = (editForm.question_text.trim() + '\n\n' + (preservedTables.question_tables || '')).trim();
-    const finalAnswerText = (editForm.answer_text.trim() + '\n\n' + (preservedTables.answer_tables || '')).trim();
-
     try {
       const updatedQ = await questionService.updateQuestion(qId, {
         question_number: editForm.question_number.trim(),
-        question_text: finalQuestionText,
-        answer_text: finalAnswerText,
+        question_text: editForm.question_text,
+        answer_text: editForm.answer_text,
         chapter: Number(editForm.chapter)
       });
 
       // Update question locally inside state (no reload)
       setQuestions(prev => prev.map(q => q.question_id === qId ? updatedQ : q));
       setEditingQuestionId(null);
-      setPreservedTables({ question_tables: '', answer_tables: '' });
     } catch (err) {
       console.error('Error saving question edits:', err);
       if (err.response && err.response.status === 400) {
@@ -846,21 +828,6 @@ const Review = () => {
                           {editErrors.question_text && (
                             <span className="field-error-text">{editErrors.question_text}</span>
                           )}
-                          {qTableHtml && (
-                            <div className="preserved-table-preview-group">
-                              <span className="preserved-table-label">
-                                <svg className="preserved-table-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ width: '14px', height: '14px', marginRight: '6px' }}>
-                                  <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
-                                  <line x1="9" y1="3" x2="9" y2="21"></line>
-                                  <line x1="15" y1="3" x2="15" y2="21"></line>
-                                  <line x1="3" y1="9" x2="21" y2="9"></line>
-                                  <line x1="3" y1="15" x2="21" y2="15"></line>
-                                </svg>
-                                Preserved Question Table (Read-Only)
-                              </span>
-                              <div dangerouslySetInnerHTML={{ __html: qTableHtml }} />
-                            </div>
-                          )}
                         </div>
 
                         <div className="edit-textarea-wrapper">
@@ -875,21 +842,6 @@ const Review = () => {
                           />
                           {editErrors.answer_text && (
                             <span className="field-error-text">{editErrors.answer_text}</span>
-                          )}
-                          {aTableHtml && (
-                            <div className="preserved-table-preview-group">
-                              <span className="preserved-table-label">
-                                <svg className="preserved-table-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ width: '14px', height: '14px', marginRight: '6px' }}>
-                                  <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
-                                  <line x1="9" y1="3" x2="9" y2="21"></line>
-                                  <line x1="15" y1="3" x2="15" y2="21"></line>
-                                  <line x1="3" y1="9" x2="21" y2="9"></line>
-                                  <line x1="3" y1="15" x2="21" y2="15"></line>
-                                </svg>
-                                Preserved Answer Table (Read-Only)
-                              </span>
-                              <div dangerouslySetInnerHTML={{ __html: aTableHtml }} />
-                            </div>
                           )}
                         </div>
 
