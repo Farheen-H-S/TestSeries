@@ -13,6 +13,11 @@ class AnswerSectionType(Enum):
     MCQ_ANSWER = "MCQ_ANSWER"
     WORKING_NOTE = "WORKING_NOTE"
 
+class ParserState(Enum):
+    DEFAULT = "DEFAULT"
+    WORKING_NOTES = "WORKING_NOTES"
+
+
 class QuestionLevel(Enum):
     MAIN = "MAIN"
     SUB = "SUB"

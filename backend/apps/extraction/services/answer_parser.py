@@ -98,19 +98,24 @@ class AnswerParser:
         )
 
         from .extraction_patterns import WORKING_NOTE_HEADER_PATTERNS, WORKING_NOTE_SECTION_PATTERNS
+        from .types import ParserState
 
-        inside_working_notes_zone = False
+        parser_state = ParserState.DEFAULT
+        working_notes_start_offset = 0
         prev_match_end = 0
+
+        # Maximum character length for a Working Notes zone before self-healing recovery
+        MAX_WORKING_NOTES_ZONE_LEN = 4000
 
         for match in all_potential_matches:
             raw_header = text[match.start():match.end()]
             normalized_header = match.group(0)
-            path = self.normalizer.normalize_header(normalized_header)
 
             # 1. Check if Working Notes section marker appears in gap between previous match end and current match start
             gap_text = normalized_text[prev_match_end:match.start()]
             if any(re.search(pat, gap_text, re.MULTILINE) for pat in WORKING_NOTE_SECTION_PATTERNS):
-                inside_working_notes_zone = True
+                parser_state = ParserState.WORKING_NOTES
+                working_notes_start_offset = match.start()
 
             # 2. Skip matches that are explicit Working Note headers (e.g. "Working Note 1", "W.N. 1")
             if any(re.search(pat, raw_header) for pat in WORKING_NOTE_HEADER_PATTERNS):
@@ -122,16 +127,23 @@ class AnswerParser:
                 prev_match_end = match.end()
                 continue
 
-            # 3. Handle Working Notes zone state transitions & filtering
-            if inside_working_notes_zone:
+            # 3. Handle Working Notes zone state transitions & self-healing recovery
+            path = self.normalizer.normalize_header(normalized_header)
+
+            if parser_state == ParserState.WORKING_NOTES:
                 is_strong = self.validator.is_strong_header(raw_header)
                 c_main, _, _ = HierarchyUtils.decompose_path(path)
                 s_main, _, _ = HierarchyUtils.decompose_path(hierarchy_stack)
                 c_num = int(c_main) if c_main and c_main.isdigit() else 0
                 s_num = int(s_main) if s_main and s_main.isdigit() else 0
 
-                if is_strong or (c_num > 0 and c_num > s_num):
-                    inside_working_notes_zone = False
+                # Self-healing recovery if character distance threshold exceeded
+                distance_exceeded = (match.start() - working_notes_start_offset) > MAX_WORKING_NOTES_ZONE_LEN
+
+                if is_strong or (c_num > 0 and c_num > s_num) or distance_exceeded:
+                    parser_state = ParserState.DEFAULT
+                    if distance_exceeded:
+                        logger.warning("Working Notes zone auto-recovered due to max distance threshold | start_offset=%d", match.start())
                 else:
                     logger.info("Answer candidate rejected | candidate=%r | reason=item inside Working Notes section | start_offset=%d", raw_header, match.start())
                     diagnostics.rejected_headers.append({
@@ -142,9 +154,10 @@ class AnswerParser:
                     continue
 
             # 4. Check if this match falls inside a structured block (table region)
-            if self._is_inside_structured_block(match.start(), normalized_text):
-                if context:
-                    context.inside_structured_block = True
+            inside_block = self._is_inside_structured_block(match.start(), normalized_text)
+            if context:
+                context.inside_structured_block = inside_block
+            if inside_block:
                 logger.info("Answer candidate rejected | candidate=%r | reason=inside structured block | start_offset=%d", raw_header, match.start())
                 diagnostics.rejected_headers.append({
                     "header": raw_header,
@@ -152,9 +165,6 @@ class AnswerParser:
                 })
                 prev_match_end = match.end()
                 continue
-            else:
-                if context:
-                    context.inside_structured_block = False
                     
             # 5. Pure structural and hierarchy validation using HeaderValidator
             result = self.validator.is_valid(match, path, hierarchy_stack, normalized_text)
@@ -178,6 +188,7 @@ class AnswerParser:
                     "reason": reason_str
                 })
                 prev_match_end = match.end()
+
 
 
 
