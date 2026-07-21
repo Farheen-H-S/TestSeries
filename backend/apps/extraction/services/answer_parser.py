@@ -92,25 +92,28 @@ class AnswerParser:
         # Classify sections
         sections = self._classify_sections(normalized_text)
 
+        logger.info(
+            "Answer parsing stage 1 | potential_matches=%d",
+            len(all_potential_matches)
+        )
+
         for match in all_potential_matches:
             # Skip matches that fall inside a local Working Notes zone; they belong to the parent answer's working notes
             if self._is_inside_working_notes_zone(match.start(), normalized_text):
-
                 raw_header = text[match.start():match.end()]
-                logger.debug("Ignoring answer candidate inside Working Notes zone: %s", raw_header)
+                logger.info("Answer candidate rejected | candidate=%r | reason=inside Working Notes zone | start_offset=%d", raw_header, match.start())
                 diagnostics.rejected_headers.append({
                     "header": raw_header,
                     "reason": "inside Working Notes zone"
                 })
                 continue
 
-
             # Check if this match falls inside a structured block (table region)
             if self._is_inside_structured_block(match.start(), normalized_text):
                 if context:
                     context.inside_structured_block = True
                 raw_header = text[match.start():match.end()]
-                logger.debug("Ignoring candidate inside structured block: %s", raw_header)
+                logger.info("Answer candidate rejected | candidate=%r | reason=inside structured block | start_offset=%d", raw_header, match.start())
                 diagnostics.rejected_headers.append({
                     "header": raw_header,
                     "reason": "inside structured block"
@@ -134,15 +137,20 @@ class AnswerParser:
                 validated_matches.append((match, list(hierarchy_stack)))
             else:
                 raw_header = text[match.start():match.end()]
-                logger.debug(
-                    "Rejected answer header candidate | candidate=%s | reason=%s | start_offset=%d",
-                    raw_header, result.reason or "Unknown rejection", match.start()
+                reason_str = result.reason or "Unknown rejection"
+                logger.info(
+                    "Answer candidate rejected | candidate=%r | reason=%s | start_offset=%d",
+                    raw_header, reason_str, match.start()
                 )
                 diagnostics.rejected_headers.append({
                     "header": raw_header,
-                    "reason": result.reason or "Unknown rejection"
+                    "reason": reason_str
                 })
 
+        logger.info(
+            "Answer parsing stage 2 | potential=%d | validated=%d | rejected=%d",
+            len(all_potential_matches), len(validated_matches), len(diagnostics.rejected_headers)
+        )
 
         for i, (match, h_path) in enumerate(validated_matches):
             raw_header = text[match.start():match.end()]
@@ -176,7 +184,12 @@ class AnswerParser:
             ))
             
         diagnostics.validated_count = len(parsed_answers)
+        logger.info(
+            "Answer parsing stage 3 | returning_parsed_answers=%d",
+            len(parsed_answers)
+        )
         return AnswerParseResult(answers=parsed_answers, diagnostics=diagnostics)
+
 
     def _classify_sections(self, text: str) -> List[Tuple[int, AnswerSectionType]]:
         from .extraction_patterns import MCQ_ANSWER_SECTION_PATTERNS, WORKING_NOTE_SECTION_PATTERNS, MAIN_ANSWER_SECTION_PATTERNS

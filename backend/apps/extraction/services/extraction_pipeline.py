@@ -138,8 +138,13 @@ def extract_document(document: Document, temp_file_path: str = None):
                 parsed_answers = a_parser.parse(a_part, page_offsets, base_offset=a_base_offset, context=context)
 
         # 5. Matching using Canonical Hierarchy Paths
+        logger.info(
+            "Pipeline parsing summary | layout=%s | q_part_len=%d | a_part_len=%d | parsed_questions=%d | parsed_answers=%d",
+            layout_res.layout.value, len(q_part), len(a_part), len(parsed_questions), len(parsed_answers)
+        )
         matcher = AnswerMatcher()
         match_res = matcher.match(parsed_questions, parsed_answers)
+
         
         # Log diagnostics
         diag = match_res.diagnostics
