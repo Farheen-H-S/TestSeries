@@ -12,7 +12,14 @@ class HeaderValidator:
     for potential question and answer headers.
     """
     
-    def is_valid(self, match: re.Match, path: List[str], current_stack: List[str], full_text: str) -> ValidationResult:
+    def is_valid(
+        self,
+        match: re.Match,
+        path: List[str],
+        current_stack: List[str],
+        full_text: str,
+        inside_working_notes: bool = False
+    ) -> ValidationResult:
         """
         Validates if a potential header is structurally sound and logically follows the current hierarchy.
         Returns ValidationResult with a detailed reason for rejection.
@@ -22,7 +29,25 @@ class HeaderValidator:
             
         raw_header = match.group(0)
         start_idx = match.start()
-        
+
+        # 0. Working Notes Zone Validation
+        if inside_working_notes:
+            from .extraction_patterns import WORKING_NOTE_HEADER_PATTERNS
+            if any(re.search(pat, raw_header) for pat in WORKING_NOTE_HEADER_PATTERNS):
+                return ValidationResult(False, "explicit Working Note header")
+                
+            is_strong = self._is_strong_header(raw_header)
+            
+            c_main, _, _ = HierarchyUtils.decompose_path(path)
+            s_main, _, _ = HierarchyUtils.decompose_path(current_stack)
+            
+            c_num = int(c_main) if c_main and c_main.isdigit() else 0
+            s_num = int(s_main) if s_main and s_main.isdigit() else 0
+            
+            # Non-strong headers with numbers <= current stack main number belong to working notes
+            if not is_strong and (c_num == 0 or c_num <= s_num):
+                return ValidationResult(False, "item inside Working Notes section")
+            
         # 1. Structural Validation (Start of Line)
         if not self._is_start_of_line(start_idx, full_text):
             # Only allow if it's a "strong" header (e.g. "Question 1")
@@ -31,6 +56,7 @@ class HeaderValidator:
 
         # 2. Hierarchy Validation
         return self._check_logical_transition(path, current_stack)
+
 
     def _is_start_of_line(self, idx: int, text: str) -> bool:
         if idx == 0:

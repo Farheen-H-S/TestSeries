@@ -97,7 +97,7 @@ class AnswerParser:
             len(all_potential_matches)
         )
 
-        from .extraction_patterns import WORKING_NOTE_HEADER_PATTERNS, WORKING_NOTE_SECTION_PATTERNS
+        from .extraction_patterns import WORKING_NOTE_SECTION_PATTERNS
 
         inside_working_notes_zone = False
         prev_match_end = 0
@@ -110,17 +110,7 @@ class AnswerParser:
             if any(re.search(pat, gap_text, re.MULTILINE) for pat in WORKING_NOTE_SECTION_PATTERNS):
                 inside_working_notes_zone = True
 
-            # 2. Skip matches that are explicit Working Note headers (e.g. "Working Note 1", "W.N. 1")
-            if any(re.search(pat, raw_header) for pat in WORKING_NOTE_HEADER_PATTERNS):
-                logger.info("Answer candidate rejected | candidate=%r | reason=explicit Working Note header | start_offset=%d", raw_header, match.start())
-                diagnostics.rejected_headers.append({
-                    "header": raw_header,
-                    "reason": "explicit Working Note header"
-                })
-                prev_match_end = match.end()
-                continue
-
-            # 3. Check if this match falls inside a structured block (table region)
+            # 2. Check if this match falls inside a structured block (table region)
             if self._is_inside_structured_block(match.start(), normalized_text):
                 if context:
                     context.inside_structured_block = True
@@ -138,30 +128,13 @@ class AnswerParser:
             normalized_header = match.group(0)
             path = self.normalizer.normalize_header(normalized_header)
             
-            # Check if candidate header exits the Working Notes zone
-            if inside_working_notes_zone:
-                is_explicit_prefix = bool(re.search(
-                    r"(?i)^[ \t]*(?:Answer\s+(?:to\s+)?(?:Question\s+)?|Ans\.?\s*|Solution\s*|Question\s+|Q\.?\s*)(?:No\.\s*)?\d+"
-                    r"|^[ \t]*(?:Suggested\s+Answers?|Suggested\s+Solutions?|Part\s+[I|V|X]+|Answers?\s+to\s+Questions?)",
-                    raw_header
-                ))
-                parent_q_num = int(hierarchy_stack[0]) if hierarchy_stack and hierarchy_stack[0].isdigit() else 0
-                cand_q_num = int(path[0]) if path and path[0].isdigit() else 0
-                
-                if is_explicit_prefix or (cand_q_num > 0 and cand_q_num >= parent_q_num):
-                    inside_working_notes_zone = False
-
-            if inside_working_notes_zone:
-                logger.info("Answer candidate rejected | candidate=%r | reason=item inside Working Notes section | start_offset=%d", raw_header, match.start())
-                diagnostics.rejected_headers.append({
-                    "header": raw_header,
-                    "reason": "item inside Working Notes section"
-                })
-                prev_match_end = match.end()
-                continue
-
-            result = self.validator.is_valid(match, path, hierarchy_stack, normalized_text)
+            # 3. Delegate structural & working note validation to HeaderValidator
+            result = self.validator.is_valid(
+                match, path, hierarchy_stack, normalized_text, inside_working_notes=inside_working_notes_zone
+            )
             if result.is_valid:
+                # Validated top-level answer header terminates the Working Notes zone
+                inside_working_notes_zone = False
                 old_stack = list(hierarchy_stack)
                 HierarchyUtils.update_hierarchy_stack(hierarchy_stack, path)
                 logger.debug(
@@ -181,6 +154,7 @@ class AnswerParser:
                     "reason": reason_str
                 })
                 prev_match_end = match.end()
+
 
 
 
