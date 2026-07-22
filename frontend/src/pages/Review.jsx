@@ -185,11 +185,10 @@ const Review = () => {
       const isContainer = questions.some(child => child.parent_question === q.question_id);
       return hasContent || !isContainer;
     });
-    const total = questions.length;
-    const reviewable = reviewableQuestions.length;
+    const total = reviewableQuestions.length;
     const withAnswers = reviewableQuestions.filter(q => !isAnswerMissing(q.answer_text)).length;
-    const withoutAnswers = reviewable - withAnswers;
-    return { total, reviewable, withAnswers, withoutAnswers };
+    const withoutAnswers = total - withAnswers;
+    return { total, withAnswers, withoutAnswers };
   }, [questions]);
 
   // Diagnostics Calculations
