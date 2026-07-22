@@ -574,6 +574,38 @@ class ParserRegressionTests(unittest.TestCase):
         paths = [p.hierarchy_path for p in parsed]
         self.assertIn(["12"], paths)
 
+    def test_working_notes_high_number_sequence(self):
+        text = textwrap.dedent("""
+            Question 6
+            Main answer text for question 6.
+
+            Working Notes:
+            1. note 1
+            2. note 2
+            3. note 3
+            4. note 4
+            5. note 5
+            6. note 6
+            7. note 7
+            8. note 8
+            9. note 9
+            10. note 10
+
+            7.
+            Answer to Question 7 which is a main answer block.
+        """).strip()
+
+        parsed = self.a_parser.parse(text, self.offsets)
+        paths = [p.hierarchy_path for p in parsed]
+        # Verify that only 6 and 7 are validated as top-level answers, 
+        # and working notes 1-10 are correctly filtered out as working notes under Question 6
+        self.assertIn(["6"], paths)
+        self.assertIn(["7"], paths)
+        # Verify no working notes got promoted to top-level answers
+        self.assertNotIn(["1"], paths)
+        self.assertNotIn(["8"], paths)
+        self.assertNotIn(["10"], paths)
+
 
 if __name__ == "__main__":
     unittest.main()

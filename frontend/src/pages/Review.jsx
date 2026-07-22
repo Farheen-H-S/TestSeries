@@ -178,16 +178,24 @@ const Review = () => {
     return answerText === null || answerText === undefined || answerText.trim() === '';
   };
 
+  // Precompute set of container question IDs to avoid O(n^2) nested lookup
+  const parentIds = useMemo(() => {
+    return new Set(
+      questions
+        .filter(q => q.parent_question !== null && q.parent_question !== undefined)
+        .map(q => q.parent_question)
+    );
+  }, [questions]);
+
   // Single source of truth for reviewable questions
   const reviewableQuestions = useMemo(() => {
     return questions.filter(q => {
       const hasContent = (q.question_text && q.question_text.trim() !== '') || hasMeaningfulHtml(q.question_content);
       if (hasContent) return true;
 
-      const hasChildren = questions.some(child => child.parent_question === q.question_id);
-      return !hasChildren;
+      return !parentIds.has(q.question_id);
     });
-  }, [questions]);
+  }, [questions, parentIds]);
 
   // Statistics Calculations
   const stats = useMemo(() => {

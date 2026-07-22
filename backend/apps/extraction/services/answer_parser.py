@@ -102,6 +102,7 @@ class AnswerParser:
 
         parser_state = ParserState.DEFAULT
         working_notes_start_offset = 0
+        last_working_note_num = 0
         prev_match_end = 0
 
         max_wn_len = getattr(self.config, 'max_working_notes_length', 4000)
@@ -115,6 +116,7 @@ class AnswerParser:
             if any(re.search(pat, gap_text, re.MULTILINE) for pat in WORKING_NOTE_SECTION_PATTERNS):
                 parser_state = ParserState.WORKING_NOTES
                 working_notes_start_offset = match.start()
+                last_working_note_num = 0
 
             # 2. Skip matches that are explicit Working Note headers (e.g. "Working Note 1", "W.N. 1")
             if any(re.search(pat, raw_header) for pat in WORKING_NOTE_HEADER_PATTERNS):
@@ -136,12 +138,17 @@ class AnswerParser:
                 c_num = int(c_main) if c_main and c_main.isdigit() else 0
                 s_num = int(s_main) if s_main and s_main.isdigit() else 0
 
+                is_working_note = False
+                if c_num > 0:
+                    is_working_note = (c_num <= s_num) or (last_working_note_num > 0 and c_num == last_working_note_num + 1) or (last_working_note_num == 0 and c_num == 1)
+
                 # Self-healing recovery if character distance threshold exceeded
                 distance_exceeded = (match.start() - working_notes_start_offset) > max_wn_len
 
-                if is_strong or (c_num > 0 and c_num > s_num) or distance_exceeded:
+                if is_strong or distance_exceeded or not is_working_note:
                     parser_state = ParserState.DEFAULT
                     working_notes_start_offset = 0
+                    last_working_note_num = 0
                     if distance_exceeded:
                         logger.warning("Working Notes zone auto-recovered due to max distance threshold | start_offset=%d", match.start())
                 else:
@@ -150,6 +157,8 @@ class AnswerParser:
                         "header": raw_header,
                         "reason": "item inside Working Notes section"
                     })
+                    if c_num > 0:
+                        last_working_note_num = c_num
                     prev_match_end = match.end()
                     continue
 
