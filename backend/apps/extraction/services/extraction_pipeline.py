@@ -145,9 +145,18 @@ def extract_document(document: Document, temp_file_path: str = None):
         matcher = AnswerMatcher()
         match_res = matcher.match(parsed_questions, parsed_answers)
 
-        
         # Log diagnostics
         diag = match_res.diagnostics
+        logger.info("All Parsed Questions hierarchy paths: %s", [".".join(q.hierarchy_path) for q in parsed_questions])
+        logger.info("All Parsed Answers hierarchy paths: %s", [".".join(a.hierarchy_path) for a in parsed_answers])
+        logger.info(
+            "Matched pairs: %s",
+            [(".".join(q.hierarchy_path), ".".join(a.hierarchy_path)) for q, a in match_res.matches]
+        )
+        logger.info("Unmatched Questions: %s", diag.unmatched_questions)
+        logger.info("Unmatched Answers: %s", diag.unmatched_answers)
+        logger.info("Ambiguous matches: %s", diag.ambiguous_matches)
+
         logger.info(
             "Matching complete | matched=%d | unmatched_questions=%d | unmatched_answers=%d | time_ms=%.2f",
             diag.matched_count, len(diag.unmatched_questions), 
