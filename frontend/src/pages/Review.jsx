@@ -178,18 +178,24 @@ const Review = () => {
     return answerText === null || answerText === undefined || answerText.trim() === '';
   };
 
+  // Single source of truth for reviewable questions
+  const reviewableQuestions = useMemo(() => {
+    return questions.filter(q => {
+      const hasContent = (q.question_text && q.question_text.trim() !== '') || hasMeaningfulHtml(q.question_content);
+      if (hasContent) return true;
+
+      const hasChildren = questions.some(child => child.parent_question === q.question_id);
+      return !hasChildren;
+    });
+  }, [questions]);
+
   // Statistics Calculations
   const stats = useMemo(() => {
-    const reviewableQuestions = questions.filter(q => {
-      const hasContent = (q.question_text && q.question_text.trim() !== '') || hasMeaningfulHtml(q.question_content);
-      const isContainer = questions.some(child => child.parent_question === q.question_id);
-      return hasContent || !isContainer;
-    });
     const total = reviewableQuestions.length;
     const withAnswers = reviewableQuestions.filter(q => !isAnswerMissing(q.answer_text)).length;
     const withoutAnswers = total - withAnswers;
     return { total, withAnswers, withoutAnswers };
-  }, [questions]);
+  }, [reviewableQuestions]);
 
   // Diagnostics Calculations
   const diagnostics = useMemo(() => {
@@ -235,12 +241,7 @@ const Review = () => {
 
   // Filtering and Sorting logic
   const processedQuestions = useMemo(() => {
-    // Hide parent container questions only if they have no text/content of their own
-    let result = questions.filter(q => {
-      const hasContent = (q.question_text && q.question_text.trim() !== '') || hasMeaningfulHtml(q.question_content);
-      const isContainer = questions.some(child => child.parent_question === q.question_id);
-      return hasContent || !isContainer;
-    });
+    let result = [...reviewableQuestions];
 
     if (searchQuery.trim() !== '') {
       const query = searchQuery.toLowerCase();
@@ -287,7 +288,7 @@ const Review = () => {
     });
 
     return result;
-  }, [questions, searchQuery, statusFilter, marksFilter, sortBy]);
+  }, [reviewableQuestions, searchQuery, statusFilter, marksFilter, sortBy]);
 
   // Navigation handlers
   const handleBackToDocuments = () => {
