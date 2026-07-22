@@ -158,9 +158,9 @@ def extract_document(document: Document, temp_file_path: str = None):
         logger.info("Ambiguous matches: %s", diag.ambiguous_matches)
 
         logger.info(
-            "Matching complete | matched=%d | unmatched_questions=%d | unmatched_answers=%d | time_ms=%.2f",
+            "Matching complete | matched=%d | unmatched_questions=%d | unmatched_answers=%d | ambiguous_matches=%d | time_ms=%.2f",
             diag.matched_count, len(diag.unmatched_questions), 
-            len(diag.unmatched_answers), diag.processing_time_ms
+            len(diag.unmatched_answers), len(diag.ambiguous_matches), diag.processing_time_ms
         )
         
         unmatched_q_count = len(diag.unmatched_questions)

@@ -603,15 +603,11 @@ const Review = () => {
               <div className="stats-grid">
                 <div className="stat-item">
                   <span className="stat-number">{stats.total}</span>
-                  <span className="stat-label">Total Extracted</span>
-                </div>
-                <div className="stat-item">
-                  <span className="stat-number">{stats.reviewable}</span>
-                  <span className="stat-label">Reviewable</span>
+                  <span className="stat-label">Questions Extracted</span>
                 </div>
                 <div className="stat-item">
                   <span className="stat-number">{stats.withAnswers}</span>
-                  <span className="stat-label">With Answers</span>
+                  <span className="stat-label">Answers Matched</span>
                 </div>
                 <div className="stat-item">
                   <span className="stat-number">{stats.withoutAnswers}</span>
