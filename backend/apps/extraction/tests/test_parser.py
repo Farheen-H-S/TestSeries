@@ -477,6 +477,56 @@ class ParserRegressionTests(unittest.TestCase):
         self.assertEqual(q6_ans.working_notes[0].title, "Shareholding pattern")
         self.assertIn("80% shares", q6_ans.working_notes[0].content)
 
+    def test_mcq_structured_table_answers(self):
+        answer_text = textwrap.dedent("""
+            Answer to Multiple Choice Questions
+            
+            [STRUCTURED_START]
+            |Col1|1.|Col3|Col4|Option (c) ₹ 12|Col6|
+            |---|---|---|---|---|---|
+            ||**2.**|||**Option (a)** ₹ 188.68||
+            ||**3.**|||**Option (d)** ₹ 11.32||
+            |**4.**|**4.**|**4.**|<br> <br>|**Option (b)** The said liability will be subsequently credited to|<br>|
+            |**4.**|**4.**|**4.**|<br> <br>|revenue only when the customer purchases in future using the|revenue only when the customer purchases in future using the|
+            |**4.**|**4.**|**4.**|<br> <br>|discount coupon or when the coupon expires.|discount coupon or when the coupon expires.|
+            ||**5.**|||**Option (c)** Contract Liability under Ind AS 115||
+            [STRUCTURED_END]
+            
+            Question 6
+            Consolidated Balance Sheet details.
+        """).strip()
+
+        parsed_a = self.a_parser.parse(answer_text, self.offsets)
+        
+        # Verify we parsed Questions 1 to 5 and Question 6
+        # Expected count: 5 MCQ answers + 1 Descriptive Answer (6) = 6
+        self.assertEqual(len(parsed_a), 6)
+        
+        # Verify MCQ Answers mapping and texts
+        self.assertEqual(parsed_a[0].hierarchy_path, ["1"])
+        self.assertEqual(parsed_a[0].text, "Option (c) ₹ 12")
+        self.assertEqual(parsed_a[0].section_type.name, "MCQ_ANSWER")
+        
+        self.assertEqual(parsed_a[1].hierarchy_path, ["2"])
+        self.assertEqual(parsed_a[1].text, "Option (a) ₹ 188.68")
+        self.assertEqual(parsed_a[1].section_type.name, "MCQ_ANSWER")
+        
+        self.assertEqual(parsed_a[2].hierarchy_path, ["3"])
+        self.assertEqual(parsed_a[2].text, "Option (d) ₹ 11.32")
+        self.assertEqual(parsed_a[2].section_type.name, "MCQ_ANSWER")
+        
+        self.assertEqual(parsed_a[3].hierarchy_path, ["4"])
+        self.assertEqual(parsed_a[3].text, "Option (b) The said liability will be subsequently credited to revenue only when the customer purchases in future using the discount coupon or when the coupon expires.")
+        self.assertEqual(parsed_a[3].section_type.name, "MCQ_ANSWER")
+        
+        self.assertEqual(parsed_a[4].hierarchy_path, ["5"])
+        self.assertEqual(parsed_a[4].text, "Option (c) Contract Liability under Ind AS 115")
+        self.assertEqual(parsed_a[4].section_type.name, "MCQ_ANSWER")
+        
+        self.assertEqual(parsed_a[5].hierarchy_path, ["6"])
+        self.assertEqual(parsed_a[5].text, "Consolidated Balance Sheet details.")
+        self.assertEqual(parsed_a[5].section_type.name, "MCQ_ANSWER")
+
     def test_working_note_reference_preservation(self):
         text = textwrap.dedent("""
             Solution 6
