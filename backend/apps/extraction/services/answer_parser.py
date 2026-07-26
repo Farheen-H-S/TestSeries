@@ -260,14 +260,20 @@ class AnswerParser:
                 existing = seen_answers[path_key]
                 # Conflict resolution rules:
                 # 1. Prefer MCQ Table parser over descriptive regex parser
-                # 2. Otherwise, keep the one that starts earlier in the document
-                if ans.source == AnswerSource.MCQ_TABLE and existing.source != AnswerSource.MCQ_TABLE:
+                # 2. Otherwise, prefer the one with longer text length
+                # 3. If text lengths are equal, prefer the one starting earlier in the document
+                if ans.source is AnswerSource.MCQ_TABLE and existing.source is not AnswerSource.MCQ_TABLE:
                     seen_answers[path_key] = ans
-                elif existing.source == AnswerSource.MCQ_TABLE and ans.source != AnswerSource.MCQ_TABLE:
+                elif existing.source is AnswerSource.MCQ_TABLE and ans.source is not AnswerSource.MCQ_TABLE:
                     pass  # Keep existing (mcq_table wins)
                 else:
-                    if ans.start_offset < existing.start_offset:
+                    len_ans = len(ans.text) if ans.text else 0
+                    len_existing = len(existing.text) if existing.text else 0
+                    if len_ans > len_existing:
                         seen_answers[path_key] = ans
+                    elif len_ans == len_existing:
+                        if ans.start_offset < existing.start_offset:
+                            seen_answers[path_key] = ans
 
         parsed_answers = list(seen_answers.values())
         parsed_answers.sort(key=lambda x: x.start_offset)
