@@ -251,7 +251,26 @@ class AnswerParser:
         )
         parsed_answers.extend(mcq_table_answers)
         
-        # Sort parsed answers by start_offset to maintain correct sequential order
+        # Deduplicate parsed answers by hierarchy path to avoid ambiguous matching conflicts
+        seen_answers = {}
+        for ans in parsed_answers:
+            path_key = tuple(ans.hierarchy_path)
+            if path_key not in seen_answers:
+                seen_answers[path_key] = ans
+            else:
+                existing = seen_answers[path_key]
+                # Conflict resolution rules:
+                # 1. Prefer MCQ Table parser over descriptive regex parser
+                # 2. Otherwise, keep the one that starts earlier in the document
+                if ans.source == "mcq_table" and existing.source != "mcq_table":
+                    seen_answers[path_key] = ans
+                elif existing.source == "mcq_table" and ans.source != "mcq_table":
+                    pass  # Keep existing (mcq_table wins)
+                else:
+                    if ans.start_offset < existing.start_offset:
+                        seen_answers[path_key] = ans
+
+        parsed_answers = list(seen_answers.values())
         parsed_answers.sort(key=lambda x: x.start_offset)
             
         diagnostics.validated_count = len(parsed_answers)
@@ -354,173 +373,115 @@ class AnswerParser:
         from .types import ParsedAnswer, AnswerSectionType
 
         mcq_answers: List[ParsedAnswer] = []
-
-        # Find all structured table blocks
         table_pattern = re.compile(r"\[STRUCTURED_START\](.*?)\[STRUCTURED_END\]", re.DOTALL)
-        
-        # Regex to detect separator rows like |---|---|
         sep_pat = re.compile(r"^[|\s\-:]+$")
-        
-        # Regex to detect clean question numbers (e.g. "1", "2", "**3.**", "4.")
-        q_num_pat = re.compile(r"^\s*\*?\*?\s*(\d+)\s*\.?\s*\*?\*?\s*$")
-        
-        # Regex to detect option text containing option letters (e.g. "Option (a)", "**Option (b)**", "(c)")
+        q_num_pat = re.compile(r"^\s*(\d+)\s*\.?\s*$")
         opt_pat = re.compile(r"(?i)\bOption\b|\([a-e]\)")
 
         for match in table_pattern.finditer(normalized_text):
-            table_start_offset = match.start()
-            
-            # Check if this table falls inside MCQ_ANSWER section
-            sec_type = self._get_section_type(table_start_offset, sections)
-            if sec_type != AnswerSectionType.MCQ_ANSWER:
+            table_start = match.start()
+            if self._get_section_type(table_start, sections) != AnswerSectionType.MCQ_ANSWER:
                 continue
 
-            table_content = match.group(1)
-            lines = table_content.strip().split("\n")
-            
             raw_rows = []
-            # Start tracking local offset within the table block
-            # Note: match.group(1) starts at match.start() + len("[STRUCTURED_START]")
             local_offset = len("[STRUCTURED_START]")
             last_opt_col_idx = None
             explicit_opt_count = 0
-            
-            for line in lines:
-                line_len = len(line) + 1  # Include newline
+
+            for line in match.group(1).strip().split("\n"):
+                line_len = len(line) + 1
                 line_stripped = line.strip()
-                
-                # Skip separator lines
                 if not line_stripped or sep_pat.match(line_stripped):
                     local_offset += line_len
                     continue
-                
-                # Split row into cells
+
                 cells = [c.strip() for c in line.split("|")]
-                # Strip leading and trailing empty cells from markdown pipe formatting
-                if cells and not cells[0]:
-                    cells.pop(0)
-                if cells and not cells[-1]:
-                    cells.pop()
-                    
+                if cells and not cells[0]: cells.pop(0)
+                if cells and not cells[-1]: cells.pop()
                 if not cells:
                     local_offset += line_len
                     continue
-                
-                # Search cells for a question number
+
+                # Strip asterisks before matching the question number
                 q_num = None
                 for cell in cells:
-                    m = q_num_pat.match(cell)
+                    clean_c = cell.replace("*", "").strip()
+                    m = q_num_pat.match(clean_c)
                     if m:
-                        # Extract clean digit
                         q_num = m.group(1)
                         break
                 
-                # Search cells for option/answer content
+                # Search for option cell matching opt_pat
                 opt_content = None
                 for idx, cell in enumerate(cells):
                     if opt_pat.search(cell):
-                        opt_content = cell
-                        last_opt_col_idx = idx
+                        opt_content, last_opt_col_idx = cell, idx
                         explicit_opt_count += 1
                         break
-                
-                # Fallback: if we have a question number but no option match,
-                # check if there's any other cell with meaningful text
+
+                # Fallback matching
                 if q_num and not opt_content:
-                    # First try to use the column index of the last matched option
                     if last_opt_col_idx is not None and last_opt_col_idx < len(cells):
                         cell = cells[last_opt_col_idx]
-                        clean_cell = re.sub(r'<br\s*/?>', '', cell).strip()
-                        if clean_cell:
+                        if re.sub(r'<br\s*/?>', '', cell).strip():
                             opt_content = cell
-
-                    # If not found or empty, search all cells
                     if not opt_content:
                         for cell in cells:
                             clean_cell = re.sub(r'<br\s*/?>', '', cell).strip()
-                            if clean_cell and not q_num_pat.match(clean_cell):
+                            # Strip asterisks here as well for consistency
+                            clean_c = clean_cell.replace("*", "").strip()
+                            if clean_cell and not q_num_pat.match(clean_c):
                                 opt_content = cell
                                 break
-                            
+
                 raw_rows.append({
                     "q_num": q_num,
                     "content": opt_content,
-                    "local_start": local_offset,
-                    "line_len": line_len
+                    "offset": base_offset + table_start + local_offset,
+                    "length": line_len
                 })
                 local_offset += line_len
-                
-            # Aggregate multi-line content for the same question number
+
+            # Aggregate multi-line content
             table_answers = []
-            current_q_num = None
-            current_answer_parts = []
-            current_start_offset = None
-            current_end_offset = None
-            
+            current_q_num, current_parts, current_start, current_end = None, [], None, None
+
+            def save_aggregated():
+                if current_q_num and current_parts:
+                    full_txt = re.sub(r'\s+', ' ', " ".join(current_parts).strip()).replace("**", "")
+                    start_page = HierarchyUtils.get_page_num_fast(current_start, page_offsets, page_keys)
+                    end_page = HierarchyUtils.get_page_num_fast(current_end - 1, page_offsets, page_keys)
+                    table_answers.append(ParsedAnswer(
+                        hierarchy_path=[current_q_num],
+                        raw_header=f"\n{current_q_num}.",
+                        text=full_txt,
+                        start_offset=current_start,
+                        end_offset=current_end,
+                        start_page=start_page,
+                        end_page=end_page,
+                        section_type=AnswerSectionType.MCQ_ANSWER,
+                        source="mcq_table"
+                    ))
+
             for row in raw_rows:
-                q_num = row["q_num"]
-                content = row["content"]
-                row_start = table_start_offset + row["local_start"]
-                row_len = row["line_len"]
-                
-                if q_num:
-                    if current_q_num and current_q_num != q_num:
-                        # Save previous aggregated MCQ answer
-                        if current_answer_parts:
-                            full_text_val = " ".join(current_answer_parts).strip()
-                            full_text_val = re.sub(r'\s+', ' ', full_text_val)
-                            full_text_val = full_text_val.replace("**", "")
-                            start_page = HierarchyUtils.get_page_num_fast(current_start_offset, page_offsets, page_keys)
-                            end_page = HierarchyUtils.get_page_num_fast(current_end_offset - 1, page_offsets, page_keys)
-                            
-                            table_answers.append(ParsedAnswer(
-                                hierarchy_path=[current_q_num],
-                                raw_header=f"\n{current_q_num}.",
-                                text=full_text_val,
-                                start_offset=current_start_offset,
-                                end_offset=current_end_offset,
-                                start_page=start_page,
-                                end_page=end_page,
-                                section_type=AnswerSectionType.MCQ_ANSWER
-                            ))
-                        current_answer_parts = []
-                        current_start_offset = None
-                        
-                    current_q_num = q_num
-                    if current_start_offset is None:
-                        current_start_offset = base_offset + row_start
-                    current_end_offset = base_offset + row_start + row_len
-                    if content:
-                        current_answer_parts.append(content)
-                else:
-                    # Append multi-line content if active
-                    if current_q_num and content:
-                        current_answer_parts.append(content)
-                        current_end_offset = base_offset + row_start + row_len
-                        
-            # Save the final active answer
-            if current_q_num and current_answer_parts:
-                full_text_val = " ".join(current_answer_parts).strip()
-                full_text_val = re.sub(r'\s+', ' ', full_text_val)
-                full_text_val = full_text_val.replace("**", "")
-                start_page = HierarchyUtils.get_page_num_fast(current_start_offset, page_offsets, page_keys)
-                end_page = HierarchyUtils.get_page_num_fast(current_end_offset - 1, page_offsets, page_keys)
-                
-                table_answers.append(ParsedAnswer(
-                    hierarchy_path=[current_q_num],
-                    raw_header=f"\n{current_q_num}.",
-                    text=full_text_val,
-                    start_offset=current_start_offset,
-                    end_offset=current_end_offset,
-                    start_page=start_page,
-                    end_page=end_page,
-                    section_type=AnswerSectionType.MCQ_ANSWER
-                ))
-            
-            # Only keep answers if the table actually contains explicit MCQ options
-            if explicit_opt_count >= 2:
+                if row["q_num"]:
+                    if current_q_num and current_q_num != row["q_num"]:
+                        save_aggregated()
+                        current_parts, current_start = [], None
+                    current_q_num = row["q_num"]
+                    if current_start is None: current_start = row["offset"]
+                    current_end = row["offset"] + row["length"]
+                    if row["content"]: current_parts.append(row["content"])
+                elif current_q_num and row["content"]:
+                    current_parts.append(row["content"])
+                    current_end = row["offset"] + row["length"]
+
+            save_aggregated()
+
+            # Require at least 1 explicit option cell match to be recognized as an MCQ table
+            if explicit_opt_count >= 1:
                 mcq_answers.extend(table_answers)
-                
+
         return mcq_answers
 
 

@@ -527,6 +527,29 @@ class ParserRegressionTests(unittest.TestCase):
         self.assertEqual(parsed_a[5].text, "Consolidated Balance Sheet details.")
         self.assertEqual(parsed_a[5].section_type.name, "MCQ_ANSWER")
 
+    def test_mcq_duplicate_hierarchy_resolution(self):
+        # Text where regex parser matches "4." (descriptive answer block)
+        # and MCQ parser also matches "4." inside the structured table.
+        answer_text = textwrap.dedent("""
+            Answer to Multiple Choice Questions
+            
+            [STRUCTURED_START]
+            |Col1|4.|Col3|Col4|Option (b) Table Answer|Col6|
+            [STRUCTURED_END]
+            
+            4. Regex Answer
+            Descriptive details for Q4.
+        """).strip()
+
+        parsed_a = self.a_parser.parse(answer_text, self.offsets)
+        
+        # The duplicate hierarchy path ["4"] should be deduplicated to exactly one ParsedAnswer.
+        # The table answer ("Option (b) Table Answer") must take precedence over the regex answer.
+        self.assertEqual(len(parsed_a), 1)
+        self.assertEqual(parsed_a[0].hierarchy_path, ["4"])
+        self.assertEqual(parsed_a[0].text, "Option (b) Table Answer")
+        self.assertEqual(parsed_a[0].source, "mcq_table")
+
     def test_working_note_reference_preservation(self):
         text = textwrap.dedent("""
             Solution 6

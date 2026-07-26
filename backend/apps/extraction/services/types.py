@@ -60,6 +60,7 @@ class ParsedAnswer:
     end_page: int
     section_type: AnswerSectionType = AnswerSectionType.MAIN_ANSWER
     working_notes: List[WorkingNote] = field(default_factory=list)
+    source: str = "regex"
 
 @dataclass
 class AnswerSection:
