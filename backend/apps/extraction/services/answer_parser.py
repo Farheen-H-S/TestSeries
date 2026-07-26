@@ -1,7 +1,6 @@
 import re
 import logging
-from typing import List, Tuple, Optional
-from .types import ParsedAnswer, ParserConfig, AnswerParseResult, ParsingDiagnostics, ParsingContext, AnswerSectionType
+from .types import ParsedAnswer, ParserConfig, AnswerParseResult, ParsingDiagnostics, ParsingContext, AnswerSectionType, AnswerSource
 
 from .normalizer import Normalizer
 from .hierarchy_utils import HierarchyUtils
@@ -262,9 +261,9 @@ class AnswerParser:
                 # Conflict resolution rules:
                 # 1. Prefer MCQ Table parser over descriptive regex parser
                 # 2. Otherwise, keep the one that starts earlier in the document
-                if ans.source == "mcq_table" and existing.source != "mcq_table":
+                if ans.source == AnswerSource.MCQ_TABLE and existing.source != AnswerSource.MCQ_TABLE:
                     seen_answers[path_key] = ans
-                elif existing.source == "mcq_table" and ans.source != "mcq_table":
+                elif existing.source == AnswerSource.MCQ_TABLE and ans.source != AnswerSource.MCQ_TABLE:
                     pass  # Keep existing (mcq_table wins)
                 else:
                     if ans.start_offset < existing.start_offset:
@@ -370,7 +369,7 @@ class AnswerParser:
         Parses all structured tables within the MCQ_ANSWER sections and returns ParsedAnswer objects.
         """
         import re
-        from .types import ParsedAnswer, AnswerSectionType
+        from .types import ParsedAnswer, AnswerSectionType, AnswerSource
 
         mcq_answers: List[ParsedAnswer] = []
         table_pattern = re.compile(r"\[STRUCTURED_START\](.*?)\[STRUCTURED_END\]", re.DOTALL)
@@ -460,7 +459,7 @@ class AnswerParser:
                         start_page=start_page,
                         end_page=end_page,
                         section_type=AnswerSectionType.MCQ_ANSWER,
-                        source="mcq_table"
+                        source=AnswerSource.MCQ_TABLE
                     ))
 
             for row in raw_rows:
@@ -478,7 +477,12 @@ class AnswerParser:
 
             save_aggregated()
 
-            # Require at least 1 explicit option cell match to be recognized as an MCQ table
+            # Require at least 1 explicit option cell match to recognize the block as an MCQ table.
+            # This is safe because:
+            # 1. The method only processes tables inside MCQ_ANSWER sections.
+            # 2. It requires at least one option prefix (e.g. "Option (a)", "(c)") in the cells.
+            # 3. Descriptive/financial tables (e.g. Balance Sheet) contain 0 option prefixes,
+            #    giving them explicit_opt_count = 0, so they are correctly ignored.
             if explicit_opt_count >= 1:
                 mcq_answers.extend(table_answers)
 

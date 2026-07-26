@@ -49,6 +49,10 @@ class ParsedQuestion:
     level: QuestionLevel = QuestionLevel.MAIN
     shared_context: Optional[str] = None
 
+class AnswerSource(Enum):
+    REGEX = "regex"
+    MCQ_TABLE = "mcq_table"
+
 @dataclass
 class ParsedAnswer:
     hierarchy_path: List[str]
@@ -60,7 +64,7 @@ class ParsedAnswer:
     end_page: int
     section_type: AnswerSectionType = AnswerSectionType.MAIN_ANSWER
     working_notes: List[WorkingNote] = field(default_factory=list)
-    source: str = "regex"
+    source: AnswerSource = AnswerSource.REGEX
 
 @dataclass
 class AnswerSection:

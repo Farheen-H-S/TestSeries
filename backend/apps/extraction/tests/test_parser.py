@@ -9,7 +9,7 @@ import unittest
 from apps.extraction.services.question_parser import QuestionParser
 from apps.extraction.services.answer_parser import AnswerParser
 from apps.extraction.services.extraction_patterns import get_default_parser_config
-from apps.extraction.services.types import QuestionLevel
+from apps.extraction.services.types import QuestionLevel, AnswerSource
 from apps.extraction.services.marks_extractor import MarksExtractor
 from apps.extraction.services.answer_matcher import AnswerMatcher
 from apps.extraction.services.normalizer import Normalizer
@@ -548,7 +548,7 @@ class ParserRegressionTests(unittest.TestCase):
         self.assertEqual(len(parsed_a), 1)
         self.assertEqual(parsed_a[0].hierarchy_path, ["4"])
         self.assertEqual(parsed_a[0].text, "Option (b) Table Answer")
-        self.assertEqual(parsed_a[0].source, "mcq_table")
+        self.assertEqual(parsed_a[0].source, AnswerSource.MCQ_TABLE)
 
     def test_working_note_reference_preservation(self):
         text = textwrap.dedent("""
