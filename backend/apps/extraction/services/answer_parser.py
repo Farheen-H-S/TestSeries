@@ -195,7 +195,7 @@ class AnswerParser:
             if result.is_valid:
                 # Context-aware list item rejection via weighted heuristics
                 next_match_start = all_potential_matches[idx+1].start() if idx + 1 < len(all_potential_matches) else len(normalized_text)
-                evaluation = self._should_create_answer_node(
+                evaluation = self._evaluate_promotion(
                     match,
                     path,
                     hierarchy_stack,
@@ -535,7 +535,7 @@ class AnswerParser:
 
         return mcq_answers
 
-    def _should_create_answer_node(
+    def _evaluate_promotion(
         self,
         match: re.Match,
         path: List[str],
