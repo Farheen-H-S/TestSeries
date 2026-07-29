@@ -17,7 +17,7 @@ const Navbar = ({ onToggleSidebar }) => {
     if (pathname === '/upload') return 'Upload Paper';
     if (pathname.startsWith('/processing/')) return 'Processing Paper';
     if (pathname.startsWith('/review/')) return 'Review Paper';
-    if (pathname === '/question-bank') return 'Question Bank';
+    // if (pathname === '/question-bank') return 'Question Bank';
     if (pathname === '/generate') return 'Generate Practice Paper';
     if (pathname.startsWith('/practice-paper/')) return 'Practice Paper';
     return 'Test Series';

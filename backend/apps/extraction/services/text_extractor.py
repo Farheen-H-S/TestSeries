@@ -37,29 +37,65 @@ def extract_text(doc: fitz.Document) -> List[Dict[str, Any]]:
     Detects tables and replaces them with wrapped markdown blocks.
     Strips running page headers and footers from margins.
     """
+    from .table_processing import TableProcessor
+    
     repeated_margin_texts = detect_headers_footers(doc)
     extracted_pages = []
 
+    # Pass 1: Extract all tables across all pages, process them, and merge cross-page tables
+    processor = TableProcessor()
+    raw_processed_tables = []
+    
     for page in doc:
+        page_num = page.number + 1
+        page_tables = page.find_tables().tables
+        for t in page_tables:
+            raw_grid = t.extract()
+            pt = processor.process(raw_grid, bbox=t.bbox, page_number=page_num)
+            raw_processed_tables.append(pt)
+            
+    # Merge cross-page tables
+    processor.merge_cross_page_tables(raw_processed_tables, doc)
+    
+    # Build lookup map: (page_number, round(x0, 1), round(y0, 1)) -> markdown
+    table_lookup = {}
+    for pt in raw_processed_tables:
+        table = pt.table
+        key = (table.page_number, round(table.bbox[0], 1), round(table.bbox[1], 1))
+        
+        parent_id = table.properties.get("merged_into")
+        if parent_id is not None:
+            # Child chunk: render nothing on this page (merged into root)
+            table_lookup[key] = ""
+        else:
+            # Root table: serialize full table
+            md = TableProcessor.serialize_to_markdown(table)
+            table_lookup[key] = md
+
+    # Pass 2: Extract text page by page, integrating processed table markdown
+    for page in doc:
+        page_num = page.number + 1
         rect = page.rect
         height = rect.height if rect else 842
         top_margin = 135
         bottom_margin = height - 135
         
-        tables = page.find_tables().tables
+        page_tables = page.find_tables().tables
         blocks = page.get_text("blocks")
         
         # Segment page blocks and tables together by vertical position
         items = []
-        table_bboxes = [t.bbox for t in tables]
+        table_bboxes = [t.bbox for t in page_tables]
         
         # Add tables
-        for t in tables:
+        for t in page_tables:
+            key = (page_num, round(t.bbox[0], 1), round(t.bbox[1], 1))
+            md_content = table_lookup.get(key, "")
             items.append({
                 "type": "table",
                 "y0": t.bbox[1],
                 "x0": t.bbox[0],
-                "content": t.to_markdown()
+                "content": md_content
             })
             
         # Add text blocks that do not fall inside any table bbox and are not margin headers/footers
@@ -100,14 +136,15 @@ def extract_text(doc: fitz.Document) -> List[Dict[str, Any]]:
         page_text_parts = []
         for it in items:
             if it["type"] == "table":
-                page_text_parts.append(f"\n[STRUCTURED_START]\n{it['content']}\n[STRUCTURED_END]\n")
+                if it["content"].strip():
+                    page_text_parts.append(f"\n[STRUCTURED_START]\n{it['content']}\n[STRUCTURED_END]\n")
             else:
                 page_text_parts.append(it["content"])
                 
         page_text = "\n".join(page_text_parts)
         
         page_content = {
-            "page_number": page.number + 1,
+            "page_number": page_num,
             "text": page_text
         }
         extracted_pages.append(page_content)
