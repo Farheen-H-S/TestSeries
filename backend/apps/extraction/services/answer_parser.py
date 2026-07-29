@@ -1,6 +1,7 @@
 import re
 import logging
-from .types import ParsedAnswer, ParserConfig, AnswerParseResult, ParsingDiagnostics, ParsingContext, AnswerSectionType, AnswerSource
+from typing import List, Tuple, Optional, Dict, Set
+from .types import ParsedAnswer, ParserConfig, AnswerParseResult, ParsingDiagnostics, ParsingContext, AnswerSectionType, AnswerSource, PromotionReason, PromotionConfidence, PromotionEvaluation, PromotionContext
 
 from .normalizer import Normalizer
 from .hierarchy_utils import HierarchyUtils
@@ -21,11 +22,11 @@ class AnswerParser:
         self.validator = HeaderValidator()
         self.diagnostics = ParsingDiagnostics()
 
-    def parse(self, text: str, page_offsets: List[Tuple[int, int]], base_offset: int = 0, context: Optional[ParsingContext] = None) -> List[ParsedAnswer]:
+    def parse(self, text: str, page_offsets: List[Tuple[int, int]], base_offset: int = 0, context: Optional[ParsingContext] = None, valid_question_paths: Optional[Set[Tuple[str, ...]]] = None) -> List[ParsedAnswer]:
         """
         Parses text into a list of answers with stateful path resolution and absolute offsets.
         """
-        result = self.parse_with_diagnostics(text, page_offsets, base_offset, context)
+        result = self.parse_with_diagnostics(text, page_offsets, base_offset, context, valid_question_paths)
         self.diagnostics = result.diagnostics
         return result.answers
 
@@ -37,6 +38,7 @@ class AnswerParser:
         page_offsets: List[Tuple[int, int]],
         base_offset: int = 0,
         context: Optional[ParsingContext] = None,
+        valid_question_paths: Optional[Set[Tuple[str, ...]]] = None,
     ) -> AnswerParseResult:
         """
         Parses text and returns an AnswerParseResult that bundles the
@@ -106,7 +108,20 @@ class AnswerParser:
 
         max_wn_len = getattr(self.config, 'max_working_notes_length', 4000)
 
-        for match in all_potential_matches:
+        # Precompute known_children for O(1) lookup
+        known_children = {}
+        if valid_question_paths is not None:
+            for path in valid_question_paths:
+                parent_path = path[:-1]
+                if parent_path:
+                    known_children.setdefault(parent_path, set()).add(path)
+
+        promo_context = PromotionContext(
+            valid_question_paths=valid_question_paths,
+            known_children=known_children
+        )
+
+        for idx, match in enumerate(all_potential_matches):
             raw_header = text[match.start():match.end()]
             normalized_header = match.group(0)
 
@@ -178,6 +193,32 @@ class AnswerParser:
             # 5. Pure structural and hierarchy validation using HeaderValidator
             result = self.validator.is_valid(match, path, hierarchy_stack, normalized_text)
             if result.is_valid:
+                # Context-aware list item rejection via weighted heuristics
+                next_match_start = all_potential_matches[idx+1].start() if idx + 1 < len(all_potential_matches) else len(normalized_text)
+                evaluation = self._should_create_answer_node(
+                    match,
+                    path,
+                    hierarchy_stack,
+                    normalized_text,
+                    next_match_start,
+                    promo_context
+                )
+                
+                if not evaluation.accepted:
+                    temp_stack = list(hierarchy_stack)
+                    HierarchyUtils.update_hierarchy_stack(temp_stack, path)
+                    logger.info(
+                        "Answer candidate rejected | candidate=%r | candidate_path=%s | parent_stack=%s | decision=%s | confidence=%s | offset=%d",
+                        raw_header, temp_stack, hierarchy_stack, evaluation.reason.name, evaluation.confidence.name, match.start()
+                    )
+                    diagnostics.rejected_headers.append({
+                        "header": raw_header,
+                        "reason": f"{evaluation.reason.name} (Confidence: {evaluation.confidence.name})",
+                        "offset": match.start()
+                    })
+                    prev_match_end = match.end()
+                    continue
+
                 old_stack = list(hierarchy_stack)
                 HierarchyUtils.update_hierarchy_stack(hierarchy_stack, path)
                 logger.debug(
@@ -490,8 +531,72 @@ class AnswerParser:
             # 3. Descriptive/financial tables (e.g. Balance Sheet) contain 0 option prefixes,
             #    giving them explicit_opt_count = 0, so they are correctly ignored.
             if explicit_opt_count >= 1:
-                mcq_answers.extend(table_answers)
+                    mcq_answers.extend(table_answers)
 
         return mcq_answers
+
+    def _should_create_answer_node(
+        self,
+        match: re.Match,
+        path: List[str],
+        hierarchy_stack: List[str],
+        text: str,
+        next_match_start: int,
+        context: PromotionContext
+    ) -> PromotionEvaluation:
+        c_main, c_alpha, c_roman = HierarchyUtils.decompose_path(path)
+        s_alpha = HierarchyUtils.decompose_path(hierarchy_stack)[1]
+        s_roman = HierarchyUtils.decompose_path(hierarchy_stack)[2]
+
+        # Calculate potential path after promotion
+        temp_stack = list(hierarchy_stack)
+        HierarchyUtils.update_hierarchy_stack(temp_stack, path)
+        potential_path = tuple(temp_stack)
+
+        # 1. Question Structure Check (Authoritative when child information is present)
+        if context.valid_question_paths is not None and context.known_children is not None:
+            parent_path = tuple(hierarchy_stack) if hierarchy_stack else None
+            if parent_path and parent_path in context.known_children:
+                children = context.known_children[parent_path]
+                if children:
+                    if potential_path in children:
+                        return PromotionEvaluation(True, PromotionReason.ACCEPT_QUESTION_STRUCTURE, PromotionConfidence.HIGH)
+                    else:
+                        return PromotionEvaluation(False, PromotionReason.REJECT_QUESTION_STRUCTURE, PromotionConfidence.HIGH)
+
+        # 2. Sequence Rule (Only when entering a new depth)
+        if c_alpha and s_alpha is None:
+            if c_alpha != 'a':
+                return PromotionEvaluation(False, PromotionReason.REJECT_SEQUENCE_START, PromotionConfidence.HIGH)
+        elif c_roman and s_roman is None:
+            if c_roman != 'i':
+                return PromotionEvaluation(False, PromotionReason.REJECT_SEQUENCE_START, PromotionConfidence.HIGH)
+
+        # 3. Colon/List context heuristic (evidence of inline list)
+        if c_alpha or c_roman:
+            last_char = self._get_last_non_whitespace_char(text, match.start())
+            preceded_by_colon = (last_char == ':')
+            
+            if preceded_by_colon:
+                # Lazy calculation of candidate block only if colon check is hit
+                candidate_block = text[match.end():next_match_start]
+                clean_block = candidate_block.replace('\r', '')
+                
+                # Structural check: no paragraph breaks and length is relatively short
+                looks_like_inline_list = ("\n\n" not in clean_block) and (len(clean_block) < 1000)
+                
+                if looks_like_inline_list:
+                    return PromotionEvaluation(False, PromotionReason.REJECT_INLINE_LIST, PromotionConfidence.MEDIUM)
+
+        return PromotionEvaluation(True, PromotionReason.ACCEPT, PromotionConfidence.LOW)
+
+    def _get_last_non_whitespace_char(self, text: str, start_idx: int) -> str:
+        idx = start_idx - 1
+        while idx >= 0:
+            char = text[idx]
+            if char not in (' ', '\t', '\n', '\r'):
+                return char
+            idx -= 1
+        return ""
 
 

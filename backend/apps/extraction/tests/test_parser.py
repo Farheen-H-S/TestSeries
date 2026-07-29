@@ -680,6 +680,118 @@ class ParserRegressionTests(unittest.TestCase):
         self.assertNotIn(["10"], paths)
 
 
+    def test_promotion_rule_1_question_structure(self):
+        # Rule 1: Confirm or reject immediately based on question parser hierarchy if parent has children
+        valid_question_paths = {("8",), ("8", "i"), ("8", "ii")}
+        
+        text = textwrap.dedent("""
+            8.
+            Some text.
+            (a)
+            This is sub-answer (a) which should be rejected because it is not in the question structure.
+            (i)
+            This is sub-answer (i) which should be accepted because it is in the question structure.
+            (ii)
+            This is sub-answer (ii) which should be accepted because it is in the question structure.
+        """).strip()
+        
+        parsed = self.a_parser.parse(text, self.offsets, valid_question_paths=valid_question_paths)
+        paths = [p.hierarchy_path for p in parsed]
+        
+        self.assertIn(["8"], paths)
+        self.assertNotIn(["8", "a"], paths)
+        self.assertIn(["8", "i"], paths)
+        self.assertIn(["8", "ii"], paths)
+
+    def test_promotion_rule_2_sequence_start(self):
+        # Rule 2: Sub-levels must start at 'a' or 'i' when entering a new depth level
+        text = textwrap.dedent("""
+            10.
+            Answer to question 10.
+            (b)
+            This should be rejected because 'a' was not seen first.
+            (ii)
+            This should be rejected because 'i' was not seen first.
+            (a)
+            This should be accepted because it correctly starts the alpha sequence.
+            (i)
+            This should be accepted because it correctly starts the roman sequence.
+        """).strip()
+        
+        parsed = self.a_parser.parse(text, self.offsets)
+        paths = [p.hierarchy_path for p in parsed]
+        
+        self.assertIn(["10"], paths)
+        self.assertNotIn(["10", "b"], paths)
+        self.assertNotIn(["10", "ii"], paths)
+        self.assertIn(["10", "a"], paths)
+        self.assertIn(["10", "a", "i"], paths)
+
+    def test_promotion_rule_3_colon_heuristic(self):
+        # Rule 3: Reject candidates preceded by colon if block is structurally list-like (no \n\n, short)
+        text = textwrap.dedent("""
+            10.
+            The adjustments are:
+            (a) Relates to asset.
+            (b) Relates to liability.
+        """).strip()
+        
+        parsed = self.a_parser.parse(text, self.offsets)
+        paths = [p.hierarchy_path for p in parsed]
+        
+        self.assertIn(["10"], paths)
+        self.assertNotIn(["10", "a"], paths)
+        self.assertNotIn(["10", "b"], paths)
+
+        # Genuine sub-answers with paragraph breaks should be accepted even if preceded by colon
+        text_genuine = textwrap.dedent("""
+            10.
+            The adjustments are:
+            (a)
+            This is a genuine long sub-answer because it has multiple lines and contains
+            a paragraph break here.
+            
+            Paragraph two of the sub-answer.
+            (b)
+            This is second sub-answer.
+        """).strip()
+        
+        parsed_genuine = self.a_parser.parse(text_genuine, self.offsets)
+        paths_genuine = [p.hierarchy_path for p in parsed_genuine]
+        self.assertIn(["10", "a"], paths_genuine)
+        self.assertIn(["10", "b"], paths_genuine)
+
+    def test_promotion_ocr_miss_scenario(self):
+        # OCR Miss: valid_question_paths provided but parent 8 has no children registered.
+        # Fallback to local sequence / colon checks should identify lists and accept correct sub-answers.
+        valid_question_paths = {("8",), ("10",)}
+        
+        text = textwrap.dedent("""
+            8.
+            Applying guidance:
+            (a)
+            Inline list item 1.
+            (b)
+            Inline list item 2.
+            (i)
+            Genuine sub-answer 1.
+            (ii)
+            Genuine sub-answer 2.
+        """).strip()
+        
+        parsed = self.a_parser.parse(text, self.offsets, valid_question_paths=valid_question_paths)
+        paths = [p.hierarchy_path for p in parsed]
+        
+        self.assertIn(["8"], paths)
+        # (a) rejected by Rule 3 (colon heuristic)
+        self.assertNotIn(["8", "a"], paths)
+        # (b) rejected by Rule 2 (sequence start)
+        self.assertNotIn(["8", "b"], paths)
+        # (i) and (ii) accepted by fallback
+        self.assertIn(["8", "i"], paths)
+        self.assertIn(["8", "ii"], paths)
+
+
 if __name__ == "__main__":
     unittest.main()
 

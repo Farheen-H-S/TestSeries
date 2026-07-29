@@ -1,6 +1,6 @@
 import re
 from dataclasses import dataclass, field
-from typing import List, Optional, Dict, Any, Tuple
+from typing import List, Optional, Dict, Any, Tuple, Set
 from enum import Enum
 
 class LayoutType(Enum):
@@ -151,4 +151,31 @@ class ParsingContext:
     current_question: Optional[str] = None
     inside_mcq_sequence: bool = False
     inside_answer_sequence: bool = False
+
+
+class PromotionReason(Enum):
+    ACCEPT = "ACCEPT"
+    ACCEPT_QUESTION_STRUCTURE = "ACCEPT_QUESTION_STRUCTURE"
+    REJECT_QUESTION_STRUCTURE = "REJECT_QUESTION_STRUCTURE"
+    REJECT_SEQUENCE_START = "REJECT_SEQUENCE_START"
+    REJECT_INLINE_LIST = "REJECT_INLINE_LIST"
+
+
+class PromotionConfidence(Enum):
+    HIGH = "HIGH"
+    MEDIUM = "MEDIUM"
+    LOW = "LOW"
+
+
+@dataclass
+class PromotionEvaluation:
+    accepted: bool
+    reason: PromotionReason
+    confidence: PromotionConfidence
+
+
+@dataclass
+class PromotionContext:
+    valid_question_paths: Optional[Set[Tuple[str, ...]]] = None
+    known_children: Optional[Dict[Tuple[str, ...], Set[Tuple[str, ...]]]] = None
 

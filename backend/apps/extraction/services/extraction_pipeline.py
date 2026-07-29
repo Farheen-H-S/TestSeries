@@ -122,11 +122,13 @@ def extract_document(document: Document, temp_file_path: str = None):
         
         parsed_questions = q_parser.parse(q_part, page_offsets, base_offset=q_base_offset, enable_semantic_validation=enable_semantic, context=context)
         
+        valid_question_paths = {tuple(q.hierarchy_path) for q in parsed_questions}
+        
         # Best-effort Answer Parsing for UNKNOWN layout
         parsed_answers = []
         # UNKNOWN should require actual header signals to avoid false positives (e.g. "Answer the following")
         if layout_res.layout != LayoutType.UNKNOWN:
-            parsed_answers = a_parser.parse(a_part, page_offsets, base_offset=a_base_offset, context=context)
+            parsed_answers = a_parser.parse(a_part, page_offsets, base_offset=a_base_offset, context=context, valid_question_paths=valid_question_paths)
         else:
             # Best effort: require at least 2 distinct answer headers
             signals = 0
@@ -135,7 +137,7 @@ def extract_document(document: Document, temp_file_path: str = None):
                 if signals >= 2: break
                 
             if signals >= 2:
-                parsed_answers = a_parser.parse(a_part, page_offsets, base_offset=a_base_offset, context=context)
+                parsed_answers = a_parser.parse(a_part, page_offsets, base_offset=a_base_offset, context=context, valid_question_paths=valid_question_paths)
 
         # 5. Matching using Canonical Hierarchy Paths
         logger.info(
