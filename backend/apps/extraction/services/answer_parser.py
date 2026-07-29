@@ -1,7 +1,7 @@
 import re
 import logging
 from typing import List, Tuple, Optional, Dict, Set
-from .types import ParsedAnswer, ParserConfig, AnswerParseResult, ParsingDiagnostics, ParsingContext, AnswerSectionType, AnswerSource, PromotionReason, PromotionConfidence, PromotionEvaluation, PromotionContext
+from .types import ParsedAnswer, ParserConfig, AnswerParseResult, ParsingDiagnostics, ParsingContext, AnswerSectionType, AnswerSource, PromotionReason, PromotionEvaluation, PromotionContext
 
 from .normalizer import Normalizer
 from .hierarchy_utils import HierarchyUtils
@@ -208,12 +208,12 @@ class AnswerParser:
                     temp_stack = list(hierarchy_stack)
                     HierarchyUtils.update_hierarchy_stack(temp_stack, path)
                     logger.info(
-                        "Answer candidate rejected | candidate=%r | candidate_path=%s | parent_stack=%s | decision=%s | confidence=%s | offset=%d",
-                        raw_header, temp_stack, hierarchy_stack, evaluation.reason.name, evaluation.confidence.name, match.start()
+                        "Answer candidate rejected | candidate=%r | candidate_path=%s | parent_stack=%s | decision=%s | offset=%d",
+                        raw_header, temp_stack, hierarchy_stack, evaluation.reason.name, match.start()
                     )
                     diagnostics.rejected_headers.append({
                         "header": raw_header,
-                        "reason": f"{evaluation.reason.name} (Confidence: {evaluation.confidence.name})",
+                        "reason": evaluation.reason.name,
                         "offset": match.start()
                     })
                     prev_match_end = match.end()
@@ -560,17 +560,17 @@ class AnswerParser:
                 children = context.known_children[parent_path]
                 if children:
                     if potential_path in children:
-                        return PromotionEvaluation(True, PromotionReason.ACCEPT_QUESTION_STRUCTURE, PromotionConfidence.HIGH)
+                        return PromotionEvaluation(True, PromotionReason.ACCEPT_QUESTION_STRUCTURE)
                     else:
-                        return PromotionEvaluation(False, PromotionReason.REJECT_QUESTION_STRUCTURE, PromotionConfidence.HIGH)
+                        return PromotionEvaluation(False, PromotionReason.REJECT_QUESTION_STRUCTURE)
 
         # 2. Sequence Rule (Only when entering a new depth)
         if c_alpha and s_alpha is None:
             if c_alpha != 'a':
-                return PromotionEvaluation(False, PromotionReason.REJECT_SEQUENCE_START, PromotionConfidence.HIGH)
+                return PromotionEvaluation(False, PromotionReason.REJECT_SEQUENCE_START)
         elif c_roman and s_roman is None:
             if c_roman != 'i':
-                return PromotionEvaluation(False, PromotionReason.REJECT_SEQUENCE_START, PromotionConfidence.HIGH)
+                return PromotionEvaluation(False, PromotionReason.REJECT_SEQUENCE_START)
 
         # 3. Colon/List context heuristic (evidence of inline list)
         if c_alpha or c_roman:
@@ -586,9 +586,9 @@ class AnswerParser:
                 looks_like_inline_list = ("\n\n" not in clean_block) and (len(clean_block) < 1000)
                 
                 if looks_like_inline_list:
-                    return PromotionEvaluation(False, PromotionReason.REJECT_INLINE_LIST, PromotionConfidence.MEDIUM)
+                    return PromotionEvaluation(False, PromotionReason.REJECT_INLINE_LIST)
 
-        return PromotionEvaluation(True, PromotionReason.ACCEPT, PromotionConfidence.LOW)
+        return PromotionEvaluation(True, PromotionReason.ACCEPT)
 
     def _get_last_non_whitespace_char(self, text: str, start_idx: int) -> str:
         idx = start_idx - 1

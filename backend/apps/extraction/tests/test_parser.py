@@ -791,6 +791,48 @@ class ParserRegressionTests(unittest.TestCase):
         self.assertIn(["8", "i"], paths)
         self.assertIn(["8", "ii"], paths)
 
+    def test_promotion_genuine_without_colon(self):
+        # Verify that sub-answers without a preceding colon are promoted normally (Rule 3 doesn't fire)
+        text = textwrap.dedent("""
+            10.
+            Answer text for question 10.
+            (a)
+            Capital A text block.
+            (i)
+            Roman numeral text block.
+            (b)
+            Capital B text block.
+        """).strip()
+        
+        parsed = self.a_parser.parse(text, self.offsets)
+        paths = [p.hierarchy_path for p in parsed]
+        
+        self.assertIn(["10"], paths)
+        self.assertIn(["10", "a"], paths)
+        self.assertIn(["10", "a", "i"], paths)
+        self.assertIn(["10", "b"], paths)
+
+    def test_promotion_colon_with_inline_lists_remains_rejected(self):
+        # Verify that inline list items with colon prefix remain rejected (Rule 3 fires)
+        text = textwrap.dedent("""
+            10.
+            The following are:
+            (a)
+            apple
+            (b)
+            banana
+            11.
+            Answer to 11.
+        """).strip()
+        
+        parsed = self.a_parser.parse(text, self.offsets)
+        paths = [p.hierarchy_path for p in parsed]
+        
+        self.assertIn(["10"], paths)
+        self.assertNotIn(["10", "a"], paths)
+        self.assertNotIn(["10", "b"], paths)
+        self.assertIn(["11"], paths)
+
 
 if __name__ == "__main__":
     unittest.main()

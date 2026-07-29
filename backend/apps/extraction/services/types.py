@@ -161,17 +161,10 @@ class PromotionReason(Enum):
     REJECT_INLINE_LIST = "REJECT_INLINE_LIST"
 
 
-class PromotionConfidence(Enum):
-    HIGH = "HIGH"
-    MEDIUM = "MEDIUM"
-    LOW = "LOW"
-
-
 @dataclass
 class PromotionEvaluation:
     accepted: bool
     reason: PromotionReason
-    confidence: PromotionConfidence
 
 
 @dataclass
