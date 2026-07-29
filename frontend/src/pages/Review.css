@@ -282,6 +282,11 @@
   color: var(--status-failed-text);
 }
 
+.question-badge.badge-parent {
+  background-color: var(--status-processing-bg);
+  color: var(--status-processing-text);
+}
+
 /* Chevron icon rotation */
 .chevron-icon {
   width: 1.25rem;

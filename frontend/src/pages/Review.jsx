@@ -201,9 +201,10 @@ const Review = () => {
   const stats = useMemo(() => {
     const total = reviewableQuestions.length;
     const withAnswers = reviewableQuestions.filter(q => !isAnswerMissing(q.answer_text)).length;
-    const withoutAnswers = total - withAnswers;
+    const parentCount = reviewableQuestions.filter(q => parentIds.has(q.question_id)).length;
+    const withoutAnswers = Math.max(0, total - withAnswers - parentCount);
     return { total, withAnswers, withoutAnswers };
-  }, [reviewableQuestions]);
+  }, [reviewableQuestions, parentIds]);
 
   // Diagnostics Calculations
   const diagnostics = useMemo(() => {
@@ -264,7 +265,7 @@ const Review = () => {
     if (statusFilter === 'ANSWERED') {
       result = result.filter(q => !isAnswerMissing(q.answer_text));
     } else if (statusFilter === 'MISSING') {
-      result = result.filter(q => isAnswerMissing(q.answer_text));
+      result = result.filter(q => isAnswerMissing(q.answer_text) && !parentIds.has(q.question_id));
     }
 
     if (marksFilter !== 'ALL') {
@@ -734,6 +735,7 @@ const Review = () => {
             const isExpanded = !!expandedCards[q.question_id];
             const isEditing = editingQuestionId === q.question_id;
             const answerMissing = isAnswerMissing(q.answer_text);
+            const isParent = parentIds.has(q.question_id);
             const questionPreview = getQuestionPreview(q);
             
             const qTableHtml = extractTableHtml(q.question_content);
@@ -760,8 +762,8 @@ const Review = () => {
                     )}
                   </div>
                   <div className="question-header-right">
-                    <span className={`question-badge ${answerMissing ? 'badge-missing' : 'badge-available'}`}>
-                      {answerMissing ? 'Answer missing' : 'Answer available'}
+                    <span className={`question-badge ${isParent ? 'badge-parent' : (answerMissing ? 'badge-missing' : 'badge-available')}`}>
+                      {isParent ? 'Contains subquestions' : (answerMissing ? 'Answer missing' : 'Answer available')}
                     </span>
                     <svg viewBox="0 0 24 24" className="chevron-icon" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                       <polyline points="6 9 12 15 18 9"></polyline>
