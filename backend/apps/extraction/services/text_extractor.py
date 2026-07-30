@@ -42,35 +42,9 @@ def extract_text(doc: fitz.Document) -> List[Dict[str, Any]]:
     repeated_margin_texts = detect_headers_footers(doc)
     extracted_pages = []
 
-    # Pass 1: Extract all tables across all pages, process them, and merge cross-page tables
+    # Pass 1: Extract all tables across all pages, process, and merge them
     processor = TableProcessor()
-    raw_processed_tables = []
-    
-    for page in doc:
-        page_num = page.number + 1
-        page_tables = page.find_tables().tables
-        for t in page_tables:
-            raw_grid = t.extract()
-            pt = processor.process(raw_grid, bbox=t.bbox, page_number=page_num)
-            raw_processed_tables.append(pt)
-            
-    # Merge cross-page tables
-    processor.merge_cross_page_tables(raw_processed_tables, doc)
-    
-    # Build lookup map: (page_number, round(x0, 1), round(y0, 1)) -> markdown
-    table_lookup = {}
-    for pt in raw_processed_tables:
-        table = pt.table
-        key = (table.page_number, round(table.bbox[0], 1), round(table.bbox[1], 1))
-        
-        parent_id = table.properties.get("merged_into")
-        if parent_id is not None:
-            # Child chunk: render nothing on this page (merged into root)
-            table_lookup[key] = ""
-        else:
-            # Root table: serialize full table
-            md = TableProcessor.serialize_to_markdown(table)
-            table_lookup[key] = md
+    table_lookup = processor.process_document(doc)
 
     # Pass 2: Extract text page by page, integrating processed table markdown
     for page in doc:

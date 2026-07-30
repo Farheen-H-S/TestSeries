@@ -1,6 +1,6 @@
 import html
 import re
-from .table_processing import parse_markdown_to_table, _HTMLRenderer
+from .table_processing import parse_markdown_to_table, TableProcessor
 
 def escape_html(text: str) -> str:
     """
@@ -31,7 +31,7 @@ def markdown_table_to_html(markdown_table: str) -> str:
     Parses a simple markdown table into a semantic HTML table with thead and tbody.
     """
     table = parse_markdown_to_table(markdown_table)
-    return _HTMLRenderer.render(table)
+    return TableProcessor.render_to_html(table)
 
 def text_to_html(text: str) -> str:
     """

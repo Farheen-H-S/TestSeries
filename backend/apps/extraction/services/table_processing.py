@@ -357,11 +357,21 @@ class _CrossPageMerger:
                 if len(table.rows) > 0 and len(last_table.rows) > 0:
                     cols_curr = len(table.rows[0].cells)
                     cols_last = len(last_table.rows[0].cells)
-                    if cols_curr == cols_last:
+                    if cols_curr != cols_last:
+                        logger.info(
+                            "Rejected merging tables split between page %d and %d: Column count mismatch (%d vs %d) | Confidence: LOW",
+                            last_table.page_end, table.page_number, cols_last, cols_curr
+                        )
+                    else:
                         # 3. Close horizontal coordinates
                         x0_diff = abs(table.bbox[0] - last_table.bbox[0])
                         x1_diff = abs(table.bbox[2] - last_table.bbox[2])
-                        if x0_diff < self.config.column_coordinate_threshold and x1_diff < self.config.column_coordinate_threshold:
+                        if x0_diff >= self.config.column_coordinate_threshold or x1_diff >= self.config.column_coordinate_threshold:
+                            logger.info(
+                                "Rejected merging tables split between page %d and %d: Bounding box misalignment (x0 diff: %.1f, x1 diff: %.1f) | Confidence: LOW",
+                                last_table.page_end, table.page_number, x0_diff, x1_diff
+                            )
+                        else:
                             # 4. Vertical margin boundary check: 
                             # Table A must be near the bottom margin on page N
                             # Table B must be near the top margin on page N+1
@@ -414,7 +424,27 @@ class _CrossPageMerger:
                                             has_intervening_text = True
                                             break
                                             
-                            if is_at_bottom_a and is_at_top_b and not ends_with_total and not starts_with_title and not has_intervening_text:
+                            if not is_at_bottom_a or not is_at_top_b:
+                                logger.info(
+                                    "Rejected merging tables split between page %d and %d: Table not adjacent to page margins (A bottom: %.1f, B top: %.1f) | Confidence: LOW",
+                                    last_table.page_end, table.page_number, last_table.bbox[3], table.bbox[1]
+                                )
+                            elif ends_with_total:
+                                logger.info(
+                                    "Rejected merging tables split between page %d and %d: Prior table ends with a Total row | Confidence: LOW",
+                                    last_table.page_end, table.page_number
+                                )
+                            elif starts_with_title:
+                                logger.info(
+                                    "Rejected merging tables split between page %d and %d: Subsequent table starts with a new title heading | Confidence: LOW",
+                                    last_table.page_end, table.page_number
+                                )
+                            elif has_intervening_text:
+                                logger.info(
+                                    "Rejected merging tables split between page %d and %d: Intervening non-margin text blocks detected | Confidence: LOW",
+                                    last_table.page_end, table.page_number
+                                )
+                            else:
                                 should_merge = True
                                 reasons = [
                                     "consecutive pages",
@@ -614,39 +644,7 @@ class _HTMLRenderer:
         return "".join(html_parts)
 
 
-class _JSONSerializer:
-    """Stage E3: Serializes the Table model to JSON representation."""
-    @staticmethod
-    def serialize(table: Table) -> str:
-        table_dict = {
-            "page_number": table.page_number,
-            "title": table.title,
-            "page_start": table.page_start,
-            "page_end": table.page_end,
-            "question": table.question,
-            "confidence": table.confidence.value if table.confidence else None,
-            "properties": table.properties,
-            "rows": []
-        }
-        for row in table.rows:
-            row_dict = {
-                "is_header": row.is_header,
-                "is_section": row.is_section,
-                "is_total": row.is_total,
-                "cells": []
-            }
-            for cell in row.cells:
-                cell_dict = {
-                    "text": cell.text,
-                    "style": cell.style.value,
-                    "rowspan": cell.rowspan,
-                    "colspan": cell.colspan,
-                    "alignment": cell.alignment.value,
-                    "bbox": cell.bbox
-                }
-                row_dict["cells"].append(cell_dict)
-            table_dict["rows"].append(row_dict)
-        return json.dumps(table_dict, indent=2)
+
 
 
 class TableProcessor:
@@ -708,6 +706,41 @@ class TableProcessor:
         merger = _CrossPageMerger(self.config, TableDiagnostics())
         return merger.merge(processed_tables, doc)
 
+    def process_document(self, doc: Any) -> Dict[Tuple[int, float, float], str]:
+        """
+        Processes all tables in a document: extracts, cleans, structurally normalizes,
+        merges consecutive tables across pages, and builds the mapping of table coordinates
+        to their processed Markdown text representation.
+        """
+        raw_processed_tables = []
+        for page in doc:
+            page_num = page.number + 1
+            page_tables = page.find_tables().tables
+            for t in page_tables:
+                raw_grid = t.extract()
+                pt = self.process(raw_grid, bbox=t.bbox, page_number=page_num)
+                raw_processed_tables.append(pt)
+                
+        # Merge cross-page tables
+        self.merge_cross_page_tables(raw_processed_tables, doc)
+        
+        # Build lookup map: (page_number, round(x0, 1), round(y0, 1)) -> markdown
+        table_lookup = {}
+        for pt in raw_processed_tables:
+            table = pt.table
+            key = (table.page_number, round(table.bbox[0], 1), round(table.bbox[1], 1))
+            
+            parent_id = table.properties.get("merged_into")
+            if parent_id is not None:
+                # Child chunk: render nothing on this page (merged into root)
+                table_lookup[key] = ""
+            else:
+                # Root table: serialize full table
+                md = self.serialize_to_markdown(table)
+                table_lookup[key] = md
+                
+        return table_lookup
+
     @staticmethod
     def serialize_to_markdown(table: Table) -> str:
         """Stage E1: Serializes Table model to Markdown representation."""
@@ -717,11 +750,6 @@ class TableProcessor:
     def render_to_html(table: Table) -> str:
         """Stage E2: Renders Table model to HTML representation."""
         return _HTMLRenderer.render(table)
-
-    @staticmethod
-    def serialize_to_json(table: Table) -> str:
-        """Stage E3: Serializes Table model to structured JSON representation."""
-        return _JSONSerializer.serialize(table)
 
 
 def parse_markdown_to_table(markdown_table: str) -> Table:
