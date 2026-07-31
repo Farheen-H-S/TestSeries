@@ -274,6 +274,15 @@ class _StructureNormalizer:
         header_row_count = 0
         for row in grid:
             if not row[0].strip():
+                # Safeguard: check if candidate row contains an Option answer choice (meaning it is data, not header)
+                is_data = False
+                for cell in row[1:]:
+                    text = cell.strip() if cell else ""
+                    if text and re.match(r'(?i)^Option\s*\([a-e]\)', text):
+                        is_data = True
+                        break
+                if is_data:
+                    break
                 header_row_count += 1
             else:
                 break
