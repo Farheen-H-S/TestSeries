@@ -13,7 +13,7 @@ const Sidebar = ({ isOpen, isCollapsed, onClose }) => {
     { path: '/', name: 'Home', icon: <FiHome /> },
     { path: '/subjects', name: 'Subjects', icon: <FiBookOpen /> },
     { path: '/upload', name: 'Upload Paper', icon: <FiUpload /> },
-    { path: '/question-bank', name: 'Question Bank', icon: <FiDatabase /> },
+    // { path: '/question-bank', name: 'Question Bank', icon: <FiDatabase /> },
     { path: '/generate', name: 'Generate Paper', icon: <FiFileText /> },
   ];
 
