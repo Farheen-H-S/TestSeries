@@ -110,8 +110,11 @@ def _clean_cell_string(text: str) -> str:
         return ''
     text = text.replace('&lt;br&gt;', '<br />').replace('&lt;br/&gt;', '<br />').replace('&lt;br /&gt;', '<br />')
     text = text.replace('&lt;', '<').replace('&gt;', '>').replace('&amp;', '&')
-    text = re.sub(r'`\s*(\d)', r'₹ \1', text)
-    text = re.sub(r'`', '₹', text)
+
+    # Replace backticks ` or ₹ with Rs. to prevent xhtml2pdf black square ■ rendering
+    text = re.sub(r'[₹`]\s*(\d)', r'Rs. \1', text)
+    text = re.sub(r'[₹`]', 'Rs. ', text)
+
     text = re.sub(r'\*\*(.*?)\*\*', r'\1', text)
     text = re.sub(r'\*(.*?)\*', r'\1', text)
     if re.match(r'^Col\d+$', text.strip(), re.IGNORECASE):
@@ -121,7 +124,7 @@ def _clean_cell_string(text: str) -> str:
 
 def sanitize_stored_html_table(table_container_soup) -> str:
     from bs4 import BeautifulSoup
-    from .table_processing import Cell, CellStyle, CellAlignment, Row, Table
+    from .table_processing import Cell, CellStyle, CellAlignment, Row, Table, TableProcessor
 
     table_tag = table_container_soup.find('table')
     if not table_tag:
@@ -148,20 +151,22 @@ def sanitize_stored_html_table(table_container_soup) -> str:
         while len(r) < num_cols:
             r.append('')
 
-    # Identify real data rows (rows containing numbers/amounts or clear data values)
-    data_rows = []
-    for r in raw_grid:
+    # Separate header rows from data rows
+    data_row_indices = []
+    for idx, r in enumerate(raw_grid):
         row_str = ' '.join(r)
         if re.search(r'\d{1,3}(?:,\d{2,3})+', row_str) or re.search(r'\(\d+\)', row_str):
-            data_rows.append(r)
+            data_row_indices.append(idx)
 
-    if not data_rows:
-        data_rows = raw_grid[1:] if len(raw_grid) > 1 else raw_grid
+    if not data_row_indices:
+        data_row_indices = list(range(1, len(raw_grid))) if len(raw_grid) > 1 else [0]
+
+    data_rows = [raw_grid[i] for i in data_row_indices]
 
     # Keep columns that have content in AT LEAST ONE real data row
     keep_cols = []
     for col_idx in range(num_cols):
-        has_data = any(r[col_idx] != '' for r in data_rows) if data_rows else any(r[col_idx] != '' for r in raw_grid)
+        has_data = any(r[col_idx] != '' for r in data_rows)
         if has_data:
             keep_cols.append(col_idx)
 
@@ -172,20 +177,39 @@ def sanitize_stored_html_table(table_container_soup) -> str:
     for r in raw_grid:
         pruned_grid.append([r[i] for i in keep_cols])
 
+    num_pruned_cols = len(keep_cols)
+
+    # Combine all header fragment rows into unified headers
+    first_data_idx = data_row_indices[0] if data_row_indices else 1
+    header_rows = pruned_grid[:first_data_idx]
+
+    unified_headers = [''] * num_pruned_cols
+    for c_idx in range(num_pruned_cols):
+        parts = []
+        for h_row in header_rows:
+            txt = h_row[c_idx]
+            if txt and txt not in parts and txt != 'Rs.':
+                parts.append(txt)
+        unified_headers[c_idx] = ' '.join(parts).strip()
+
+    # If column 0 header is empty but data rows have text, default to 'Particulars'
+    if not unified_headers[0] and any(raw_grid[i][keep_cols[0]] != '' for i in data_row_indices):
+        unified_headers[0] = 'Particulars'
+
     rows_model = []
-    header_cells = [Cell(text=c, style=CellStyle.BOLD, alignment=CellAlignment.LEFT) for c in pruned_grid[0]]
+    header_cells = [Cell(text=c, style=CellStyle.BOLD, alignment=CellAlignment.LEFT) for c in unified_headers]
     rows_model.append(Row(cells=header_cells, is_header=True))
 
-    for r in pruned_grid[1:]:
-        is_dup_header = all(c == '' or c in pruned_grid[0] or 'Company' in c or 'Invested' in c or 'for the' in c for c in r)
-        if is_dup_header and not any(re.search(r'\d', c) for c in r):
+    for idx in data_row_indices:
+        r = pruned_grid[idx]
+        if all(c == '' or c == 'Rs.' for c in r):
             continue
 
         cells = []
         is_sec = r[0] != '' and not any(c != '' for c in r[1:])
         for c in r:
             style = CellStyle.BOLD if (is_sec or 'Total' in c) else CellStyle.NORMAL
-            align = CellAlignment.RIGHT if re.match(r'^(?:[₹\-\u2013\d,\s\(\)]+|Nil)$', c) else CellAlignment.LEFT
+            align = CellAlignment.RIGHT if re.match(r'^(?:Rs\.\s*[\d,]+|[\d,]+|\([\d,]+\)|Nil)$', c) else CellAlignment.LEFT
             cells.append(Cell(text=c, style=style, alignment=align))
 
         rows_model.append(Row(cells=cells, is_header=False, is_section=is_sec))
@@ -198,7 +222,7 @@ def clean_stored_html_tables(content: str) -> str:
     """
     Sanitizes pre-rendered <table> HTML stored in Question/Answer records.
     Removes dummy PyMuPDF headers (Col1, Col2), prunes empty layout columns,
-    re-computes column widths, and replaces backtick ` with ₹.
+    unifies multi-line headers, re-computes column widths, and uses Rs. for font safety.
     """
     if not content or '<table' not in content:
         return content

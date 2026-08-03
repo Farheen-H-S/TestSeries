@@ -60,6 +60,7 @@ const Generate = () => {
   const [downloadingPaper, setDownloadingPaper]   = useState(false);
   const [downloadingAnswer, setDownloadingAnswer] = useState(false);
   const [downloadError, setDownloadError]         = useState(null);
+  const [forceEnabled, setForceEnabled]           = useState(false);
 
   const debounceRef = useRef(null);
   const subjectDropdownRef = useRef(null);
@@ -218,8 +219,8 @@ const Generate = () => {
     (module === 'RTP' && questionCount > 0) ||
     (module !== 'RTP' && totalMarks > 0)
   ));
-  const hasResults = preview && preview.available_questions > 0;
-  const canDownload = rootQuestionIds.length > 0;
+  const hasResults = (preview && preview.available_questions > 0) || forceEnabled;
+  const canDownload = rootQuestionIds.length > 0 || forceEnabled;
 
   // ─── Render ─────────────────────────────────────────────────────────────────
   return (
@@ -488,9 +489,17 @@ const Generate = () => {
                   </select>
                 </div>
 
-              </div>
-            </details>
-          )}
+          {/* Generate Action Button */}
+          <div className="form-group" style={{ marginTop: '1rem' }}>
+            <button
+              type="button"
+              className="btn-generate-action"
+              onClick={() => setForceEnabled(true)}
+              id="btn-generate"
+            >
+              Generate
+            </button>
+          </div>
         </div>
       </div>
 
