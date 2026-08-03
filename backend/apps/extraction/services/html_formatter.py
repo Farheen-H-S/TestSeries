@@ -1,5 +1,6 @@
 import html
 import re
+from typing import Optional
 from .table_processing import parse_markdown_to_table, TableProcessor
 
 def escape_html(text: str) -> str:

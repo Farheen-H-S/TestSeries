@@ -130,6 +130,7 @@ def _render_question_paper_html(
     font-size: 11pt;
     margin-bottom: 1.5em;
   }}
+  /* Shared context block — shown once per group in question paper */
   .shared-context-block {{
     background: #f7f7f7;
     border-left: 3px solid #999;
@@ -139,6 +140,7 @@ def _render_question_paper_html(
   }}
   .question-block {{
     margin: 1em 0;
+    page-break-inside: avoid;
   }}
   .question-number {{
     font-weight: bold;
@@ -165,17 +167,49 @@ def _render_question_paper_html(
     border-top: 0.5px solid #ccc;
     margin: 0.8em 0;
   }}
+  /* ── Table styles ──────────────────────────────────────── */
   table {{
     border-collapse: collapse;
     width: 100%;
-    margin: 0.5em 0;
+    table-layout: auto;
+    margin: 0.75em 0;
   }}
   th, td {{
     border: 1px solid #999;
-    padding: 0.3em 0.5em;
-    font-size: 11pt;
+    padding: 0.3em 0.6em;
+    font-size: 10.5pt;
+    vertical-align: top;
   }}
-  th {{ background: #eee; font-weight: bold; }}
+  th {{
+    background: #EEEEEE;
+    font-weight: bold;
+  }}
+  /* Prevent rows from splitting across page boundaries */
+  tr {{
+    page-break-inside: avoid;
+  }}
+  /* Repeat table header on each page */
+  thead {{
+    display: table-header-group;
+  }}
+  tfoot {{
+    display: table-footer-group;
+  }}
+  /* Section rows — bold label spanning description column */
+  tr.section-row td {{
+    font-weight: bold;
+    background: #F5F5F5;
+  }}
+  /* Total rows — bold with top border */
+  tr.total-row td {{
+    font-weight: bold;
+    border-top: 2px solid #555;
+  }}
+  /* Images */
+  img {{
+    max-width: 100%;
+    height: auto;
+  }}
   p {{ margin: 0.3em 0; }}
 </style>
 </head>
@@ -272,7 +306,7 @@ def _render_answer_sheet_html(
   }}
   .meta-grid .label {{ font-weight: bold; }}
   .divider {{ border: none; border-top: 1.5px solid #000; margin: 1em 0; }}
-  .question-block {{ margin: 1em 0; }}
+  .question-block {{ margin: 1em 0; page-break-inside: avoid; }}
   .question-number {{ font-weight: bold; }}
   .answer-label {{ font-weight: bold; font-size: 10pt; color: #555; margin: 0.3em 0; }}
   .answer-content {{ margin-left: 1.5em; }}
@@ -281,9 +315,16 @@ def _render_answer_sheet_html(
   .question-divider {{ border: none; border-top: 0.5px solid #ccc; margin: 0.8em 0; }}
   .working-notes {{ background: #f9f9f9; border: 1px solid #ddd; padding: 0.5em 0.8em; margin-top: 0.5em; font-size: 11pt; }}
   .working-notes h4 {{ margin: 0 0 0.3em 0; font-size: 11pt; }}
-  table {{ border-collapse: collapse; width: 100%; margin: 0.5em 0; }}
-  th, td {{ border: 1px solid #999; padding: 0.3em 0.5em; font-size: 11pt; }}
-  th {{ background: #eee; font-weight: bold; }}
+  /* ── Table styles ──────────────────────────────────────── */
+  table {{ border-collapse: collapse; width: 100%; table-layout: auto; margin: 0.75em 0; }}
+  th, td {{ border: 1px solid #999; padding: 0.3em 0.6em; font-size: 10.5pt; vertical-align: top; }}
+  th {{ background: #EEEEEE; font-weight: bold; }}
+  tr {{ page-break-inside: avoid; }}
+  thead {{ display: table-header-group; }}
+  tfoot {{ display: table-footer-group; }}
+  tr.section-row td {{ font-weight: bold; background: #F5F5F5; }}
+  tr.total-row td {{ font-weight: bold; border-top: 2px solid #555; }}
+  img {{ max-width: 100%; height: auto; }}
   p {{ margin: 0.3em 0; }}
 </style>
 </head>

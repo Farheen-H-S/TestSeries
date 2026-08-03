@@ -601,56 +601,234 @@ class _MarkdownSerializer:
 
 
 class _HTMLRenderer:
-    """Stage E2: Renders Table model into clean, styling-ready HTML."""
+    """
+    Stage E2: Renders Table model into clean, styling-ready HTML.
+
+    Design decisions:
+    - Column widths are computed from blended content-length signals (max + average),
+      with numeric column detection and configurable clamping.
+    - <br> inside cell text is preserved (not escaped), enabling multi-line cells.
+    - Section rows and total rows receive CSS classes for PDF-renderer styling.
+    - Tables with many columns receive a reduced font-size to improve A4 fit;
+      they are NOT truncated. No content is ever dropped.
+    """
+
+    # Column width clamping constants — easy to tune without touching algorithm logic.
+    MIN_COLUMN_WIDTH: int = 8   # % — prevents zero-width columns (e.g. "Sr." index)
+    MAX_COLUMN_WIDTH: int = 55  # % — prevents one long description consuming the table
+
+    # Wide-table thresholds
+    WIDE_TABLE_THRESHOLD: int = 7   # columns ≥ this get reduced font-size
+    WIDE_TABLE_FONT_SIZE: str = "8.5pt"  # reduced from the PDF body default (12pt)
+
+    # Numeric column detection: fraction of non-empty cells that must look numeric
+    NUMERIC_THRESHOLD: float = 0.70
+
+    # Blending coefficients: weight = α·max_len + β·avg_len
+    # Prevents a single outlier cell from dominating the column width.
+    _ALPHA: float = 0.7  # max_length contribution
+    _BETA: float = 0.3   # average_length contribution
+
     @staticmethod
-    def render(table: Table) -> str:
+    def _escape_cell(text: str) -> str:
+        """
+        Escape cell text for HTML while preserving embedded <br> line breaks.
+
+        <br>, <br/>, <br />, and uppercase variants are all treated identically.
+        Each text segment between breaks is escaped independently so that special
+        characters (< > & " ') are still safe.
+        """
+        parts = re.split(r'<br\s*/?>', text, flags=re.IGNORECASE)
+        return '<br />'.join(html.escape(p) for p in parts)
+
+    @staticmethod
+    def _strip_tags(text: str) -> str:
+        """Remove all HTML tags to measure visible character length."""
+        return re.sub(r'<[^>]+>', '', text).strip()
+
+    @staticmethod
+    def _is_numeric_cell(text: str) -> bool:
+        """Return True if the cell value looks like a number, currency, or blank."""
+        cleaned = _HTMLRenderer._strip_tags(text).strip()
+        if not cleaned:
+            return True  # blank cells don't penalise numeric detection
+        return bool(re.match(
+            r'^[₹\-\u2013\d,\s\(\)%\.Nil]+$',
+            cleaned
+        ))
+
+    @classmethod
+    def _compute_col_widths(cls, table: 'Table') -> list:
+        """
+        Compute percentage widths for each column.
+
+        Algorithm:
+        1. For each column, collect visible text lengths of all cells.
+        2. Raw weight = α·max_len + β·avg_len  (blended — resistant to outliers)
+        3. Numeric columns: weight is halved (numbers are visually narrow).
+        4. Normalize weights → initial percentages.
+        5. Clamp each column to [MIN_COLUMN_WIDTH, MAX_COLUMN_WIDTH].
+        6. Re-normalize so percentages sum to 100.
+
+        Very wide tables (≥ WIDE_TABLE_THRESHOLD columns) still use this algorithm;
+        the font-size reduction is applied at the render level, not here.
+        """
+        if not table.rows:
+            return []
+
+        num_cols = max(len(row.cells) for row in table.rows)
+        if num_cols == 0:
+            return []
+
+        col_lengths: list = [[] for _ in range(num_cols)]
+        col_numeric_votes: list = [[] for _ in range(num_cols)]
+
+        for row in table.rows:
+            for j, cell in enumerate(row.cells):
+                if j >= num_cols:
+                    break
+                visible = cls._strip_tags(cell.text)
+                col_lengths[j].append(len(visible))
+                if not row.is_header:  # only data rows count for numeric detection
+                    col_numeric_votes[j].append(cls._is_numeric_cell(cell.text))
+
+        weights = []
+        for j in range(num_cols):
+            lengths = col_lengths[j]
+            if not lengths:
+                weights.append(float(cls.MIN_COLUMN_WIDTH))
+                continue
+
+            max_len = max(lengths)
+            avg_len = sum(lengths) / len(lengths)
+            raw_weight = max(
+                cls._ALPHA * max_len + cls._BETA * avg_len,
+                3.0  # minimum so zero-content columns still get a slot
+            )
+
+            # Numeric column detection
+            votes = col_numeric_votes[j]
+            numeric_fraction = sum(votes) / len(votes) if votes else 0.0
+            is_numeric = numeric_fraction >= cls.NUMERIC_THRESHOLD
+            if is_numeric:
+                raw_weight *= 0.5  # narrow numeric columns
+
+            weights.append(raw_weight)
+
+        # Normalize to percentages
+        total_weight = sum(weights) or 1.0
+        pcts = [(w / total_weight) * 100.0 for w in weights]
+
+        # Iterative clamp + re-normalize.
+        # A single pass is insufficient: clamping one column and re-normalising
+        # can push another column past the limit. Convergence is guaranteed but
+        # the number of iterations depends on the skew. For a 2-column table with
+        # one extreme outlier, convergence requires O(log(ratio)) iterations.
+        # max(20, n_cols * 3) is safe, bounded, and terminates for all real tables.
+        mn, mx = float(cls.MIN_COLUMN_WIDTH), float(cls.MAX_COLUMN_WIDTH)
+        max_iters = max(20, len(pcts) * 3)
+        for _ in range(max_iters):
+            if all(mn - 0.01 <= p <= mx + 0.01 for p in pcts):
+                break  # converged — every column is within bounds
+            pcts = [max(mn, min(mx, p)) for p in pcts]
+            total_clamped = sum(pcts) or 1.0
+            pcts = [(p / total_clamped) * 100.0 for p in pcts]
+
+        return pcts
+
+    @classmethod
+    def render(cls, table: 'Table') -> str:
         if not table.rows:
             return ""
-            
-        html_parts = ['<div class="table-container">', '<table class="structured-table">']
-        
+
+        num_cols = max(len(row.cells) for row in table.rows) if table.rows else 0
+        is_wide = num_cols >= cls.WIDE_TABLE_THRESHOLD
+
+        html_parts = ['<div class="table-container">']
+
+        # Wide-table note (informational, printed in small italic above the table)
+        # The table is NOT truncated; font-size is reduced instead.
+        if is_wide:
+            html_parts.append(
+                f'<p style="font-size:8pt;font-style:italic;margin:0 0 2px 0;">'
+                f'Wide table ({num_cols} columns) — font size reduced for A4 fit.'
+                f'</p>'
+            )
+
+        # Build font-size override style for wide tables
+        table_style = f' style="font-size:{cls.WIDE_TABLE_FONT_SIZE};"' if is_wide else ''
+        html_parts.append(f'<table class="structured-table"{table_style}>')
+
+        # --- <colgroup> with computed widths ---
+        col_widths = cls._compute_col_widths(table)
+        if col_widths:
+            html_parts.append('<colgroup>')
+            for pct in col_widths:
+                html_parts.append(f'<col style="width:{pct:.1f}%">')
+            html_parts.append('</colgroup>')
+
+        # --- <thead> ---
         has_header = any(row.is_header for row in table.rows)
-        
         if has_header:
             html_parts.append('<thead>')
             for row in table.rows:
-                if row.is_header:
-                    html_parts.append('<tr>')
-                    for cell in row.cells:
-                        alignment_style = ""
-                        if cell.alignment == CellAlignment.RIGHT:
-                            alignment_style = ' style="text-align: right;"'
-                        elif cell.alignment == CellAlignment.CENTER:
-                            alignment_style = ' style="text-align: center;"'
-                            
-                        bold_start = '<strong>' if cell.style == CellStyle.BOLD else ''
-                        bold_end = '</strong>' if cell.style == CellStyle.BOLD else ''
-                        html_parts.append(f'<th{alignment_style}>{bold_start}{html.escape(cell.text)}{bold_end}</th>')
-                    html_parts.append('</tr>')
-            html_parts.append('</thead>')
-            
-        html_parts.append('<tbody>')
-        for row in table.rows:
-            if not row.is_header:
+                if not row.is_header:
+                    continue
                 html_parts.append('<tr>')
                 for cell in row.cells:
-                    alignment_style = ""
+                    align = ''
                     if cell.alignment == CellAlignment.RIGHT:
-                        alignment_style = ' style="text-align: right;"'
+                        align = ' style="text-align:right;"'
                     elif cell.alignment == CellAlignment.CENTER:
-                        alignment_style = ' style="text-align: center;"'
-                        
-                    is_bold = (cell.style == CellStyle.BOLD) or row.is_section or (row.is_total and cell.text)
-                    bold_start = '<strong>' if is_bold else ''
-                    bold_end = '</strong>' if is_bold else ''
-                    
-                    html_parts.append(f'<td{alignment_style}>{bold_start}{html.escape(cell.text)}{bold_end}</td>')
+                        align = ' style="text-align:center;"'
+                    colspan = f' colspan="{cell.colspan}"' if cell.colspan > 1 else ''
+                    rowspan = f' rowspan="{cell.rowspan}"' if cell.rowspan > 1 else ''
+                    inner = cls._escape_cell(cell.text)
+                    if cell.style == CellStyle.BOLD:
+                        inner = f'<strong>{inner}</strong>'
+                    html_parts.append(f'<th{align}{colspan}{rowspan}>{inner}</th>')
                 html_parts.append('</tr>')
+            html_parts.append('</thead>')
+
+        # --- <tbody> ---
+        html_parts.append('<tbody>')
+        for row in table.rows:
+            if row.is_header:
+                continue
+
+            # CSS class — section rows and total rows get dedicated classes
+            # so the PDF renderer can style them without extra inline styles.
+            row_class = ''
+            if row.is_section:
+                row_class = ' class="section-row"'
+            elif row.is_total:
+                row_class = ' class="total-row"'
+
+            html_parts.append(f'<tr{row_class}>')
+            for cell in row.cells:
+                align = ''
+                if cell.alignment == CellAlignment.RIGHT:
+                    align = ' style="text-align:right;"'
+                elif cell.alignment == CellAlignment.CENTER:
+                    align = ' style="text-align:center;"'
+                colspan = f' colspan="{cell.colspan}"' if cell.colspan > 1 else ''
+                rowspan = f' rowspan="{cell.rowspan}"' if cell.rowspan > 1 else ''
+
+                is_bold = (
+                    cell.style == CellStyle.BOLD
+                    or row.is_section
+                    or (row.is_total and cell.text)
+                )
+                inner = cls._escape_cell(cell.text)
+                if is_bold:
+                    inner = f'<strong>{inner}</strong>'
+                html_parts.append(f'<td{align}{colspan}{rowspan}>{inner}</td>')
+            html_parts.append('</tr>')
         html_parts.append('</tbody>')
-        
+
         html_parts.append('</table>')
         html_parts.append('</div>')
-        return "".join(html_parts)
+        return ''.join(html_parts)
 
 
 
