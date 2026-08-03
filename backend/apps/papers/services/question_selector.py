@@ -37,55 +37,52 @@ def _prerender_html_content(content: str) -> str:
 
     Stored content may be in one of two states:
 
-    1. Fully-rendered HTML (from recent extractions) — pass through unchanged.
+    1. Pre-rendered HTML (from earlier extractions) — contains <table> HTML that
+       may have dummy PyMuPDF headers (Col1, Col2) or 15 vertical empty columns.
+       We sanitize this via clean_stored_html_tables().
     2. Hybrid HTML: <p> tags wrapping raw text that still contains
        [STRUCTURED_START]...[STRUCTURED_END] markdown table blocks.
-       This happens when the extraction pipeline stored the question before
-       table-to-HTML rendering was completed.
-
-    For case 2 this function:
-      - Detects [STRUCTURED_START]...[STRUCTURED_END] blocks
-      - Strips HTML tags that preserve_paragraphs wrapped around the markers
-      - Unescapes HTML entities (&lt;br&gt; -> <br>, &lt; -> <, etc.)
-      - Renders the clean markdown to an HTML table via markdown_table_to_html()
-      - Removes empty <p></p> tags left behind
-      - Also unescapes &lt;br&gt; in regular text outside table blocks
+       We convert this via markdown_table_to_html().
     """
     if not content:
         return ''
-    if '[STRUCTURED_START]' not in content:
-        # Nothing to render — return as-is
-        return content
 
-    from apps.extraction.services.html_formatter import markdown_table_to_html
+    from apps.extraction.services.html_formatter import markdown_table_to_html, clean_stored_html_tables
 
-    def _render_table_block(m):
-        inner = m.group(1)
-        # Strip HTML tags that preserve_paragraphs may have wrapped around the markdown
-        inner_clean = re.sub(r'<[^>]+>', '', inner)
-        # Unescape HTML entities so the markdown parser sees clean text
-        inner_clean = inner_clean.replace('&lt;br&gt;', '<br>').replace('&lt;br/&gt;', '<br>').replace('&lt;br /&gt;', '<br>')
-        inner_clean = inner_clean.replace('&lt;', '<').replace('&gt;', '>').replace('&amp;', '&')
-        inner_clean = inner_clean.strip()
-        if not inner_clean:
-            return ''
-        try:
-            return markdown_table_to_html(inner_clean)
-        except Exception as exc:
-            logger.warning(
-                "Table pre-rendering failed in build_group; falling back to empty: %s", exc
-            )
-            return ''
+    result = content
 
-    result = re.sub(
-        r'\[STRUCTURED_START\](.*?)\[STRUCTURED_END\]',
-        _render_table_block,
-        content,
-        flags=re.DOTALL,
-    )
+    if '[STRUCTURED_START]' in result:
+        def _render_table_block(m):
+            inner = m.group(1)
+            # Strip HTML tags that preserve_paragraphs may have wrapped around the markdown
+            inner_clean = re.sub(r'<[^>]+>', '', inner)
+            # Unescape HTML entities so the markdown parser sees clean text
+            inner_clean = inner_clean.replace('&lt;br&gt;', '<br>').replace('&lt;br/&gt;', '<br>').replace('&lt;br /&gt;', '<br>')
+            inner_clean = inner_clean.replace('&lt;', '<').replace('&gt;', '>').replace('&amp;', '&')
+            inner_clean = inner_clean.strip()
+            if not inner_clean:
+                return ''
+            try:
+                return markdown_table_to_html(inner_clean)
+            except Exception as exc:
+                logger.warning(
+                    "Table pre-rendering failed in build_group; falling back to empty: %s", exc
+                )
+                return ''
 
-    # Clean up empty <p></p> tags left behind after replacement
-    result = re.sub(r'<p[^>]*>\s*</p>', '', result)
+        result = re.sub(
+            r'\[STRUCTURED_START\](.*?)\[STRUCTURED_END\]',
+            _render_table_block,
+            result,
+            flags=re.DOTALL,
+        )
+
+        # Clean up empty <p></p> tags left behind after replacement
+        result = re.sub(r'<p[^>]*>\s*</p>', '', result)
+
+    # Sanitize any <table> elements (whether newly generated or stored in DB)
+    if '<table' in result:
+        result = clean_stored_html_tables(result)
 
     # Unescape &lt;br&gt; in regular non-table text as well
     result = result.replace('&lt;br&gt;', '<br />')
