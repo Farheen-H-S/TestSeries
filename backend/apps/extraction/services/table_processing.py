@@ -632,14 +632,25 @@ class _HTMLRenderer:
     @staticmethod
     def _escape_cell(text: str) -> str:
         """
-        Escape cell text for HTML while preserving embedded <br> line breaks.
+        Escape cell text for HTML while preserving embedded <br> line breaks
+        and stripping residual inline markdown bold/italic markers.
 
-        <br>, <br/>, <br />, and uppercase variants are all treated identically.
-        Each text segment between breaks is escaped independently so that special
-        characters (< > & " ') are still safe.
+        Stored cell text may contain residual ** markers when:
+        - The original markdown had **segment1**<br>**segment2** in a single cell
+        - parse_markdown_to_table() set CellStyle.BOLD on the cell but left the
+          inner ** stripped only from the outermost layer.
+
+        We strip remaining **..** and *.* here (bold/italic is handled by Cell.style
+        at the wrapping level in render()), then escape and rejoin with <br />.
         """
         parts = re.split(r'<br\s*/?>', text, flags=re.IGNORECASE)
-        return '<br />'.join(html.escape(p) for p in parts)
+        escaped_parts = []
+        for part in parts:
+            # Strip residual inline ** and * markers
+            part = re.sub(r'\*\*(.*?)\*\*', r'\1', part)
+            part = re.sub(r'\*(.*?)\*', r'\1', part)
+            escaped_parts.append(html.escape(part))
+        return '<br />'.join(escaped_parts)
 
     @staticmethod
     def _strip_tags(text: str) -> str:
@@ -742,6 +753,38 @@ class _HTMLRenderer:
             return ""
 
         num_cols = max(len(row.cells) for row in table.rows) if table.rows else 0
+
+        # --- Prune all-empty columns ---
+        # Columns where every single cell (header and data) is blank are
+        # spacer artifacts from PyMuPDF extraction. Remove them entirely so
+        # they don't consume width or produce phantom <th></th> cells.
+        keep_col_indices = []
+        for col_idx in range(num_cols):
+            has_content = False
+            for row in table.rows:
+                if col_idx < len(row.cells) and row.cells[col_idx].text.strip():
+                    has_content = True
+                    break
+            if has_content:
+                keep_col_indices.append(col_idx)
+
+        if not keep_col_indices:
+            return ""  # entirely empty table
+
+        # Re-index the table to only the kept columns
+        if len(keep_col_indices) < num_cols:
+            pruned_rows = []
+            for row in table.rows:
+                new_cells = [row.cells[i] for i in keep_col_indices if i < len(row.cells)]
+                pruned_rows.append(Row(
+                    cells=new_cells,
+                    is_header=row.is_header,
+                    is_section=row.is_section,
+                    is_total=row.is_total,
+                ))
+            table = Table(rows=pruned_rows, bbox=table.bbox, page_number=table.page_number)
+
+        num_cols = len(keep_col_indices)
         is_wide = num_cols >= cls.WIDE_TABLE_THRESHOLD
 
         html_parts = ['<div class="table-container">']
@@ -956,6 +999,17 @@ def parse_markdown_to_table(markdown_table: str) -> Table:
                 
             cells = []
             for cell_text in cells_raw:
+                # --- Pre-clean: unescape HTML entities from stored markdown ---
+                # Stored markdown may have &lt;br&gt; from earlier HTML-escaping.
+                cell_text = cell_text.replace('&lt;br&gt;', '<br>').replace('&lt;br/&gt;', '<br>').replace('&lt;br /&gt;', '<br>')
+                cell_text = cell_text.replace('&lt;', '<').replace('&gt;', '>').replace('&amp;', '&')
+
+                # --- Replace backtick with rupee symbol ---
+                # ICAI PDFs use backtick ` as a proxy for the ₹ rupee symbol
+                # (OCR artifact). Replace standalone ` with ₹.
+                cell_text = re.sub(r'`\s*(\d)', r'₹ \1', cell_text)  # ` 1,234 → ₹ 1,234
+                cell_text = re.sub(r'`', '₹', cell_text)            # remaining lone ` → ₹
+
                 style = CellStyle.NORMAL
                 clean_text = cell_text
                 
@@ -965,6 +1019,12 @@ def parse_markdown_to_table(markdown_table: str) -> Table:
                 elif cell_text.startswith('*') and cell_text.endswith('*') and len(cell_text) > 2:
                     style = CellStyle.ITALIC
                     clean_text = cell_text[1:-1].strip()
+
+                # --- Filter dummy PyMuPDF column names ---
+                # PyMuPDF names unreadable columns Col1, Col2 … Col99.
+                # These are display artifacts — replace with empty string.
+                if re.match(r'^Col\d+$', clean_text.strip(), re.IGNORECASE):
+                    clean_text = ''
                     
                 alignment = CellAlignment.LEFT
                 if clean_text and re.match(r'^(?:[₹\-\u2013\d,\s\(\)]+|Nil)$', clean_text.strip()):

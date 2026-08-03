@@ -9,6 +9,7 @@ Responsibilities:
 All HTML parsing happens exactly once inside build_group().
 Renderers receive fully-assembled DTOs and make zero DB calls.
 """
+import re
 import random
 import logging
 from dataclasses import dataclass, field
@@ -24,6 +25,74 @@ logger = logging.getLogger(__name__)
 
 # Configurable via Django settings — easy to tune without touching logic
 SELECTION_ATTEMPTS: int = getattr(settings, 'PAPER_SELECTION_ATTEMPTS', 100)
+
+
+# ---------------------------------------------------------------------------
+# Content pre-rendering
+# ---------------------------------------------------------------------------
+
+def _prerender_html_content(content: str) -> str:
+    """
+    Convert stored question/answer content to render-ready HTML.
+
+    Stored content may be in one of two states:
+
+    1. Fully-rendered HTML (from recent extractions) — pass through unchanged.
+    2. Hybrid HTML: <p> tags wrapping raw text that still contains
+       [STRUCTURED_START]...[STRUCTURED_END] markdown table blocks.
+       This happens when the extraction pipeline stored the question before
+       table-to-HTML rendering was completed.
+
+    For case 2 this function:
+      - Detects [STRUCTURED_START]...[STRUCTURED_END] blocks
+      - Strips HTML tags that preserve_paragraphs wrapped around the markers
+      - Unescapes HTML entities (&lt;br&gt; -> <br>, &lt; -> <, etc.)
+      - Renders the clean markdown to an HTML table via markdown_table_to_html()
+      - Removes empty <p></p> tags left behind
+      - Also unescapes &lt;br&gt; in regular text outside table blocks
+    """
+    if not content:
+        return ''
+    if '[STRUCTURED_START]' not in content:
+        # Nothing to render — return as-is
+        return content
+
+    from apps.extraction.services.html_formatter import markdown_table_to_html
+
+    def _render_table_block(m):
+        inner = m.group(1)
+        # Strip HTML tags that preserve_paragraphs may have wrapped around the markdown
+        inner_clean = re.sub(r'<[^>]+>', '', inner)
+        # Unescape HTML entities so the markdown parser sees clean text
+        inner_clean = inner_clean.replace('&lt;br&gt;', '<br>').replace('&lt;br/&gt;', '<br>').replace('&lt;br /&gt;', '<br>')
+        inner_clean = inner_clean.replace('&lt;', '<').replace('&gt;', '>').replace('&amp;', '&')
+        inner_clean = inner_clean.strip()
+        if not inner_clean:
+            return ''
+        try:
+            return markdown_table_to_html(inner_clean)
+        except Exception as exc:
+            logger.warning(
+                "Table pre-rendering failed in build_group; falling back to empty: %s", exc
+            )
+            return ''
+
+    result = re.sub(
+        r'\[STRUCTURED_START\](.*?)\[STRUCTURED_END\]',
+        _render_table_block,
+        content,
+        flags=re.DOTALL,
+    )
+
+    # Clean up empty <p></p> tags left behind after replacement
+    result = re.sub(r'<p[^>]*>\s*</p>', '', result)
+
+    # Unescape &lt;br&gt; in regular non-table text as well
+    result = result.replace('&lt;br&gt;', '<br />')
+    result = result.replace('&lt;br/&gt;', '<br />')
+    result = result.replace('&lt;br /&gt;', '<br />')
+
+    return result
 
 
 # ---------------------------------------------------------------------------
@@ -129,8 +198,15 @@ def build_group(q: Question) -> QuestionGroup:
     Example — standalone question Q2 (5 Marks), no sub-questions:
       child_marks = []          → total_marks = 5    (correct)
     """
+    # --- Pre-render embedded table blocks in stored content ---
+    # Stored question_content may contain [STRUCTURED_START]...[STRUCTURED_END]
+    # markdown table blocks that were never converted to HTML during extraction.
+    # _prerender_html_content() detects and renders these so the PDF renderer
+    # always receives clean, fully-rendered HTML.
+    prerendered_content = _prerender_html_content(q.question_content)
+
     # --- Extract shared context from question_content HTML (once) ---
-    soup = BeautifulSoup(q.question_content, 'html.parser')
+    soup = BeautifulSoup(prerendered_content, 'html.parser')
     ctx_div = soup.find('div', class_='shared-context')
     shared_context_html = str(ctx_div) if ctx_div else None
     if ctx_div:
@@ -150,8 +226,8 @@ def build_group(q: Question) -> QuestionGroup:
         sub_questions.append(SubQuestion(
             question_id=sq.question_id,
             sub_question_label=sq.sub_question_label or '',
-            question_html=sq.question_content,
-            answer_html=sq.answer_content,
+            question_html=_prerender_html_content(sq.question_content),
+            answer_html=_prerender_html_content(sq.answer_content) if sq.answer_content else '',
             marks=sq.marks,
         ))
 
@@ -167,7 +243,7 @@ def build_group(q: Question) -> QuestionGroup:
     return QuestionGroup(
         root_question_id=q.question_id,
         question_html=question_html,
-        answer_html=q.answer_content,
+        answer_html=_prerender_html_content(q.answer_content) if q.answer_content else '',
         sub_questions=sub_questions,
         total_marks=total_marks,
         shared_context_html=shared_context_html,
