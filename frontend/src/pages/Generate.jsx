@@ -104,6 +104,7 @@ const Generate = () => {
     setPreview(null);
     setPreviewError(null);
     setDownloadError(null);
+    setForceEnabled(false);  // Require Generate button to be re-clicked after filter change
   };
 
   // ── Build filter payload ────────────────────────────────────────────────────
@@ -219,8 +220,9 @@ const Generate = () => {
     (module === 'RTP' && questionCount > 0) ||
     (module !== 'RTP' && totalMarks > 0)
   ));
-  const hasResults = (preview && preview.available_questions > 0) || forceEnabled;
-  const canDownload = rootQuestionIds.length > 0 || forceEnabled;
+  const hasResults = preview && preview.available_questions > 0;
+  // Download requires explicit Generate button click AND questions must exist
+  const canDownload = forceEnabled && rootQuestionIds.length > 0;
 
   // ─── Render ─────────────────────────────────────────────────────────────────
   return (
@@ -488,6 +490,10 @@ const Generate = () => {
                     ))}
                   </select>
                 </div>
+
+              </div>
+            </details>
+          )}
 
           {/* Generate Action Button */}
           <div className="form-group" style={{ marginTop: '1rem' }}>

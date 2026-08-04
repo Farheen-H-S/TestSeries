@@ -122,6 +122,22 @@ def _clean_cell_string(text: str) -> str:
     return text.strip()
 
 
+def _deduplicate_cell_text(text: str) -> str:
+    """
+    Collapse repeated words and sub-phrases that PyMuPDF produces from merged cells.
+    e.g. 'in in in' -> 'in', 'ParParticular' fragments, 'of of of' -> 'of', '1. 1. 1.' -> '1.'
+    """
+    if not text:
+        return ''
+    # 1. Collapse consecutively repeated tokens
+    tokens = text.split()
+    clean = []
+    for tok in tokens:
+        if not clean or tok.lower() != clean[-1].lower():
+            clean.append(tok)
+    return ' '.join(clean).strip()
+
+
 def sanitize_stored_html_table(table_container_soup) -> str:
     from bs4 import BeautifulSoup
     from .table_processing import Cell, CellStyle, CellAlignment, Row, Table, TableProcessor
@@ -151,11 +167,38 @@ def sanitize_stored_html_table(table_container_soup) -> str:
         while len(r) < num_cols:
             r.append('')
 
-    # Separate header rows from data rows
+    # ── Step 1: Adjacent-Column Deduplication ────────────────────────────────
+    # PyMuPDF copies identical text into adjacent columns for merged cells.
+    # If col[c+1] is a subset/duplicate of col[c] across all rows, clear col[c+1]
+    # and merge its unique content back into col[c].
+    for c in range(num_cols - 1):
+        col_c = [r[c] for r in raw_grid]
+        col_next = [r[c + 1] for r in raw_grid]
+
+        non_empty_next = [(v_c, v_n) for v_c, v_n in zip(col_c, col_next) if v_n != '']
+        if not non_empty_next:
+            continue
+
+        # A column is duplicate if every non-empty cell matches (or is contained in) the same col
+        dup_count = sum(
+            1 for v_c, v_n in non_empty_next
+            if v_c == v_n or v_n in v_c or v_c in v_n
+        )
+        if dup_count == len(non_empty_next):
+            # Merge: if col_c is empty for that row, use col_next value; then blank col_next
+            for r in raw_grid:
+                if r[c] == '' and r[c + 1] != '':
+                    r[c] = r[c + 1]
+                r[c + 1] = ''
+
+    # ── Step 2: Identify data vs header rows ────────────────────────────────
     data_row_indices = []
     for idx, r in enumerate(raw_grid):
         row_str = ' '.join(r)
-        if re.search(r'\d{1,3}(?:,\d{2,3})+', row_str) or re.search(r'\(\d+\)', row_str):
+        # Indian number format: 1,00,000 / 10,55,000  OR  decimal: 100.00
+        if (re.search(r'\d{1,3}(?:,\d{2,3})+', row_str)
+                or re.search(r'\(\d+\)', row_str)
+                or re.search(r'\b\d+\.\d{2}\b', row_str)):
             data_row_indices.append(idx)
 
     if not data_row_indices:
@@ -163,7 +206,7 @@ def sanitize_stored_html_table(table_container_soup) -> str:
 
     data_rows = [raw_grid[i] for i in data_row_indices]
 
-    # Keep columns that have content in AT LEAST ONE real data row
+    # ── Step 3: Keep only columns used by data rows ──────────────────────────
     keep_cols = []
     for col_idx in range(num_cols):
         has_data = any(r[col_idx] != '' for r in data_rows)
@@ -179,7 +222,7 @@ def sanitize_stored_html_table(table_container_soup) -> str:
 
     num_pruned_cols = len(keep_cols)
 
-    # Combine all header fragment rows into unified headers
+    # ── Step 4: Unified multi-row header ─────────────────────────────────────
     first_data_idx = data_row_indices[0] if data_row_indices else 1
     header_rows = pruned_grid[:first_data_idx]
 
@@ -188,14 +231,15 @@ def sanitize_stored_html_table(table_container_soup) -> str:
         parts = []
         for h_row in header_rows:
             txt = h_row[c_idx]
-            if txt and txt not in parts and txt != 'Rs.':
+            if txt and txt != 'Rs.' and txt not in parts:
                 parts.append(txt)
-        unified_headers[c_idx] = ' '.join(parts).strip()
+        unified_headers[c_idx] = _deduplicate_cell_text(' '.join(parts)).strip()
 
-    # If column 0 header is empty but data rows have text, default to 'Particulars'
+    # Default column-0 header when empty but rows have text content
     if not unified_headers[0] and any(raw_grid[i][keep_cols[0]] != '' for i in data_row_indices):
         unified_headers[0] = 'Particulars'
 
+    # ── Step 5: Build Table model ────────────────────────────────────────────
     rows_model = []
     header_cells = [Cell(text=c, style=CellStyle.BOLD, alignment=CellAlignment.LEFT) for c in unified_headers]
     rows_model.append(Row(cells=header_cells, is_header=True))
@@ -205,11 +249,14 @@ def sanitize_stored_html_table(table_container_soup) -> str:
         if all(c == '' or c == 'Rs.' for c in r):
             continue
 
+        # Apply per-cell deduplication on data rows too
+        r = [_deduplicate_cell_text(c) for c in r]
+
         cells = []
         is_sec = r[0] != '' and not any(c != '' for c in r[1:])
         for c in r:
             style = CellStyle.BOLD if (is_sec or 'Total' in c) else CellStyle.NORMAL
-            align = CellAlignment.RIGHT if re.match(r'^(?:Rs\.\s*[\d,]+|[\d,]+|\([\d,]+\)|Nil)$', c) else CellAlignment.LEFT
+            align = CellAlignment.RIGHT if re.match(r'^(?:Rs\.\s*[\d,]+|[\d,]+\.?\d*|\([\d,.]+\)|Nil)$', c) else CellAlignment.LEFT
             cells.append(Cell(text=c, style=style, alignment=align))
 
         rows_model.append(Row(cells=cells, is_header=False, is_section=is_sec))
