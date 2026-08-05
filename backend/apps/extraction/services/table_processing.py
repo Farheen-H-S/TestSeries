@@ -704,10 +704,12 @@ class _HTMLRenderer:
                     col_numeric_votes[j].append(cls._is_numeric_cell(cell.text))
 
         weights = []
+        is_numeric_cols = []
         for j in range(num_cols):
             lengths = col_lengths[j]
             if not lengths:
                 weights.append(float(cls.MIN_COLUMN_WIDTH))
+                is_numeric_cols.append(False)
                 continue
 
             max_len = max(lengths)
@@ -720,9 +722,10 @@ class _HTMLRenderer:
             # Numeric column detection
             votes = col_numeric_votes[j]
             numeric_fraction = sum(votes) / len(votes) if votes else 0.0
-            is_numeric = numeric_fraction >= cls.NUMERIC_THRESHOLD
-            if is_numeric:
-                raw_weight *= 0.5  # narrow numeric columns
+            is_num = numeric_fraction >= cls.NUMERIC_THRESHOLD
+            is_numeric_cols.append(is_num)
+            if is_num:
+                raw_weight *= 0.4  # scale down numeric weights
 
             weights.append(raw_weight)
 
@@ -730,31 +733,19 @@ class _HTMLRenderer:
         total_weight = sum(weights) or 1.0
         pcts = [(w / total_weight) * 100.0 for w in weights]
 
-        # Iterative clamp + re-normalize.
-        # A single pass is insufficient: clamping one column and re-normalising
-        # can push another column past the limit. Convergence is guaranteed but
-        # the number of iterations depends on the skew. For a 2-column table with
-        # one extreme outlier, convergence requires O(log(ratio)) iterations.
-        # max(20, n_cols * 3) is safe, bounded, and terminates for all real tables.
-        # Dynamic clamping limits based on total column count
-        if num_cols == 1:
-            mn, mx = 100.0, 100.0
-        elif num_cols == 2:
-            mn, mx = 18.0, 82.0
-        elif num_cols == 3:
-            mn, mx = 15.0, 70.0
-        elif num_cols == 4:
-            mn, mx = 12.0, 60.0
-        else:
-            mn, mx = float(cls.MIN_COLUMN_WIDTH), float(cls.MAX_COLUMN_WIDTH)
+        # Content-Aware Column Bounds (avoids breaking multi-text tables):
+        # - Numeric/Amount columns: bounded between 12% and 30% (numbers don't need > 30%)
+        # - Text/Particulars columns: min 12%, max up to 85% (allows proportional distribution for 2+ text cols)
+        min_pcts = [15.0 if is_numeric_cols[j] else 12.0 for j in range(num_cols)]
+        max_pcts = [30.0 if is_numeric_cols[j] else (85.0 if num_cols > 1 else 100.0) for j in range(num_cols)]
 
         max_iters = max(20, len(pcts) * 3)
         for _ in range(max_iters):
-            if all(mn - 0.01 <= p <= mx + 0.01 for p in pcts):
-                break  # converged — every column is within bounds
-            pcts = [max(mn, min(mx, p)) for p in pcts]
-            total_clamped = sum(pcts) or 1.0
-            pcts = [(p / total_clamped) * 100.0 for p in pcts]
+            if all(min_pcts[j] - 0.01 <= pcts[j] <= max_pcts[j] + 0.01 for j in range(num_cols)):
+                break
+            clamped = [max(min_pcts[j], min(max_pcts[j], pcts[j])) for j in range(num_cols)]
+            total_clamped = sum(clamped) or 1.0
+            pcts = [(p / total_clamped) * 100.0 for p in clamped]
 
         return pcts
 
