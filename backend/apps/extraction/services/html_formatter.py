@@ -167,31 +167,78 @@ def sanitize_stored_html_table(table_container_soup) -> str:
         while len(r) < num_cols:
             r.append('')
 
-    # ── Step 1: Adjacent-Column Deduplication ────────────────────────────────
+    # ── Step 1a: Left-anchor Column Deduplication ─────────────────────────────
     # PyMuPDF copies identical text into adjacent columns for merged cells.
-    # If col[c+1] is a subset/duplicate of col[c] across all rows, clear col[c+1]
-    # and merge its unique content back into col[c].
-    for c in range(num_cols - 1):
-        col_c = [r[c] for r in raw_grid]
-        col_next = [r[c + 1] for r in raw_grid]
-
-        non_empty_next = [(v_c, v_n) for v_c, v_n in zip(col_c, col_next) if v_n != '']
-        if not non_empty_next:
+    # For each column, find nearest non-empty column to the LEFT as reference.
+    # Both cells must be non-empty; if ALL non-empty cells in this column match
+    # the reference, this column is a duplicate → clear it.
+    for c in range(1, num_cols):
+        left_ref = None
+        for prev in range(c - 1, -1, -1):
+            if any(r[prev] != '' for r in raw_grid):
+                left_ref = prev
+                break
+        if left_ref is None:
             continue
-
-        # A column is duplicate if every non-empty cell matches (or is contained in) the same col
-        dup_count = sum(
-            1 for v_c, v_n in non_empty_next
-            if v_c == v_n or v_n in v_c or v_c in v_n
+        filled_in_c = [(r_idx, r[c]) for r_idx, r in enumerate(raw_grid) if r[c] != '']
+        if not filled_in_c:
+            continue
+        ref_vals = {r_idx: raw_grid[r_idx][left_ref] for r_idx, _ in filled_in_c}
+        is_dup = all(
+            ref_vals[r_idx] != ''
+            and (val == ref_vals[r_idx]
+                 or val in ref_vals[r_idx]
+                 or ref_vals[r_idx] in val)
+            for r_idx, val in filled_in_c
         )
-        if dup_count == len(non_empty_next):
-            # Merge: if col_c is empty for that row, use col_next value; then blank col_next
+        if is_dup:
             for r in raw_grid:
-                if r[c] == '' and r[c + 1] != '':
-                    r[c] = r[c + 1]
-                r[c + 1] = ''
+                r[c] = ''
 
-    # ── Step 2: Identify data vs header rows ────────────────────────────────
+    # ── Step 1b: Right-anchor Column Deduplication ────────────────────────────
+    # Some PyMuPDF columns precede the "real" column with the same value.
+    # e.g. col 1 = 81.00 and col 2 = 81.00 (same WDV value), but col 0 is text
+    # so left-anchor pass didn't catch it.  Use right-anchor to catch these.
+    for c in range(num_cols - 1):
+        if not any(r[c] != '' for r in raw_grid):
+            continue  # already empty
+        right_ref = None
+        for nxt in range(c + 1, num_cols):
+            if any(r[nxt] != '' for r in raw_grid):
+                right_ref = nxt
+                break
+        if right_ref is None:
+            continue
+        filled_in_c = [(r_idx, r[c]) for r_idx, r in enumerate(raw_grid) if r[c] != '']
+        if not filled_in_c:
+            continue
+        ref_vals = {r_idx: raw_grid[r_idx][right_ref] for r_idx, _ in filled_in_c}
+        is_dup = all(
+            ref_vals[r_idx] != ''
+            and (val == ref_vals[r_idx]
+                 or val in ref_vals[r_idx]
+                 or ref_vals[r_idx] in val)
+            for r_idx, val in filled_in_c
+        )
+        if is_dup:
+            for r in raw_grid:
+                r[c] = ''
+
+    # ── Step 1c: Row-level Same-Value Deduplication ───────────────────────────
+    # PyMuPDF also duplicates text horizontally when one row cell overflows.
+    # e.g. ['receivable', 'receivable', 'receivable', 'receivable'] → only col 0 kept.
+    # Only applies to rows where ALL non-empty cells have the identical text value.
+    for r in raw_grid:
+        non_empty = [(c_idx, val) for c_idx, val in enumerate(r) if val != '']
+        if len(non_empty) <= 1:
+            continue
+        # If every non-empty cell holds the same value, keep only the leftmost
+        values = [val for _, val in non_empty]
+        if len(set(v.lower() for v in values)) == 1:
+            first_c = non_empty[0][0]
+            for c_idx, _ in non_empty[1:]:
+                r[c_idx] = ''
+
     data_row_indices = []
     for idx, r in enumerate(raw_grid):
         row_str = ' '.join(r)
