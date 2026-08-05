@@ -313,11 +313,12 @@ def _render_answer_sheet_html(
   .sub-question {{ margin: 0.6em 0 0.6em 1.5em; }}
   .sub-label {{ font-weight: bold; display: inline-block; min-width: 2.5em; }}
   .question-divider {{ border: none; border-top: 0.5px solid #ccc; margin: 0.8em 0; }}
-  .working-notes {{ background: #f9f9f9; border: 1px solid #ddd; padding: 0.5em 0.8em; margin-top: 0.5em; font-size: 11pt; }}
+  .working-notes {{ background: #f9f9f9; border: 1px solid #ddd; padding: 0.8em; margin-top: 0.5em; font-size: 11pt; }}
   .working-notes h4 {{ margin: 0 0 0.3em 0; font-size: 11pt; }}
+  .table-container {{ width: 100%; margin: 0.5em 0; overflow: hidden; }}
   /* ── Table styles ──────────────────────────────────────── */
-  table {{ border-collapse: collapse; width: 100%; table-layout: auto; margin: 0.75em 0; }}
-  th, td {{ border: 1px solid #999; padding: 0.3em 0.6em; font-size: 10.5pt; vertical-align: top; }}
+  table {{ border-collapse: collapse; width: 100%; table-layout: auto; margin: 0.5em 0; }}
+  th, td {{ border: 1px solid #999; padding: 0.35em 0.6em; font-size: 10.5pt; vertical-align: top; }}
   th {{ background: #EEEEEE; font-weight: bold; }}
   tr {{ page-break-inside: avoid; }}
   thead {{ display: table-header-group; }}

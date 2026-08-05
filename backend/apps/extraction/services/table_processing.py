@@ -736,7 +736,18 @@ class _HTMLRenderer:
         # the number of iterations depends on the skew. For a 2-column table with
         # one extreme outlier, convergence requires O(log(ratio)) iterations.
         # max(20, n_cols * 3) is safe, bounded, and terminates for all real tables.
-        mn, mx = float(cls.MIN_COLUMN_WIDTH), float(cls.MAX_COLUMN_WIDTH)
+        # Dynamic clamping limits based on total column count
+        if num_cols == 1:
+            mn, mx = 100.0, 100.0
+        elif num_cols == 2:
+            mn, mx = 18.0, 82.0
+        elif num_cols == 3:
+            mn, mx = 15.0, 70.0
+        elif num_cols == 4:
+            mn, mx = 12.0, 60.0
+        else:
+            mn, mx = float(cls.MIN_COLUMN_WIDTH), float(cls.MAX_COLUMN_WIDTH)
+
         max_iters = max(20, len(pcts) * 3)
         for _ in range(max_iters):
             if all(mn - 0.01 <= p <= mx + 0.01 for p in pcts):

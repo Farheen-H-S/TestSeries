@@ -167,11 +167,20 @@ def sanitize_stored_html_table(table_container_soup) -> str:
         while len(r) < num_cols:
             r.append('')
 
-    # ── Step 1a: Left-anchor Column Deduplication ─────────────────────────────
-    # PyMuPDF copies identical text into adjacent columns for merged cells.
-    # For each column, find nearest non-empty column to the LEFT as reference.
-    # Both cells must be non-empty; if ALL non-empty cells in this column match
-    # the reference, this column is a duplicate → clear it.
+    # ── Step 1a: Horizontal Row-level Duplicate Cell Clearing ─────────────────
+    # If a cell is identical to the nearest non-empty cell to its left in the same row,
+    # clear it. This handles PyMuPDF horizontal text/number duplication across cell boundaries.
+    for r in raw_grid:
+        left_val = None
+        for c in range(len(r)):
+            cell = r[c]
+            if cell:
+                if left_val and cell.strip().lower() == left_val.strip().lower():
+                    r[c] = ''
+                else:
+                    left_val = cell
+
+    # ── Step 1b: Vertical Column Deduplication (Left-to-Right Pass) ───────────
     for c in range(1, num_cols):
         left_ref = None
         for prev in range(c - 1, -1, -1):
@@ -195,50 +204,7 @@ def sanitize_stored_html_table(table_container_soup) -> str:
             for r in raw_grid:
                 r[c] = ''
 
-    # ── Step 1b: Right-anchor Column Deduplication ────────────────────────────
-    # Some PyMuPDF columns precede the "real" column with the same value.
-    # e.g. col 1 = 81.00 and col 2 = 81.00 (same WDV value), but col 0 is text
-    # so left-anchor pass didn't catch it.  Use right-anchor to catch these.
-    for c in range(num_cols - 1):
-        if not any(r[c] != '' for r in raw_grid):
-            continue  # already empty
-        right_ref = None
-        for nxt in range(c + 1, num_cols):
-            if any(r[nxt] != '' for r in raw_grid):
-                right_ref = nxt
-                break
-        if right_ref is None:
-            continue
-        filled_in_c = [(r_idx, r[c]) for r_idx, r in enumerate(raw_grid) if r[c] != '']
-        if not filled_in_c:
-            continue
-        ref_vals = {r_idx: raw_grid[r_idx][right_ref] for r_idx, _ in filled_in_c}
-        is_dup = all(
-            ref_vals[r_idx] != ''
-            and (val == ref_vals[r_idx]
-                 or val in ref_vals[r_idx]
-                 or ref_vals[r_idx] in val)
-            for r_idx, val in filled_in_c
-        )
-        if is_dup:
-            for r in raw_grid:
-                r[c] = ''
-
-    # ── Step 1c: Row-level Same-Value Deduplication ───────────────────────────
-    # PyMuPDF also duplicates text horizontally when one row cell overflows.
-    # e.g. ['receivable', 'receivable', 'receivable', 'receivable'] → only col 0 kept.
-    # Only applies to rows where ALL non-empty cells have the identical text value.
-    for r in raw_grid:
-        non_empty = [(c_idx, val) for c_idx, val in enumerate(r) if val != '']
-        if len(non_empty) <= 1:
-            continue
-        # If every non-empty cell holds the same value, keep only the leftmost
-        values = [val for _, val in non_empty]
-        if len(set(v.lower() for v in values)) == 1:
-            first_c = non_empty[0][0]
-            for c_idx, _ in non_empty[1:]:
-                r[c_idx] = ''
-
+    # ── Step 2: Identify data vs header rows ────────────────────────────────
     data_row_indices = []
     for idx, r in enumerate(raw_grid):
         row_str = ' '.join(r)
@@ -253,7 +219,29 @@ def sanitize_stored_html_table(table_container_soup) -> str:
 
     data_rows = [raw_grid[i] for i in data_row_indices]
 
-    # ── Step 3: Keep only columns used by data rows ──────────────────────────
+    # ── Step 3: Main Text Column & Amount Column Merging ──────────────────────
+    main_text_col = 0
+    for c in range(num_cols):
+        if any(len(raw_grid[r_idx][c]) > 15 for r_idx in data_row_indices):
+            main_text_col = c
+            break
+
+    amount_cols = [c for c in range(main_text_col + 1, num_cols)]
+    if len(amount_cols) > 1:
+        target_col = amount_cols[-1]
+        for src_col in amount_cols[:-1]:
+            can_merge = True
+            for r in raw_grid:
+                if r[src_col] and r[target_col]:
+                    can_merge = False
+                    break
+            if can_merge:
+                for r in raw_grid:
+                    if r[src_col]:
+                        r[target_col] = r[src_col]
+                        r[src_col] = ''
+
+    # ── Step 4: Keep only columns used by data rows ──────────────────────────
     keep_cols = []
     for col_idx in range(num_cols):
         has_data = any(r[col_idx] != '' for r in data_rows)
@@ -269,7 +257,7 @@ def sanitize_stored_html_table(table_container_soup) -> str:
 
     num_pruned_cols = len(keep_cols)
 
-    # ── Step 4: Unified multi-row header ─────────────────────────────────────
+    # ── Step 5: Unified multi-row header ─────────────────────────────────────
     first_data_idx = data_row_indices[0] if data_row_indices else 1
     header_rows = pruned_grid[:first_data_idx]
 
@@ -286,7 +274,7 @@ def sanitize_stored_html_table(table_container_soup) -> str:
     if not unified_headers[0] and any(raw_grid[i][keep_cols[0]] != '' for i in data_row_indices):
         unified_headers[0] = 'Particulars'
 
-    # ── Step 5: Build Table model ────────────────────────────────────────────
+    # ── Step 6: Build Table model ────────────────────────────────────────────
     rows_model = []
     header_cells = [Cell(text=c, style=CellStyle.BOLD, alignment=CellAlignment.LEFT) for c in unified_headers]
     rows_model.append(Row(cells=header_cells, is_header=True))
