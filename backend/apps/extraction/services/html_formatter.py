@@ -166,7 +166,15 @@ def sanitize_stored_html_table(table_container_soup) -> str:
     for r in raw_grid:
         while len(r) < num_cols:
             r.append('')
-    # ── Step 1: Horizontal Row-level Duplicate Cell Clearing ─────────────────
+    # ── Step 1a: Split concatenated Date + Number cells (e.g. '31 Mar 2XX1 1,02,000') ──
+    date_num_pattern = r'^(1\s+[A-Za-z]+\s+2XX0|\d{1,2}\s+[A-Za-z]+\s+2XX\d)\s+([\d,]+)$'
+    for r in raw_grid:
+        m = re.match(date_num_pattern, r[0].strip())
+        if m and (len(r) > 1 and r[1] == ''):
+            r[0] = m.group(1)
+            r[1] = m.group(2)
+
+    # ── Step 1b: Horizontal Row-level Duplicate Cell Clearing ─────────────────
     for r in raw_grid:
         left_val = None
         for c in range(len(r)):
@@ -185,7 +193,6 @@ def sanitize_stored_html_table(table_container_soup) -> str:
             break
 
     # ── Step 2: Merge Prefix/Index Columns into main_text_col ─────────────────
-    # Columns to the left of main_text_col that contain item numbers ('1.', 'a.'), Roman numerals, or section labels ('Total')
     for r in raw_grid:
         prefix_parts = []
         for c in range(main_text_col):
@@ -211,7 +218,6 @@ def sanitize_stored_html_table(table_container_soup) -> str:
                         r[c1] = ''
 
     # ── Step 4: Data-density column pruning ──────────────────────────────────
-    # Keep columns that have content in at least 1 row (or non-empty cell)
     keep_cols = []
     for c in range(num_cols):
         has_content = any(r[c] != '' for r in raw_grid)
@@ -227,40 +233,39 @@ def sanitize_stored_html_table(table_container_soup) -> str:
 
     num_pruned_cols = len(keep_cols)
 
-    # ── Step 5: Separate header vs data rows ─────────────────────────────────
-    data_row_indices = []
+    # ── Step 5: HEADER ROW IDENTIFICATION ────────────────────────────────────
+    # Search first 3 rows for the row containing column header labels (e.g. 'Dr.', 'Cr.', 'Pre- acquisition')
+    header_row_idx = 0
     for idx, r in enumerate(pruned_grid):
-        row_str = ' '.join(r)
-        if (re.search(r'\d', row_str) or any(r[c] != '' for c in range(1, num_pruned_cols))):
-            data_row_indices.append(idx)
+        if idx < 3:
+            non_num_header_cols = sum(
+                1 for c in range(1, num_pruned_cols)
+                if r[c] != '' and not re.search(r'^\(?[0-9,\.]+\)?$', r[c].strip())
+            )
+            if non_num_header_cols > 0:
+                header_row_idx = idx
+                break
 
-    if not data_row_indices:
-        data_row_indices = list(range(1, len(pruned_grid))) if len(pruned_grid) > 1 else [0]
+    header_row = pruned_grid[header_row_idx]
+    data_rows = pruned_grid[header_row_idx + 1:]
 
-    # ── Step 6: Unified multi-row header ─────────────────────────────────────
-    first_data_idx = data_row_indices[0] if data_row_indices else 1
-    header_rows = pruned_grid[:first_data_idx]
-
-    unified_headers = [''] * num_pruned_cols
+    # Clean header row titles
+    unified_headers = []
     for c_idx in range(num_pruned_cols):
-        parts = []
-        for h_row in header_rows:
-            txt = h_row[c_idx]
-            if txt and txt != 'Rs.' and txt not in parts:
-                parts.append(txt)
-        unified_headers[c_idx] = _deduplicate_cell_text(' '.join(parts)).strip()
+        txt = header_row[c_idx].strip()
+        if not txt:
+            if c_idx == 0:
+                txt = 'Particulars'
+            else:
+                txt = 'Amount (Rs.)' if c_idx == num_pruned_cols - 1 else ''
+        unified_headers.append(txt)
 
-    # Default headers for column 0 and column 1 if empty
-    if not unified_headers[0] and any(pruned_grid[i][0] != '' for i in data_row_indices):
-        unified_headers[0] = 'Particulars'
-
-    # ── Step 7: Build Table model ────────────────────────────────────────────
+    # ── Step 6: Build Table model ────────────────────────────────────────────
     rows_model = []
     header_cells = [Cell(text=c, style=CellStyle.BOLD, alignment=CellAlignment.LEFT) for c in unified_headers]
     rows_model.append(Row(cells=header_cells, is_header=True))
 
-    for idx in data_row_indices:
-        r = pruned_grid[idx]
+    for r in data_rows:
         if all(c == '' or c == 'Rs.' for c in r):
             continue
 
@@ -269,7 +274,7 @@ def sanitize_stored_html_table(table_container_soup) -> str:
         cells = []
         is_sec = r[0] != '' and not any(c != '' for c in r[1:])
         for c in r:
-            style = CellStyle.BOLD if (is_sec or 'Total' in c) else CellStyle.NORMAL
+            style = CellStyle.BOLD if (is_sec or 'Total' in c or 'Total' in r[0]) else CellStyle.NORMAL
             align = CellAlignment.RIGHT if re.match(r'^(?:Rs\.\s*[\d,]+|[\d,]+\.?\d*|\([\d,.]+\)|Nil)$', c) else CellAlignment.LEFT
             cells.append(Cell(text=c, style=style, alignment=align))
 
@@ -287,6 +292,10 @@ def clean_stored_html_tables(content: str) -> str:
     """
     if not content or '<table' not in content:
         return content
+
+    # Unwrap invalid <p><div class="table-container">...</div></p> and <p><table...</p>
+    content = re.sub(r'<p[^>]*>\s*(<div[^>]*class=["\']table-container["\'].*?</div>)\s*</p>', r'\1', content, flags=re.DOTALL)
+    content = re.sub(r'<p[^>]*>\s*(<table.*?</table>)\s*</p>', r'\1', content, flags=re.DOTALL)
 
     from bs4 import BeautifulSoup
     soup = BeautifulSoup(content, 'html.parser')
