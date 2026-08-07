@@ -166,18 +166,34 @@ def sanitize_stored_html_table(table_container_soup) -> str:
     for r in raw_grid:
         while len(r) < num_cols:
             r.append('')
-    # ── Step 1a: Split PyMuPDF concatenated cell values ─────────────────────
-    for r in raw_grid:
-        # 1. Split trailing amount from text in cell 0 when cell 1 is empty
-        # e.g. ['Retained Earnings (W.N.3) 75,000', '', '1,55,000'] -> ['Retained Earnings (W.N.3)', '75,000', '1,55,000']
+    # ── Step 1a: Split concatenated Header 0 (e.g. 'Particulars Opening Carrying amount') ─
+    h0 = raw_grid[0][0].strip()
+    m_h = re.match(r'^(Particulars?|Date|Item)\s+(Opening\s+Carrying\s+amount|Opening\s+Balance|Carrying\s+amount)$', h0, re.IGNORECASE)
+    if m_h:
+        raw_grid[0][0] = m_h.group(1)
+        raw_grid[0].insert(1, m_h.group(2))
+        num_cols = max(len(r) for r in raw_grid)
+        for r in raw_grid:
+            while len(r) < num_cols:
+                r.append('')
+
+    # ── Step 1b: Split PyMuPDF concatenated body cell values ─────────────────────
+    for r in raw_grid[1:]:
+        # 1. Split Date + Number in cell 0 when cell 1 is empty
+        if len(r) >= 2 and r[1] == '':
+            date_m = re.match(r'^(1\s+[A-Za-z]+\s+2XX0|\d{1,2}\s+[A-Za-z]+\s+2XX\d)\s+([\d,]+)$', r[0].strip())
+            if date_m:
+                r[0] = date_m.group(1)
+                r[1] = date_m.group(2)
+
+        # 2. Split trailing amount from text in cell 0 when cell 1 is empty
         if len(r) >= 3 and r[1] == '' and r[2] != '':
             m = re.match(r'^(.*?)\s+(\(?[0-9,]{3,}\)?)$', r[0].strip())
             if m:
                 r[0] = m.group(1).strip()
                 r[1] = m.group(2).strip()
 
-        # 2. Split two concatenated amounts in cell 1 when cell 2 is empty
-        # e.g. ['Aggregate balance', '4,15,000 4,60,000', ''] -> ['Aggregate balance', '4,15,000', '4,60,000']
+        # 3. Split two concatenated amounts in cell 1 when cell 2 is empty
         for c in range(len(r) - 1):
             if r[c] != '' and r[c+1] == '':
                 amounts = re.findall(r'\(?[0-9,]{3,}(?:\.\d+)?\)?', r[c])
@@ -194,15 +210,22 @@ def sanitize_stored_html_table(table_container_soup) -> str:
                             r[c] = prefix_text
                         r[c+1] = second_amt
 
-        # 3. Split Date + Number in cell 0 when cell 1 is empty
-        # e.g. ['31 Mar 2XX1 1,02,000', '', '6,000'] -> ['31 Mar 2XX1', '1,02,000', '6,000']
-        if len(r) >= 2 and r[1] == '':
-            date_m = re.match(r'^(1\s+[A-Za-z]+\s+2XX0|\d{1,2}\s+[A-Za-z]+\s+2XX\d)\s+([\d,]+)$', r[0].strip())
-            if date_m:
-                r[0] = date_m.group(1)
-                r[1] = date_m.group(2)
+    # ── Step 1c: Merge columns with EMPTY headers into primary Amount column ─
+    header_row = raw_grid[0]
+    for c in range(1, num_cols):
+        if header_row[c].strip() == '':
+            target_col = None
+            for c2 in range(c + 1, num_cols):
+                if header_row[c2].strip() != '':
+                    target_col = c2
+                    break
+            if target_col is not None:
+                for r in raw_grid:
+                    if r[c] != '' and r[target_col] == '':
+                        r[target_col] = r[c]
+                        r[c] = ''
 
-    # ── Step 1b: Horizontal Row-level Duplicate Cell Clearing ─────────────────
+    # ── Step 1d: Horizontal Row-level Duplicate Cell Clearing ─────────────────
     for r in raw_grid:
         left_val = None
         for c in range(len(r)):
