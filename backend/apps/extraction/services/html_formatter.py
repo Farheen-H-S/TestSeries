@@ -166,13 +166,41 @@ def sanitize_stored_html_table(table_container_soup) -> str:
     for r in raw_grid:
         while len(r) < num_cols:
             r.append('')
-    # ── Step 1a: Split concatenated Date + Number cells (e.g. '31 Mar 2XX1 1,02,000') ──
-    date_num_pattern = r'^(1\s+[A-Za-z]+\s+2XX0|\d{1,2}\s+[A-Za-z]+\s+2XX\d)\s+([\d,]+)$'
+    # ── Step 1a: Split PyMuPDF concatenated cell values ─────────────────────
     for r in raw_grid:
-        m = re.match(date_num_pattern, r[0].strip())
-        if m and (len(r) > 1 and r[1] == ''):
-            r[0] = m.group(1)
-            r[1] = m.group(2)
+        # 1. Split trailing amount from text in cell 0 when cell 1 is empty
+        # e.g. ['Retained Earnings (W.N.3) 75,000', '', '1,55,000'] -> ['Retained Earnings (W.N.3)', '75,000', '1,55,000']
+        if len(r) >= 3 and r[1] == '' and r[2] != '':
+            m = re.match(r'^(.*?)\s+(\(?[0-9,]{3,}\)?)$', r[0].strip())
+            if m:
+                r[0] = m.group(1).strip()
+                r[1] = m.group(2).strip()
+
+        # 2. Split two concatenated amounts in cell 1 when cell 2 is empty
+        # e.g. ['Aggregate balance', '4,15,000 4,60,000', ''] -> ['Aggregate balance', '4,15,000', '4,60,000']
+        for c in range(len(r) - 1):
+            if r[c] != '' and r[c+1] == '':
+                amounts = re.findall(r'\(?[0-9,]{3,}(?:\.\d+)?\)?', r[c])
+                if len(amounts) == 2:
+                    idx1 = r[c].find(amounts[0])
+                    idx2 = r[c].find(amounts[1])
+                    if idx2 > idx1:
+                        prefix_text = r[c][:idx2].strip()
+                        first_amt = amounts[0]
+                        second_amt = amounts[1]
+                        if prefix_text == first_amt or not re.search(r'[A-Za-z]', prefix_text):
+                            r[c] = first_amt
+                        else:
+                            r[c] = prefix_text
+                        r[c+1] = second_amt
+
+        # 3. Split Date + Number in cell 0 when cell 1 is empty
+        # e.g. ['31 Mar 2XX1 1,02,000', '', '6,000'] -> ['31 Mar 2XX1', '1,02,000', '6,000']
+        if len(r) >= 2 and r[1] == '':
+            date_m = re.match(r'^(1\s+[A-Za-z]+\s+2XX0|\d{1,2}\s+[A-Za-z]+\s+2XX\d)\s+([\d,]+)$', r[0].strip())
+            if date_m:
+                r[0] = date_m.group(1)
+                r[1] = date_m.group(2)
 
     # ── Step 1b: Horizontal Row-level Duplicate Cell Clearing ─────────────────
     for r in raw_grid:
