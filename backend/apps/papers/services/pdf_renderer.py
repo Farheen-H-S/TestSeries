@@ -348,22 +348,22 @@ def _render_answer_sheet_html(
         # students refer back to the question paper for context.
         parts.append(f'<div class="question-block">')
         parts.append(f'<p class="question-number">Question {i}.</p>')
-
-        if group.sub_questions:
-            for sq in group.sub_questions:
-                label = _sub_label_display(sq.sub_question_label)
-                parts.append(
-                    f'<div class="sub-question">'
-                    f'<span class="sub-label">{label}</span>'
-                    f'<div class="answer-label">Answer:</div>'
-                    f'<div class="answer-content">{sq.answer_html}</div>'
-                    f'</div>'
-                )
-        else:
+        if group.answer_html:
             parts.append(
                 f'<div class="answer-label">Answer:</div>'
                 f'<div class="answer-content">{group.answer_html}</div>'
             )
+
+        if group.sub_questions:
+            for sq in group.sub_questions:
+                if sq.answer_html:
+                    label = _sub_label_display(sq.sub_question_label)
+                    parts.append(
+                        f'<div class="sub-question">'
+                        f'<span class="sub-label">{label}</span>'
+                        f'<div class="answer-content">{sq.answer_html}</div>'
+                        f'</div>'
+                    )
 
         parts.append('</div>')
         if i < len(groups):
