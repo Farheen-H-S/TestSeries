@@ -311,10 +311,7 @@ def sanitize_stored_html_table(table_container_soup) -> str:
     for c_idx in range(num_pruned_cols):
         txt = header_row[c_idx].strip()
         if not txt:
-            if c_idx == 0:
-                txt = 'Particulars'
-            else:
-                txt = 'Amount (Rs.)' if c_idx == num_pruned_cols - 1 else ''
+            txt = 'Particulars' if c_idx == 0 else 'Amount (Rs.)'
         unified_headers.append(txt)
 
     # ── Step 6: Build Table model ────────────────────────────────────────────
