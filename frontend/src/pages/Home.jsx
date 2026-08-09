@@ -147,8 +147,10 @@ const Home = () => {
         {!loading && !error && documents.length > 0 && (
           <div className="papers-grid">
             {documents.map((doc) => {
-              // Combine attempt info
-              const attemptLabel = doc.paper_session
+              // Combine attempt info with month and year
+              const attemptLabel = doc.exam_month
+                ? `${doc.exam_month} ${doc.paper_year}`
+                : doc.paper_session
                 ? `${doc.paper_session} ${doc.paper_year}`
                 : `${doc.paper_year}`;
 
