@@ -750,6 +750,26 @@ details.optional-filters[open] .optional-filters-summary::after {
   color: var(--accent-color);
 }
 
+.stat-item-disabled {
+  opacity: 0.45;
+}
+
+.stat-item-disabled .stat-value {
+  color: var(--text-muted);
+  font-size: 1.35rem;
+}
+
+.stat-item-disabled .stat-label {
+  color: var(--text-muted);
+}
+
+.stats-quality-hint {
+  font-size: 0.78rem;
+  color: var(--text-muted);
+  font-style: italic;
+  margin: 0.5rem 0 0;
+}
+
 /* ─── Download Buttons ─────────────────────────────────────────────────────── */
 
 .download-buttons {
