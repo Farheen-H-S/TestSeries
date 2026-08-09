@@ -123,6 +123,7 @@ class QuestionGroup:
     subject_name: str
     exam_level: str
     module: str                     # document_type value: RTP | PYQ | MOCK
+    document_title: str             # title of original uploaded paper document
 
 
 @dataclass
@@ -247,6 +248,7 @@ def build_group(q: Question) -> QuestionGroup:
         subject_name=q.document.subject.name,
         exam_level=q.document.subject.exam_level,
         module=q.document.document_type,
+        document_title=q.document.title,
     )
 
 

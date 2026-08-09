@@ -43,6 +43,7 @@ const Generate = () => {
   const [yearFrom, setYearFrom]         = useState('');
   const [yearTo, setYearTo]             = useState('');
   const [examMonth, setExamMonth]       = useState('');
+  const [showSource, setShowSource]     = useState(false);
 
   // UI state
   const [subjectSearch, setSubjectSearch] = useState('');
@@ -173,6 +174,7 @@ const Generate = () => {
       await paperService.downloadQuestionPaper({
         paper_title: paperTitle.trim() || 'Untitled Paper',
         root_question_ids: rootQuestionIds,
+        show_source: showSource,
       });
     } catch {
       setDownloadError('Failed to generate Question Paper. Please try again.');
@@ -189,6 +191,7 @@ const Generate = () => {
       await paperService.downloadAnswerSheet({
         paper_title: paperTitle.trim() || 'Untitled Paper',
         root_question_ids: rootQuestionIds,
+        show_source: showSource,
       });
     } catch {
       setDownloadError('Failed to generate Answer Sheet. Please try again.');
@@ -489,6 +492,20 @@ const Generate = () => {
                       <option key={m} value={m}>{m}</option>
                     ))}
                   </select>
+                </div>
+
+                {/* Show Source */}
+                <div className="form-group checkbox-group">
+                  <label className="checkbox-label" htmlFor="show-source">
+                    <input
+                      type="checkbox"
+                      id="show-source"
+                      checked={showSource}
+                      onChange={e => setShowSource(e.target.checked)}
+                    />
+                    <span className="checkbox-text">Show Source</span>
+                  </label>
+                  <span className="form-hint">Display source document title under each question</span>
                 </div>
 
               </div>

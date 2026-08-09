@@ -229,6 +229,7 @@ class PDFGenerationSerializer(serializers.Serializer):
         required=True,
         allow_empty=False,
     )
+    show_source = serializers.BooleanField(required=False, default=False)
 
     def validate_paper_title(self, value):
         return _validate_paper_title(value)

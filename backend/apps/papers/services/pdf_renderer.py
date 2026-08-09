@@ -83,6 +83,7 @@ def _render_question_paper_html(
     module: str,
     total_marks: int,
     total_questions: int,
+    show_source: bool = False,
 ) -> str:
     """Build the full HTML string for the question paper."""
     gen_date = _safe_date()
@@ -144,6 +145,12 @@ def _render_question_paper_html(
   }}
   .question-number {{
     font-weight: bold;
+  }}
+  .question-source {{
+    font-size: 9.5pt;
+    font-style: italic;
+    color: #555555;
+    margin: 0.2em 0 0.5em 1.5em;
   }}
   .question-content {{
     margin-left: 1.5em;
@@ -244,6 +251,9 @@ def _render_question_paper_html(
         parts.append(f'<div class="question-block">')
         parts.append(f'<p class="question-number">{marks_tag}Question {i}.</p>')
 
+        if show_source and getattr(group, 'document_title', None):
+            parts.append(f'<div class="question-source">[Source Document: {group.document_title}]</div>')
+
         if group.sub_questions:
             parts.append(f'<div class="question-content">{group.question_html}</div>')
             for sq in group.sub_questions:
@@ -271,6 +281,7 @@ def _render_answer_sheet_html(
     subject_name: str,
     exam_level: str,
     module: str,
+    show_source: bool = False,
 ) -> str:
     """Build the full HTML string for the answer sheet."""
     gen_date = _safe_date()
@@ -308,6 +319,7 @@ def _render_answer_sheet_html(
   .divider {{ border: none; border-top: 1.5px solid #000; margin: 1em 0; }}
   .question-block {{ margin: 1em 0; page-break-inside: avoid; }}
   .question-number {{ font-weight: bold; }}
+  .question-source {{ font-size: 9.5pt; font-style: italic; color: #555555; margin: 0.2em 0 0.5em 1.5em; }}
   .answer-label {{ font-weight: bold; font-size: 10pt; color: #555; margin: 0.3em 0; }}
   .answer-content {{ margin-left: 1.5em; }}
   .sub-question {{ margin: 0.6em 0 0.6em 1.5em; }}
@@ -348,6 +360,8 @@ def _render_answer_sheet_html(
         # students refer back to the question paper for context.
         parts.append(f'<div class="question-block">')
         parts.append(f'<p class="question-number">Question {i}.</p>')
+        if show_source and getattr(group, 'document_title', None):
+            parts.append(f'<div class="question-source">[Source Document: {group.document_title}]</div>')
         if group.answer_html:
             parts.append(
                 f'<div class="answer-label">Answer:</div>'
@@ -377,7 +391,7 @@ def _render_answer_sheet_html(
 # Public API
 # ---------------------------------------------------------------------------
 
-def render_question_paper(groups: list, paper_title: str) -> bytes:
+def render_question_paper(groups: list, paper_title: str, show_source: bool = False) -> bytes:
     """
     Render a question paper PDF from fully-assembled QuestionGroup DTOs.
 
@@ -403,16 +417,17 @@ def render_question_paper(groups: list, paper_title: str) -> bytes:
         module=first.module,
         total_marks=total_marks,
         total_questions=total_questions,
+        show_source=show_source,
     )
 
     logger.info(
-        "Rendering question paper | title=%r | questions=%d | marks=%d",
-        paper_title, total_questions, total_marks
+        "Rendering question paper | title=%r | questions=%d | marks=%d | show_source=%s",
+        paper_title, total_questions, total_marks, show_source
     )
     return _html_to_pdf(html_str)
 
 
-def render_answer_sheet(groups: list, paper_title: str) -> bytes:
+def render_answer_sheet(groups: list, paper_title: str, show_source: bool = False) -> bytes:
     """
     Render a suggested answer sheet PDF from the same QuestionGroup DTOs.
 
@@ -435,10 +450,12 @@ def render_answer_sheet(groups: list, paper_title: str) -> bytes:
         subject_name=first.subject_name,
         exam_level=first.exam_level,
         module=first.module,
+        show_source=show_source,
     )
 
     logger.info(
-        "Rendering answer sheet | title=%r | questions=%d",
-        paper_title, len(groups)
+        "Rendering answer sheet | title=%r | questions=%d | show_source=%s",
+        paper_title, len(groups), show_source
     )
     return _html_to_pdf(html_str)
+

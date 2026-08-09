@@ -876,3 +876,35 @@ details.optional-filters[open] .optional-filters-summary::after {
     font-size: 1.4rem;
   }
 }
+
+/* ─── Checkbox Control ────────────────────────────────────────────────────────── */
+
+.checkbox-group {
+  margin-top: 0.5rem;
+}
+
+.checkbox-label {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  cursor: pointer;
+  user-select: none;
+  font-size: 0.9rem;
+  font-weight: 500;
+  color: var(--text-primary);
+}
+
+.checkbox-label input[type="checkbox"] {
+  width: 1.1rem;
+  height: 1.1rem;
+  accent-color: var(--primary-color);
+  cursor: pointer;
+  border-radius: 4px;
+}
+
+.checkbox-text {
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
