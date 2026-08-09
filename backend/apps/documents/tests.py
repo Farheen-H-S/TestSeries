@@ -179,3 +179,59 @@ class DocumentUploadTests(APITestCase):
         response = self.client.post(url, data, format='multipart')
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
         self.assertIn('subject', response.json())
+
+    def test_document_stats_and_delete_cascade(self):
+        from apps.papers.models import Question
+        from apps.extraction.models import ExtractionLog
+
+        subject = Subject.objects.create(name='Taxation', exam_level='Intermediate')
+        doc = Document.objects.create(
+            user=self.user,
+            subject=subject,
+            title='Taxation Paper 2024',
+            document_type='PYQ',
+            paper_year=2024,
+            storage_path='documents/test_tax.pdf'
+        )
+
+        # Create child extracted questions and logs
+        Question.objects.create(
+            document=doc,
+            question_number='Q1',
+            question_content='<p>Question 1</p>',
+            question_text='Question 1',
+            answer_content='<p>Answer 1</p>',
+            answer_text='Answer 1'
+        )
+        Question.objects.create(
+            document=doc,
+            question_number='Q2',
+            question_content='<p>Question 2</p>',
+            question_text='Question 2',
+            answer_content='<p>Answer 2</p>',
+            answer_text='Answer 2'
+        )
+        ExtractionLog.objects.create(
+            document=doc,
+            status=ExtractionLog.Status.COMPLETED,
+            message='Extraction done'
+        )
+
+        # 1. Verify Stats API Endpoint
+        stats_url = reverse('document-stats', kwargs={'pk': doc.pk})
+        stats_resp = self.client.get(stats_url)
+        self.assertEqual(stats_resp.status_code, status.HTTP_200_OK)
+        stats_data = stats_resp.json()
+        self.assertEqual(stats_data['questions_count'], 2)
+        self.assertEqual(stats_data['logs_count'], 1)
+
+        # 2. Verify Delete API Endpoint
+        detail_url = reverse('document-detail', kwargs={'pk': doc.pk})
+        delete_resp = self.client.delete(detail_url)
+        self.assertEqual(delete_resp.status_code, status.HTTP_204_NO_CONTENT)
+
+        # 3. Assert Cascading Deletion from Database
+        self.assertFalse(Document.objects.filter(pk=doc.pk).exists())
+        self.assertEqual(Question.objects.filter(document_id=doc.pk).count(), 0)
+        self.assertEqual(ExtractionLog.objects.filter(document_id=doc.pk).count(), 0)
+

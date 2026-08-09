@@ -104,6 +104,11 @@ def format_answer_content(text: str, working_notes: Optional[list] = None) -> st
             wn_parts.append(f'<strong>{html.escape(header_text)}</strong>')
             wn_parts.append(text_to_html(content))
             wn_parts.append('</div>')
+        wn_parts.append('</div>')
+        parts.append("\n".join(wn_parts))
+        
+    return "\n".join(parts)
+
             
 def _clean_cell_string(text: str) -> str:
     if not text:
