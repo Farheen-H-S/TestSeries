@@ -147,7 +147,7 @@ def sanitize_stored_html_table(table_container_soup) -> str:
     from bs4 import BeautifulSoup
     from .table_processing import Cell, CellStyle, CellAlignment, Row, Table, TableProcessor
 
-    table_tag = table_container_soup.find('table')
+    table_tag = table_container_soup if getattr(table_container_soup, 'name', None) == 'table' else table_container_soup.find('table')
     if not table_tag:
         return str(table_container_soup)
 
