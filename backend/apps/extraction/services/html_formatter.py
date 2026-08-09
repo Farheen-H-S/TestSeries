@@ -171,9 +171,9 @@ def sanitize_stored_html_table(table_container_soup) -> str:
     for r in raw_grid:
         while len(r) < num_cols:
             r.append('')
-    # ── Step 1a: Split concatenated Header 0 (e.g. 'Particulars Opening Carrying amount') ─
+    # ── Step 1a: Split concatenated Header 0 (e.g. 'Particulars Opening Carrying amount a') ─
     h0 = raw_grid[0][0].strip()
-    m_h = re.match(r'^(Particulars?|Date|Item)\s+(Opening\s+Carrying\s+amount|Opening\s+Balance|Carrying\s+amount)$', h0, re.IGNORECASE)
+    m_h = re.match(r'^(Particulars?|Date|Item)\s+(Opening\s+Carrying\s+amount.*|Opening\s+Balance.*|Carrying\s+amount.*)$', h0, re.IGNORECASE)
     if m_h:
         raw_grid[0][0] = m_h.group(1)
         raw_grid[0].insert(1, m_h.group(2))
@@ -184,21 +184,31 @@ def sanitize_stored_html_table(table_container_soup) -> str:
 
     # ── Step 1b: Split PyMuPDF concatenated body cell values ─────────────────────
     for r in raw_grid[1:]:
-        # 1. Split Date + Number in cell 0 when cell 1 is empty
+        # 1. Split Company Name + Investment Amount in cell 0
+        m_co = re.match(r'^([A-Z]\s+Ltd\.|[A-Za-z0-9\s]+Co\.|[A-Za-z0-9\s]+Ltd\.)\s+([\d,]+)$', r[0].strip())
+        if m_co:
+            r[0] = m_co.group(1).strip()
+            r.insert(1, m_co.group(2).strip())
+            num_cols = max(len(r_sub) for r_sub in raw_grid)
+            for r_sub in raw_grid:
+                while len(r_sub) < num_cols:
+                    r_sub.append('')
+
+        # 2. Split Date + Number in cell 0 when cell 1 is empty
         if len(r) >= 2 and r[1] == '':
             date_m = re.match(r'^(1\s+[A-Za-z]+\s+2XX0|\d{1,2}\s+[A-Za-z]+\s+2XX\d)\s+([\d,]+)$', r[0].strip())
             if date_m:
                 r[0] = date_m.group(1)
                 r[1] = date_m.group(2)
 
-        # 2. Split trailing amount from text in cell 0 when cell 1 is empty
+        # 3. Split trailing amount from text in cell 0 when cell 1 is empty
         if len(r) >= 3 and r[1] == '' and r[2] != '':
             m = re.match(r'^(.*?)\s+(\(?[0-9,]{3,}\)?)$', r[0].strip())
             if m:
                 r[0] = m.group(1).strip()
                 r[1] = m.group(2).strip()
 
-        # 3. Split two concatenated amounts in cell 1 when cell 2 is empty
+        # 4. Split two concatenated amounts in cell 1 when cell 2 is empty
         for c in range(len(r) - 1):
             if r[c] != '' and r[c+1] == '':
                 amounts = re.findall(r'\(?[0-9,]{3,}(?:\.\d+)?\)?', r[c])
@@ -214,6 +224,22 @@ def sanitize_stored_html_table(table_container_soup) -> str:
                         else:
                             r[c] = prefix_text
                         r[c+1] = second_amt
+
+    # ── Step 1c: Fold multi-row header titles (e.g. 'Profit (loss)' + 'FY 20X1-' + '20X2') ──
+    header_rows_count = 1
+    for idx in range(1, min(4, len(raw_grid))):
+        r = raw_grid[idx]
+        if any(tok in ' '.join(r) for tok in ['for the', 'FY 20X', '20X1', '20X2', '20X3', '20X4', 'Standalone', 'annual payment']):
+            header_rows_count = idx + 1
+        else:
+            break
+
+    if header_rows_count > 1:
+        folded_header = []
+        for c in range(num_cols):
+            tokens = [raw_grid[r_idx][c].strip() for r_idx in range(header_rows_count) if raw_grid[r_idx][c].strip()]
+            folded_header.append(' '.join(tokens).strip())
+        raw_grid = [folded_header] + raw_grid[header_rows_count:]
 
     # ── Step 1c: Merge columns with EMPTY headers into primary Amount column ─
     header_row = raw_grid[0]
