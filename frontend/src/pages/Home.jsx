@@ -115,9 +115,14 @@ const Home = () => {
         <p className="home-subtitle">
           Upload previous year papers, build your question bank, and generate practice papers.
         </p>
-        <Button variant="secondary" onClick={handleUploadClick} className="home-hero-btn">
-          Upload Paper
-        </Button>
+        <div className="home-hero-actions">
+          <Button variant="secondary" onClick={handleUploadClick} className="home-hero-btn">
+            Upload Paper
+          </Button>
+          <Button variant="outline" onClick={() => navigate('/subjects')} className="home-hero-btn">
+            Manage Subjects & Chapters
+          </Button>
+        </div>
       </section>
 
       {/* Recent Papers List */}

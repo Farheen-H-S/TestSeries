@@ -633,7 +633,7 @@ const Generate = () => {
                   id="download-question-paper"
                 >
                   {downloadingPaper ? (
-                    <><span className="btn-spinner" />Generating…</>
+                    <><span className="btn-spinner" />Downloading…</>
                   ) : (
                     <><span className="btn-icon">⬇</span> Download Question Paper</>
                   )}
@@ -646,7 +646,7 @@ const Generate = () => {
                   id="download-answer-sheet"
                 >
                   {downloadingAnswer ? (
-                    <><span className="btn-spinner" />Generating…</>
+                    <><span className="btn-spinner" />Downloading…</>
                   ) : (
                     <><span className="btn-icon">⬇</span> Download Answer Sheet</>
                   )}
