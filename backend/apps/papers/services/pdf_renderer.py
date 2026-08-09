@@ -95,62 +95,68 @@ def _render_question_paper_html(
 <meta charset="UTF-8">
 <title>{paper_title}</title>
 <style>
+  @page {{
+    size: a4 portrait;
+    margin: 1.5cm 1.5cm 1.8cm 1.5cm;
+  }}
   body {{
     font-family: "Times New Roman", Times, serif;
-    font-size: 12pt;
-    margin: 2.5cm 2cm;
+    font-size: 11pt;
     color: #000;
-    line-height: 1.5;
+    line-height: 1.4;
   }}
   .title-block {{
     text-align: center;
-    margin-bottom: 1.5em;
+    margin-bottom: 1.2em;
   }}
   .title-block h1 {{
     font-size: 16pt;
     font-weight: bold;
     margin: 0 0 0.3em 0;
   }}
-  .meta-grid {{
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 0.2em 1em;
-    font-size: 11pt;
-    margin: 0.6em auto;
-    max-width: 85%;
-    text-align: left;
+  .meta-table {{
+    width: 85%;
+    margin: 0.5em auto;
+    font-size: 10.5pt;
+    border-collapse: collapse;
   }}
-  .meta-grid .label {{ font-weight: bold; }}
+  .meta-table td {{
+    padding: 2pt 4pt;
+    border: none;
+  }}
+  .meta-table .label {{
+    font-weight: bold;
+    width: 22%;
+  }}
   .divider {{
     border: none;
     border-top: 1.5px solid #000;
-    margin: 1em 0;
+    margin: 0.8em 0;
   }}
   .instructions {{
     font-style: italic;
-    font-size: 11pt;
-    margin-bottom: 1.5em;
+    font-size: 10.5pt;
+    margin-bottom: 1em;
   }}
-  /* Shared context block — shown once per group in question paper */
   .shared-context-block {{
     background: #f7f7f7;
     border-left: 3px solid #999;
     padding: 0.5em 0.8em;
-    margin: 1em 0 0.5em 0;
-    font-size: 11pt;
+    margin: 0.8em 0 0.5em 0;
+    font-size: 10.5pt;
   }}
   .question-block {{
-    margin: 1em 0;
+    margin: 0.8em 0;
     page-break-inside: avoid;
   }}
   .question-number {{
     font-weight: bold;
   }}
   .question-source {{
-    font-size: 9.5pt;
+    font-size: 9pt;
     font-style: italic;
     color: #555555;
-    margin: 0.2em 0 0.5em 1.5em;
+    margin: 0.2em 0 0.4em 1.5em;
   }}
   .question-content {{
     margin-left: 1.5em;
@@ -161,7 +167,7 @@ def _render_question_paper_html(
   .sub-label {{
     font-weight: bold;
     display: inline-block;
-    min-width: 2.5em;
+    min-width: 2em;
   }}
   .marks {{
     float: right;
@@ -291,66 +297,90 @@ def _render_answer_sheet_html(
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>{paper_title} — Suggested Answers</title>
 <style>
+  @page {{
+    size: a4 portrait;
+    margin: 1.5cm 1.5cm 1.8cm 1.5cm;
+  }}
   body {{
     font-family: "Times New Roman", Times, serif;
-    font-size: 12pt;
-    margin: 2.5cm 2cm;
+    font-size: 11pt;
     color: #000;
-    line-height: 1.5;
+    line-height: 1.4;
   }}
   .title-block {{
     text-align: center;
-    margin-bottom: 1.5em;
+    margin-bottom: 1.2em;
   }}
   .title-block h1 {{ font-size: 16pt; font-weight: bold; margin: 0 0 0.3em 0; }}
   .title-block h2 {{ font-size: 13pt; font-weight: normal; margin: 0; color: #444; }}
-  .meta-grid {{
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 0.2em 1em;
-    font-size: 11pt;
-    margin: 0.6em auto;
-    max-width: 85%;
-    text-align: left;
+  .meta-table {{
+    width: 85%;
+    margin: 0.5em auto;
+    font-size: 10.5pt;
+    border-collapse: collapse;
   }}
-  .meta-grid .label {{ font-weight: bold; }}
-  .divider {{ border: none; border-top: 1.5px solid #000; margin: 1em 0; }}
-  .question-block {{ margin: 1em 0; page-break-inside: avoid; }}
+  .meta-table td {{
+    padding: 2pt 4pt;
+    border: none;
+  }}
+  .meta-table .label {{
+    font-weight: bold;
+    width: 22%;
+  }}
+  .divider {{ border: none; border-top: 1.5px solid #000; margin: 0.8em 0; }}
+  .question-block {{ margin: 0.8em 0; page-break-inside: avoid; }}
   .question-number {{ font-weight: bold; }}
-  .question-source {{ font-size: 9.5pt; font-style: italic; color: #555555; margin: 0.2em 0 0.5em 1.5em; }}
+  .question-source {{ font-size: 9pt; font-style: italic; color: #555555; margin: 0.2em 0 0.4em 1.5em; }}
   .answer-label {{ font-weight: bold; font-size: 10pt; color: #555; margin: 0.3em 0; }}
   .answer-content {{ margin-left: 1.5em; }}
-  .sub-question {{ margin: 0.6em 0 0.6em 1.5em; }}
-  .sub-label {{ font-weight: bold; display: inline-block; min-width: 2.5em; }}
+  .sub-question {{ margin: 0.4em 0 0.4em 1.5em; }}
+  .sub-label {{ font-weight: bold; display: inline-block; min-width: 2em; }}
   .question-divider {{ border: none; border-top: 0.5px solid #ccc; margin: 0.8em 0; }}
-  .working-notes {{ background: #f9f9f9; border: 1px solid #ddd; padding: 0.8em; margin-top: 0.5em; font-size: 11pt; }}
-  .working-notes h4 {{ margin: 0 0 0.3em 0; font-size: 11pt; }}
-  .table-container {{ width: 100%; margin: 0.5em 0; overflow: hidden; }}
-  /* ── Table styles ──────────────────────────────────────── */
-  table {{ border-collapse: collapse; width: 100%; table-layout: auto; margin: 0.5em 0; }}
-  th, td {{ border: 1px solid #999; padding: 0.35em 0.6em; font-size: 10.5pt; vertical-align: top; }}
-  th {{ background: #EEEEEE; font-weight: bold; }}
+  .working-notes {{ background: #f9f9f9; border: 1px solid #ddd; padding: 0.8em; margin-top: 0.5em; font-size: 10.5pt; }}
+  .working-notes h4 {{ margin: 0 0 0.3em 0; font-size: 10.5pt; }}
+  .table-container {{ width: 100%; margin: 0.6em 0; }}
+  /* ── Table styles for xhtml2pdf ────────────────────────── */
+  table.structured-table {{
+    border-collapse: collapse;
+    width: 100%;
+    margin: 0.5em 0;
+    -pdf-keep-with-next: false;
+  }}
+  table.structured-table th, table.structured-table td {{
+    border: 0.5pt solid #777;
+    padding: 4pt 6pt;
+    font-size: 9.5pt;
+    vertical-align: top;
+  }}
+  table.structured-table th {{
+    background-color: #f2f2f2;
+    font-weight: bold;
+    text-align: left;
+  }}
   tr {{ page-break-inside: avoid; }}
   thead {{ display: table-header-group; }}
   tfoot {{ display: table-footer-group; }}
-  tr.section-row td {{ font-weight: bold; background: #F5F5F5; }}
-  tr.total-row td {{ font-weight: bold; border-top: 2px solid #555; }}
+  tr.section-row td {{ font-weight: bold; background-color: #f9f9f9; }}
+  tr.total-row td {{ font-weight: bold; border-top: 1.5pt solid #444; }}
   img {{ max-width: 100%; height: auto; }}
-  p {{ margin: 0.3em 0; }}
+  p {{ margin: 0.25em 0; }}
 </style>
 </head>
 <body>
 <div class="title-block">
   <h1>{paper_title}</h1>
   <h2>Suggested Answers</h2>
-  <div class="meta-grid">
-    <span class="label">Subject:</span><span>{subject_name}</span>
-    <span class="label">Exam Level:</span><span>{exam_level}</span>
-    <span class="label">Module:</span><span>{module_display}</span>
-    <span class="label">Generated On:</span><span>{gen_date}</span>
-  </div>
+  <table class="meta-table">
+    <tr>
+      <td class="label">Subject:</td><td>{subject_name}</td>
+      <td class="label">Exam Level:</td><td>{exam_level}</td>
+    </tr>
+    <tr>
+      <td class="label">Module:</td><td>{module_display}</td>
+      <td class="label">Generated On:</td><td>{gen_date}</td>
+    </tr>
+  </table>
 </div>
 <hr class="divider">
 """]
