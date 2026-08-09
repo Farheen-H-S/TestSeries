@@ -794,13 +794,7 @@ class _HTMLRenderer:
         table_style = f' style="font-size:{cls.WIDE_TABLE_FONT_SIZE};"' if is_wide else ''
         html_parts.append(f'<table class="structured-table"{table_style}>')
 
-        # --- <colgroup> with computed widths ---
-        col_widths = cls._compute_col_widths(table)
-        if col_widths:
-            html_parts.append('<colgroup>')
-            for pct in col_widths:
-                html_parts.append(f'<col style="width:{pct:.1f}%">')
-            html_parts.append('</colgroup>')
+        # Omit <colgroup> overrides to allow xhtml2pdf and web browsers to distribute column widths dynamically
 
         # --- <thead> ---
         has_header = any(row.is_header for row in table.rows)

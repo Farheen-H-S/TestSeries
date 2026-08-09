@@ -101,33 +101,25 @@ _VALID_EXAM_MONTHS = {m.value for m in Document.ExamMonth}
 
 
 def _validate_paper_title(value: str) -> str:
-    """Strip, check length, require at least one alphanumeric character."""
-    value = value.strip()
-    if len(value) < 3:
-        raise serializers.ValidationError(
-            "Paper title must be at least 3 characters long."
-        )
+    """Strip, truncate, and fallback to 'Practice Paper' if empty or short."""
+    value = (value or '').strip()
+    if not value or len(value) < 1:
+        return 'Practice Paper'
     if len(value) > 100:
-        raise serializers.ValidationError(
-            "Paper title must be 100 characters or fewer."
-        )
-    if not re.search(r'[a-zA-Z0-9]', value):
-        raise serializers.ValidationError(
-            "Paper title must contain at least one letter or digit."
-        )
+        return value[:100]
     return value
 
 
 class GenerationFilterSerializer(serializers.Serializer):
     """
     Validates the filter payload sent to the preview endpoint.
-    Enforces module-dependent field requirements and cross-field rules.
+    Enforces module-dependent field requirements and cross-field rules with smart defaults.
     """
-    paper_title = serializers.CharField(required=True)
+    paper_title = serializers.CharField(required=False, default='Practice Paper', allow_blank=True)
     subject_id = serializers.IntegerField(required=True)
     module = serializers.CharField(required=True)
 
-    # Module-dependent constraints — exactly one must be active
+    # Module-dependent constraints — default defaults applied if missing
     total_marks = serializers.IntegerField(required=False, allow_null=True, default=None)
     question_count = serializers.IntegerField(required=False, allow_null=True, default=None)
 
@@ -172,41 +164,25 @@ class GenerationFilterSerializer(serializers.Serializer):
         year_from = attrs.get('year_from')
         year_to = attrs.get('year_to')
 
+        # Auto-fallback to default paper_title if empty or invalid
+        if not attrs.get('paper_title'):
+            attrs['paper_title'] = 'Practice Paper'
+
         # chapter_ids only allowed for RTP
         if chapter_ids and module != 'RTP':
-            raise serializers.ValidationError({
-                'chapter_ids': "Chapter filtering is only supported for RTP module."
-            })
+            attrs['chapter_ids'] = []
 
-        # Marks-constrained modules require total_marks
+        # Marks-constrained modules default to 50 marks if unspecified
         if module in ('PYQ', 'MOCK'):
-            if not total_marks:
-                raise serializers.ValidationError({
-                    'total_marks': f"total_marks is required for {module} module."
-                })
-            if total_marks <= 0:
-                raise serializers.ValidationError({
-                    'total_marks': "total_marks must be greater than 0."
-                })
-            if question_count:
-                raise serializers.ValidationError({
-                    'question_count': "Provide either total_marks or question_count, not both."
-                })
+            if not total_marks or total_marks <= 0:
+                attrs['total_marks'] = 50
+            attrs['question_count'] = None
 
-        # Count-constrained module requires question_count
+        # Count-constrained module defaults to 5 questions if unspecified
         if module == 'RTP':
-            if not question_count:
-                raise serializers.ValidationError({
-                    'question_count': "question_count is required for RTP module."
-                })
-            if question_count <= 0:
-                raise serializers.ValidationError({
-                    'question_count': "question_count must be greater than 0."
-                })
-            if total_marks:
-                raise serializers.ValidationError({
-                    'total_marks': "Provide either total_marks or question_count, not both."
-                })
+            if not question_count or question_count <= 0:
+                attrs['question_count'] = 5
+            attrs['total_marks'] = None
 
         # Year range validation
         if year_from is not None and year_to is not None:

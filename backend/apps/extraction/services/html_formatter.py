@@ -347,6 +347,9 @@ def clean_stored_html_tables(content: str) -> str:
     if not content or '<table' not in content:
         return content
 
+    # Strip any hardcoded <colgroup>...</colgroup> overrides that force narrow 1cm columns in xhtml2pdf
+    content = re.sub(r'<colgroup>.*?</colgroup>', '', content, flags=re.DOTALL | re.IGNORECASE)
+
     # Unwrap invalid <p><div class="table-container">...</div></p> and <p><table...</p>
     content = re.sub(r'<p[^>]*>\s*(<div[^>]*class=["\']table-container["\'].*?</div>)\s*</p>', r'\1', content, flags=re.DOTALL)
     content = re.sub(r'<p[^>]*>\s*(<table.*?</table>)\s*</p>', r'\1', content, flags=re.DOTALL)
