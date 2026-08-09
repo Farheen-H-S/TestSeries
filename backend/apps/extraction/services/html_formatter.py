@@ -226,9 +226,10 @@ def sanitize_stored_html_table(table_container_soup) -> str:
                     break
             if target_col is not None:
                 for r in raw_grid:
-                    if r[c] != '' and r[target_col] == '':
-                        r[target_col] = r[c]
-                        r[c] = ''
+                    if r[c] != '':
+                        if r[target_col] == '' or r[target_col] == r[c]:
+                            r[target_col] = r[c]
+                            r[c] = ''
 
     # ── Step 1d: Horizontal Row-level Duplicate Cell Clearing ─────────────────
     for r in raw_grid:
