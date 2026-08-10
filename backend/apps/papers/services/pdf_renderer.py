@@ -341,19 +341,19 @@ def _render_answer_sheet_html(
   .working-notes h4 {{ margin: 0 0 0.3em 0; font-size: 10.5pt; }}
   .table-container {{ width: 100%; margin: 0.6em 0; }}
   /* ── Table styles for xhtml2pdf ────────────────────────── */
-  table.structured-table {{
+  table {{
     border-collapse: collapse;
     width: 100%;
     margin: 0.5em 0;
     -pdf-keep-with-next: false;
   }}
-  table.structured-table th, table.structured-table td {{
+  th, td {{
     border: 0.5pt solid #777;
     padding: 4pt 6pt;
     font-size: 9.5pt;
     vertical-align: top;
   }}
-  table.structured-table th {{
+  th {{
     background-color: #f2f2f2;
     font-weight: bold;
     text-align: left;
