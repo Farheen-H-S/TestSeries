@@ -269,16 +269,18 @@ def sanitize_stored_html_table(table_container_soup) -> str:
 
     # ── Step 1c: Merge columns with EMPTY headers into primary Amount column ─
     header_row = raw_grid[0]
+    while len(header_row) < num_cols:
+        header_row.append('')
     for c in range(1, num_cols):
         if header_row[c].strip() == '':
             target_col = None
             for c2 in range(c + 1, num_cols):
-                if header_row[c2].strip() != '':
+                if c2 < len(header_row) and header_row[c2].strip() != '':
                     target_col = c2
                     break
             if target_col is not None:
                 for r in raw_grid:
-                    if r[c] != '':
+                    if c < len(r) and target_col < len(r) and r[c] != '':
                         if r[target_col] == '' or r[target_col] == r[c]:
                             r[target_col] = r[c]
                             r[c] = ''
