@@ -125,6 +125,9 @@ def _clean_cell_string(text: str) -> str:
     text = re.sub(r'Rs\.\s*\(Rs\.\)', '(Rs.)', text, flags=re.IGNORECASE)
     text = re.sub(r'\bRs\.\s+Rs\.\b', 'Rs.', text, flags=re.IGNORECASE)
 
+    # Clean up formula suffixes in header titles e.g. "Rs. b=1,00,000 x 6%" or "Rs. c=a x 5.7317%"
+    text = re.sub(r'\s*(?:Rs\.|₹)?\s*[a-e]\s*=\s*.*$', '', text, flags=re.IGNORECASE)
+
     text = re.sub(r'\*\*(.*?)\*\*', r'\1', text)
     text = re.sub(r'\*(.*?)\*', r'\1', text)
     if re.match(r'^Col\d+$', text.strip(), re.IGNORECASE):
@@ -176,6 +179,7 @@ def sanitize_stored_html_table(table_container_soup) -> str:
     for r in raw_grid:
         while len(r) < num_cols:
             r.append('')
+
     # ── Step 1a: Split concatenated Header 0 (e.g. 'Particulars Opening Carrying amount a' or 'Particulars Closing balance') ─
     h0 = raw_grid[0][0].strip()
     m_h = re.match(r'^(Particulars?|Date|Item)\s+(Opening\s+Carrying\s+amount.*|Opening\s+Balance.*|Closing\s+balance.*|Carrying\s+amount.*)$', h0, re.IGNORECASE)
@@ -220,12 +224,15 @@ def sanitize_stored_html_table(table_container_soup) -> str:
                 while len(r_sub) < num_cols:
                     r_sub.append('')
 
-        # 2. Split Date + Number in cell 0 when cell 1 is empty
-        if len(r) >= 2 and r[1] == '':
-            date_m = re.match(r'^(1\s+[A-Za-z]+\s+2XX0|\d{1,2}\s+[A-Za-z]+\s+2XX\d)\s+([\d,]+)$', r[0].strip())
-            if date_m:
-                r[0] = date_m.group(1)
-                r[1] = date_m.group(2)
+        # 2. Split Date + Number in cell 0 (e.g. '31 Mar 2XX1 1,02,000' -> '31 Mar 2XX1', '1,02,000')
+        date_m = re.match(r'^(\d{1,2}\s+[A-Za-z]+\s+(?:2X{1,2}\d|2X\d{2}|2\d{3}|\d{4}))\s+([\d,]+)$', r[0].strip(), re.IGNORECASE)
+        if date_m:
+            r[0] = date_m.group(1)
+            r.insert(1, date_m.group(2))
+            num_cols = max(len(r_sub) for r_sub in raw_grid)
+            for r_sub in raw_grid:
+                while len(r_sub) < num_cols:
+                    r_sub.append('')
 
         # 3. Split trailing amount from text in cell 0 when cell 1 is empty
         if len(r) >= 3 and r[1] == '' and r[2] != '':

@@ -790,9 +790,10 @@ class _HTMLRenderer:
                 f'</p>'
             )
 
-        # Build font-size override style for wide tables
-        table_style = f' style="font-size:{cls.WIDE_TABLE_FONT_SIZE};"' if is_wide else ''
-        html_parts.append(f'<table class="structured-table"{table_style}>')
+        # Add wide-table class for tables with 5 or more columns
+        num_cols = max(len(row.cells) for row in table.rows) if table.rows else 0
+        table_class = "structured-table wide-table" if num_cols >= 5 else "structured-table"
+        html_parts.append(f'<table class="{table_class}">')
 
         # Omit <colgroup> overrides to allow xhtml2pdf and web browsers to distribute column widths dynamically
 

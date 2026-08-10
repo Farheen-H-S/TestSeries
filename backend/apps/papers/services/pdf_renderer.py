@@ -194,6 +194,11 @@ def _render_question_paper_html(
     vertical-align: top;
     line-height: 1.35;
   }}
+  table.wide-table th, table.wide-table td {{
+    font-size: 8.5pt;
+    padding: 3pt 4pt;
+    line-height: 1.25;
+  }}
   th {{
     background: #EEEEEE;
     font-weight: bold;
@@ -354,6 +359,11 @@ def _render_answer_sheet_html(
     font-size: 9.5pt;
     vertical-align: top;
     line-height: 1.35;
+  }}
+  table.wide-table th, table.wide-table td {{
+    font-size: 8.5pt;
+    padding: 3pt 4pt;
+    line-height: 1.25;
   }}
   th {{
     background-color: #f2f2f2;
