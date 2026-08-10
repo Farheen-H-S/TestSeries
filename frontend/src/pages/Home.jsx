@@ -116,11 +116,11 @@ const Home = () => {
           Upload previous year papers, build your question bank, and generate practice papers.
         </p>
         <div className="home-hero-actions">
-          <Button variant="secondary" onClick={handleUploadClick} className="home-hero-btn">
-            Upload Paper
-          </Button>
-          <Button variant="outline" onClick={() => navigate('/subjects')} className="home-hero-btn">
+          <Button variant="secondary" onClick={() => navigate('/subjects')} className="home-hero-btn">
             Manage Subjects & Chapters
+          </Button>
+          <Button variant="outline" onClick={handleUploadClick} className="home-hero-btn">
+            Upload Paper
           </Button>
         </div>
       </section>
@@ -156,8 +156,8 @@ const Home = () => {
               const attemptLabel = doc.exam_month
                 ? `${doc.exam_month} ${doc.paper_year}`
                 : doc.paper_session
-                ? `${doc.paper_session} ${doc.paper_year}`
-                : `${doc.paper_year}`;
+                  ? `${doc.paper_session} ${doc.paper_year}`
+                  : `${doc.paper_year}`;
 
               return (
                 <Card key={doc.document_id} className="paper-card">
