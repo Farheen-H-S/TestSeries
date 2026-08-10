@@ -113,18 +113,23 @@ def format_answer_content(text: str, working_notes: Optional[list] = None) -> st
 def _clean_cell_string(text: str) -> str:
     if not text:
         return ''
-    text = text.replace('&lt;br&gt;', '<br />').replace('&lt;br/&gt;', '<br />').replace('&lt;br /&gt;', '<br />')
+    text = text.replace('&lt;br&gt;', ' ').replace('&lt;br/&gt;', ' ').replace('&lt;br /&gt;', ' ')
+    text = text.replace('<br>', ' ').replace('<br/>', ' ').replace('<br />', ' ').replace('\n', ' ')
     text = text.replace('&lt;', '<').replace('&gt;', '>').replace('&amp;', '&')
 
     # Replace backticks ` or ₹ with Rs. to prevent xhtml2pdf black square ■ rendering
     text = re.sub(r'[₹`]\s*(\d)', r'Rs. \1', text)
     text = re.sub(r'[₹`]', 'Rs. ', text)
 
+    # Clean up duplicate currency patterns like Rs. (Rs.) -> (Rs.)
+    text = re.sub(r'Rs\.\s*\(Rs\.\)', '(Rs.)', text, flags=re.IGNORECASE)
+    text = re.sub(r'\bRs\.\s+Rs\.\b', 'Rs.', text, flags=re.IGNORECASE)
+
     text = re.sub(r'\*\*(.*?)\*\*', r'\1', text)
     text = re.sub(r'\*(.*?)\*', r'\1', text)
     if re.match(r'^Col\d+$', text.strip(), re.IGNORECASE):
         return ''
-    return text.strip()
+    return re.sub(r'\s+', ' ', text).strip()
 
 
 def _deduplicate_cell_text(text: str) -> str:

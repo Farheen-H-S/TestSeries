@@ -188,10 +188,11 @@ def _render_question_paper_html(
     margin: 0.75em 0;
   }}
   th, td {{
-    border: 1px solid #999;
-    padding: 0.3em 0.6em;
-    font-size: 10.5pt;
+    border: 0.5pt solid #777;
+    padding: 4pt 6pt;
+    font-size: 9.5pt;
     vertical-align: top;
+    line-height: 1.35;
   }}
   th {{
     background: #EEEEEE;
@@ -352,6 +353,7 @@ def _render_answer_sheet_html(
     padding: 4pt 6pt;
     font-size: 9.5pt;
     vertical-align: top;
+    line-height: 1.35;
   }}
   th {{
     background-color: #f2f2f2;
