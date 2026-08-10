@@ -51,9 +51,12 @@ def text_to_html(text: str) -> str:
             continue
             
         if part.startswith("[STRUCTURED_START]") and part.endswith("[STRUCTURED_END]"):
-            # Extract markdown table segment
+            # Extract table segment (could be HTML or Markdown)
             m_table = part.replace("[STRUCTURED_START]", "").replace("[STRUCTURED_END]", "").strip()
-            html_parts.append(markdown_table_to_html(m_table))
+            if m_table.startswith("<div") or "<table" in m_table:
+                html_parts.append(m_table)
+            else:
+                html_parts.append(markdown_table_to_html(m_table))
         else:
             # Escape HTML
             escaped = html.escape(part)
@@ -154,6 +157,9 @@ def _deduplicate_cell_text(text: str) -> str:
 def sanitize_stored_html_table(table_container_soup) -> str:
     from bs4 import BeautifulSoup
     from .table_processing import Cell, CellStyle, CellAlignment, Row, Table, TableProcessor
+
+    if table_container_soup.find('img') or table_container_soup.get('data-is-complex') == 'true' or table_container_soup.get('data-crop-path'):
+        return str(table_container_soup)
 
     table_tag = table_container_soup if getattr(table_container_soup, 'name', None) == 'table' else table_container_soup.find('table')
     if not table_tag:

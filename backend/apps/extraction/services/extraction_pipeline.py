@@ -51,7 +51,7 @@ def extract_document(document: Document, temp_file_path: str = None):
         # 1. Load and Extract Raw Text
         pdf_doc = load_pdf(pdf_path)
         try:
-            pages_data = extract_text(pdf_doc)
+            pages_data = extract_text(pdf_doc, document_id=document.document_id)
             logger.info("Loaded document | pages=%d", len(pages_data))
         finally:
             pdf_doc.close()

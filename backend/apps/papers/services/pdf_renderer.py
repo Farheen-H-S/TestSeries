@@ -29,6 +29,13 @@ def _html_to_pdf(html_str: str) -> bytes:
     xhtml2pdf is pure-Python and works natively on Windows without GTK.
     Raises RuntimeError if conversion produces errors.
     """
+    import os, re
+    def _resolve_img_path(m):
+        rel = m.group(1)
+        abs_p = os.path.abspath(rel).replace('\\', '/')
+        return f'src="{abs_p}"'
+    html_str = re.sub(r'src=["\'](media/[^"\']+)["\']', _resolve_img_path, html_str)
+
     buf = io.BytesIO()
     result = pisa.CreatePDF(html_str, dest=buf)
     if result.err:
