@@ -7,7 +7,7 @@ from apps.extraction.models import ExtractionLog
 from apps.papers.models import Question
 from .pdf_loader import load_pdf
 from .text_extractor import extract_text
-from .html_formatter import text_to_html, format_question_content, format_answer_content
+from .html_formatter import text_to_html, format_question_content, format_answer_content, clean_stored_html_tables
 from .chapter_mapper import map_question_to_chapter, get_prepared_chapters
 
 
@@ -330,6 +330,9 @@ def extract_document(document: Document, temp_file_path: str = None):
                             sub_label_raw, sub_question_label, pq.hierarchy_path[0], document.document_id
                         )
 
+                clean_q = clean_stored_html_tables(q_content) if '<table' in q_content else q_content
+                clean_a = clean_stored_html_tables(a_content) if '<table' in a_content else a_content
+
                 q_obj = Question.objects.create(
                     document=document,
                     parent_question=parent_q,
@@ -338,9 +341,9 @@ def extract_document(document: Document, temp_file_path: str = None):
                     sub_question_label=sub_question_label,
                     hierarchy_key=hierarchy_keys[id(pq)],
                     question_text=pq.text,
-                    question_content=q_content,
+                    question_content=clean_q,
                     answer_text=ans_text,
-                    answer_content=a_content,
+                    answer_content=clean_a,
                     question_type=q_type,
                     instruction_type=instr,
                     marks=marks,
