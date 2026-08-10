@@ -176,9 +176,9 @@ def sanitize_stored_html_table(table_container_soup) -> str:
     for r in raw_grid:
         while len(r) < num_cols:
             r.append('')
-    # ── Step 1a: Split concatenated Header 0 (e.g. 'Particulars Opening Carrying amount a') ─
+    # ── Step 1a: Split concatenated Header 0 (e.g. 'Particulars Opening Carrying amount a' or 'Particulars Closing balance') ─
     h0 = raw_grid[0][0].strip()
-    m_h = re.match(r'^(Particulars?|Date|Item)\s+(Opening\s+Carrying\s+amount.*|Opening\s+Balance.*|Carrying\s+amount.*)$', h0, re.IGNORECASE)
+    m_h = re.match(r'^(Particulars?|Date|Item)\s+(Opening\s+Carrying\s+amount.*|Opening\s+Balance.*|Closing\s+balance.*|Carrying\s+amount.*)$', h0, re.IGNORECASE)
     if m_h:
         raw_grid[0][0] = m_h.group(1)
         raw_grid[0].insert(1, m_h.group(2))
@@ -186,6 +186,27 @@ def sanitize_stored_html_table(table_container_soup) -> str:
         for r in raw_grid:
             while len(r) < num_cols:
                 r.append('')
+
+    # ── Step 1a-2: Fold 'Shares' from Row 1 into Header 1 ('Number of' + 'Shares' -> 'Number of Shares') ──
+    if len(raw_grid) > 1 and any(cell.strip().lower() == 'shares' for cell in raw_grid[1]):
+        for c in range(num_cols):
+            if raw_grid[1][c].strip().lower() == 'shares':
+                raw_grid[0][c] = (raw_grid[0][c].strip() + ' Shares').strip()
+                raw_grid[1][c] = ''
+        if all(cell == '' for cell in raw_grid[1]):
+            raw_grid.pop(1)
+
+    # ── Step 1a-3: Balance Sheet 4-column shift repair where Item Particulars is in Col 2 instead of Col 1 ──
+    header_str = ' '.join(raw_grid[0])
+    if any(k in header_str for k in ['ASSETS', 'Non-Current Assets', 'Current Assets', 'EQUITY AND LIABILITIES']):
+        raw_grid[0] = ['Particulars', 'Note No.', 'Amount (Rs.)', 'Amount (Rs.)']
+        for r in raw_grid[1:]:
+            if len(r) >= 4 and re.search(r'[A-Za-z]{3,}', r[2]) and not r[1]:
+                r[1] = r[2]
+                r[2] = ''
+            if len(r) >= 4 and r[2] and not r[3] and re.match(r'^[\d,]+$', r[2]):
+                r[3] = r[2]
+                r[2] = ''
 
     # ── Step 1b: Split PyMuPDF concatenated body cell values ─────────────────────
     for r in raw_grid[1:]:
