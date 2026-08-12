@@ -158,7 +158,7 @@ def sanitize_stored_html_table(table_container_soup) -> str:
     from bs4 import BeautifulSoup
     from .table_processing import Cell, CellStyle, CellAlignment, Row, Table, TableProcessor
 
-    if table_container_soup.find('img') or table_container_soup.get('data-is-complex') == 'true' or table_container_soup.get('data-crop-path'):
+    if table_container_soup.find('img') or table_container_soup.get('data-is-complex') == 'true' or table_container_soup.get('data-crop-path') or table_container_soup.get('data-table-provenance'):
         return str(table_container_soup)
 
     table_tag = table_container_soup if getattr(table_container_soup, 'name', None) == 'table' else table_container_soup.find('table')

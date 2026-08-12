@@ -31,10 +31,10 @@ def _html_to_pdf(html_str: str) -> bytes:
     """
     import os, re
     def _resolve_img_path(m):
-        rel = m.group(1)
+        rel = m.group(1).lstrip('/')
         abs_p = os.path.abspath(rel).replace('\\', '/')
         return f'src="{abs_p}"'
-    html_str = re.sub(r'src=["\'](media/[^"\']+)["\']', _resolve_img_path, html_str)
+    html_str = re.sub(r'src=["\']/?(media/[^"\']+)["\']', _resolve_img_path, html_str)
 
     buf = io.BytesIO()
     result = pisa.CreatePDF(html_str, dest=buf)

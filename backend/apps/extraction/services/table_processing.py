@@ -337,6 +337,46 @@ def is_header_row_similar(row1: List[Cell], row2: List[Cell]) -> bool:
             matches += 1
     return matches >= max(1, len(row1) // 2)
 
+def evaluate_structural_reliability(raw_grid: List[List[str]]) -> bool:
+    """
+    Evaluates whether an extracted table grid can be reliably reconstructed into clean HTML.
+    Returns True if structurally reliable, False if unreliable/complex (requiring source PDF visual crop).
+    """
+    if not raw_grid or len(raw_grid) < 2:
+        return True
+        
+    hdr_str = ' '.join(str(c or '') for c in raw_grid[0])
+    
+    # Check 1: Known complex merged headers / balance sheet structural anomalies
+    merged_header_keywords = [
+        'particulars note', 'opening carrying', 'closing carrying', 
+        'non-current', 'equity and', 'consolidated balance', 
+        'statement of profit', 'carrying amount'
+    ]
+    if any(k in hdr_str.lower() for k in merged_header_keywords):
+        return False
+        
+    # Check 2: PyMuPDF dummy column placeholders ('Col1', 'Col2')
+    if any(re.search(r'\bCol\d+\b', str(c or ''), re.IGNORECASE) for row in raw_grid for c in row):
+        return False
+
+    # Check 3: Staggered leading offset column detection (e.g. empty col 0 with item numbers in col 1)
+    col0_empty_count = sum(1 for r in raw_grid[1:] if len(r) > 1 and not (r[0] or '').strip() and (r[1] or '').strip())
+    non_empty_data_rows = len(raw_grid) - 1
+    if non_empty_data_rows > 0 and (col0_empty_count / non_empty_data_rows) >= 0.4:
+        return False
+
+    # Check 4: Extreme column count variation across rows
+    col_counts = [len(r) for r in raw_grid if any(str(c or '').strip() for c in r)]
+    if col_counts:
+        max_c = max(col_counts)
+        min_c = min(col_counts)
+        if max_c - min_c >= 2 and max_c >= 4:
+            return False
+
+    return True
+
+
 class _CrossPageMerger:
     """Stage C: Coordinates consecutive multi-page table merges."""
     def __init__(self, config: TableProcessingConfig, diagnostics: TableDiagnostics):
@@ -474,13 +514,24 @@ class _CrossPageMerger:
                 last_table.rows.extend(table.rows[start_row_idx:])
                 last_table.page_end = table.page_number
                 
+                # Merge visual regions provenance
+                curr_regions = table.properties.get("regions", [])
+                if "regions" not in last_table.properties:
+                    last_table.properties["regions"] = []
+                for r in curr_regions:
+                    if r not in last_table.properties["regions"]:
+                        last_table.properties["regions"].append(r)
+                        
+                # Multi-page merged tables are visual-object targets for PDF presentation
+                last_table.properties["is_complex"] = True
+                
                 # Mark as merged
                 table.properties["merged_into"] = f"table_{last_table.page_number}_{last_table.bbox[0]:.1f}_{last_table.bbox[1]:.1f}"
                 
                 last_table.confidence = MergeConfidence.HIGH
-                last_pt.diagnostics.merged_tables += 1
                 
                 decision_details = f"Merged table from page {table.page_number} into page {last_table.page_start} | Reasons: {', '.join(reasons)}"
+                last_pt.diagnostics.merged_tables += 1
                 last_pt.diagnostics.decisions.append(
                     TableProcessingDecision(
                         action=TableAction.MERGE_PAGES,
@@ -488,11 +539,9 @@ class _CrossPageMerger:
                         confidence=MergeConfidence.HIGH
                     )
                 )
-                
                 logger.info(
-                    "Merged table page %d -> %d | root_table=table_%d_%s | child_table=table_%d_%s | Reasons: %s | Confidence: HIGH",
+                    "Merged table split between page %d and %d: Root=table_%d_%.1f_%.1f | Child=table_%d_%.1f_%.1f | Confidence: HIGH",
                     last_table.page_start, table.page_number,
-                    last_table.page_start, f"{last_table.bbox[0]:.1f}_{last_table.bbox[1]:.1f}",
                     table.page_number, f"{table.bbox[0]:.1f}_{table.bbox[1]:.1f}",
                     ", ".join(reasons)
                 )
@@ -741,6 +790,49 @@ class _HTMLRenderer:
 
     @classmethod
     def render(cls, table: 'Table') -> str:
+        # ── Complex Visual Object / Source PDF Region Presentation ──
+        if table.properties.get("is_complex"):
+            regions = table.properties.get("regions", [])
+            crop_path = table.properties.get("crop_path")
+            if not regions and crop_path:
+                regions = [{
+                    "page_number": table.page_number,
+                    "bbox": [round(float(c), 1) for c in table.bbox] if table.bbox else None,
+                    "crop_path": crop_path
+                }]
+                
+            provenance_data = {
+                "page_start": table.page_start,
+                "page_end": table.page_end,
+                "regions": [
+                    {
+                        "page_number": r.get("page_number"),
+                        "bbox": r.get("bbox")
+                    } for r in regions
+                ]
+            }
+            provenance_json = html.escape(json.dumps(provenance_data))
+            first_crop = regions[0].get("crop_path", "").replace("\\", "/") if regions else ""
+            
+            img_blocks = []
+            for r in regions:
+                cp = r.get("crop_path")
+                if cp:
+                    img_src = cp.replace("\\", "/")
+                    img_blocks.append(
+                        f'  <div class="table-visual-region" style="text-align:center; margin: 0.5em 0;">'
+                        f'<img src="{img_src}" width="500" />'
+                        f'</div>'
+                    )
+                    
+            if img_blocks:
+                content_inner = "\n".join(img_blocks)
+                return (
+                    f'<div class="table-container" data-is-complex="true" data-crop-path="{first_crop}" data-table-provenance="{provenance_json}">\n'
+                    f'{content_inner}\n'
+                    f'</div>'
+                )
+
         if not table.rows:
             return ""
 

@@ -1,7 +1,7 @@
 import re
 import logging
 from typing import List, Tuple, Optional, Dict, Set
-from .types import ParsedAnswer, ParserConfig, AnswerParseResult, ParsingDiagnostics, ParsingContext, AnswerSectionType, AnswerSource, PromotionReason, PromotionEvaluation, PromotionContext
+from .types import ParsedAnswer, ParserConfig, AnswerParseResult, ParsingDiagnostics, ParsingContext, AnswerSectionType, AnswerSource, PromotionReason, PromotionEvaluation, PromotionContext, WorkingNote
 
 from .normalizer import Normalizer
 from .hierarchy_utils import HierarchyUtils
