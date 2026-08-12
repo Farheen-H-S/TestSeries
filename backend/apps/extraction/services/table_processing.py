@@ -870,14 +870,6 @@ class _HTMLRenderer:
 
         num_cols = len(keep_col_indices)
         is_wide = num_cols >= cls.WIDE_TABLE_THRESHOLD
-        crop_path = table.properties.get("crop_path")
-        if table.properties.get("is_complex") and crop_path:
-            img_src = crop_path.replace("\\", "/")
-            return (
-                f'<div class="table-container" data-is-complex="true" data-crop-path="{img_src}">\n'
-                f'  <div style="text-align:center; margin: 1em 0;"><img src="{img_src}" width="500" /></div>\n'
-                f'</div>'
-            )
 
         html_parts = ['<div class="table-container">']
 
@@ -1038,17 +1030,12 @@ class TableProcessor:
                 raw_grid = t.extract()
                 pt = self.process(raw_grid, bbox=t.bbox, page_number=page_num)
                 
-                # Determine structural complexity
-                num_cols = max(len(r) for r in raw_grid) if raw_grid else 0
-                has_merged_hdr = False
-                if raw_grid and raw_grid[0]:
-                    hdr_str = ' '.join(str(c or '') for c in raw_grid[0])
-                    if any(k in hdr_str for k in ['Opening Carrying', 'Closing Carrying', 'Particulars Note', 'Non-Current', 'EQUITY AND']):
-                        has_merged_hdr = True
+                # Evaluate structural reliability (True = HTML reliable, False = complex visual object)
+                is_reliable = evaluate_structural_reliability(raw_grid)
+                is_complex = not is_reliable
                 
-                is_complex = num_cols >= 4 or has_merged_hdr
-                
-                if is_complex and t.bbox and hasattr(page, 'get_pixmap'):
+                crop_path_rel = None
+                if t.bbox and hasattr(page, 'get_pixmap'):
                     try:
                         import fitz, os
                         mat = fitz.Matrix(2.0, 2.0)
@@ -1060,10 +1047,21 @@ class TableProcessor:
                         crop_filename = f"{doc_str}_p{page_num}_y{int(t.bbox[1])}.png"
                         crop_path_abs = os.path.abspath(os.path.join(crop_dir, crop_filename))
                         pix.save(crop_path_abs)
-                        pt.table.properties["is_complex"] = True
-                        pt.table.properties["crop_path"] = crop_path_abs
+                        # Store relative media path (media/table_crops/...) for browser security compatibility
+                        crop_path_rel = f"media/table_crops/{crop_filename}"
                     except Exception as e:
                         logger.warning("Failed to generate PNG table crop: %s", e)
+
+                region_info = {
+                    "page_number": page_num,
+                    "bbox": [round(float(c), 1) for c in t.bbox] if t.bbox else None,
+                    "crop_path": crop_path_rel
+                }
+                
+                pt.table.properties["regions"] = [region_info]
+                pt.table.properties["is_complex"] = is_complex
+                if crop_path_rel:
+                    pt.table.properties["crop_path"] = crop_path_rel
 
                 raw_processed_tables.append(pt)
                 

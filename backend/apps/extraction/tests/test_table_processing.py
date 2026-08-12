@@ -205,3 +205,26 @@ class TableProcessingTests(TestCase):
         self.assertIn('doc1_p43_y20.png', rendered_html)
         self.assertIn('class="table-visual-region"', rendered_html)
 
+    def test_process_document_relative_paths(self):
+        doc_mock = MagicMock()
+        page_mock = MagicMock()
+        page_mock.number = 0
+        page_mock.get_pixmap.return_value = MagicMock()
+        
+        table_mock = MagicMock()
+        table_mock.bbox = (10.0, 20.0, 500.0, 400.0)
+        table_mock.extract.return_value = [
+            ["Particulars Note No.", "Amount (Rs.)", "Amount (Rs.)"],
+            ["1.", "Property", "100"]
+        ]
+        
+        page_mock.find_tables.return_value.tables = [table_mock]
+        doc_mock.__iter__.return_value = [page_mock]
+        doc_mock.__len__.return_value = 1
+        
+        lookup = self.processor.process_document(doc_mock, document_id=99)
+        self.assertEqual(len(lookup), 1)
+        html_val = list(lookup.values())[0]
+        self.assertIn('data-crop-path="media/table_crops/doc99_p1_y20.png"', html_val)
+
+

@@ -32,8 +32,11 @@ def _html_to_pdf(html_str: str) -> bytes:
     import os, re
     def _resolve_img_path(m):
         rel = m.group(1).lstrip('/')
-        abs_p = os.path.abspath(rel).replace('\\', '/')
-        return f'src="{abs_p}"'
+        abs_p = os.path.abspath(rel)
+        if not os.path.exists(abs_p):
+            logger.warning("Table image crop file does not exist on disk: %s", abs_p)
+        abs_p_clean = abs_p.replace('\\', '/')
+        return f'src="{abs_p_clean}"'
     html_str = re.sub(r'src=["\']/?(media/[^"\']+)["\']', _resolve_img_path, html_str)
 
     buf = io.BytesIO()
