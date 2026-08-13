@@ -36,9 +36,11 @@ const extractTableHtml = (htmlString) => {
   } catch (e) {
     return '';
   }
+// Helper to ensure media table crop URLs start with a leading slash /media/
+const fixMediaUrls = (htmlString) => {
+  if (!htmlString) return '';
+  return htmlString.replace(/src=["'](?:(?!\/media\/)media\/table_crops\/)/g, 'src="/media/table_crops/');
 };
-
-
 
 const Review = () => {
   const { documentId } = useParams();
@@ -885,7 +887,7 @@ const Review = () => {
                           {hasMeaningfulHtml(q.question_content) ? (
                             <div 
                               className="question-text-box"
-                              dangerouslySetInnerHTML={{ __html: q.question_content }}
+                              dangerouslySetInnerHTML={{ __html: fixMediaUrls(q.question_content) }}
                             />
                           ) : (
                             <div className="question-text-box">
@@ -903,7 +905,7 @@ const Review = () => {
                           ) : hasMeaningfulHtml(q.answer_content) ? (
                             <div 
                               className="question-text-box"
-                              dangerouslySetInnerHTML={{ __html: q.answer_content }}
+                              dangerouslySetInnerHTML={{ __html: fixMediaUrls(q.answer_content) }}
                             />
                           ) : (
                             <div className="question-text-box">
