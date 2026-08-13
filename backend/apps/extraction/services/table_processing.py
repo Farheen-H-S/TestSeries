@@ -364,7 +364,13 @@ def evaluate_structural_reliability(raw_grid: List[List[str]]) -> bool:
     col0_empty_count = sum(1 for r in raw_grid[1:] if len(r) > 1 and not (r[0] or '').strip() and (r[1] or '').strip())
     non_empty_data_rows = len(raw_grid) - 1
     if non_empty_data_rows > 0 and (col0_empty_count / non_empty_data_rows) >= 0.4:
-        return False
+        # Preserve tables that are simple MCQ answer key listings
+        is_mcq_table = any(
+            re.search(r'(?i)\bOption\b|\([a-eA-E]\)|\bAns\.?\b', str(cell or ''))
+            for row in raw_grid for cell in row
+        )
+        if not is_mcq_table:
+            return False
 
     # Check 4: Extreme column count variation across rows
     col_counts = [len(r) for r in raw_grid if any(str(c or '').strip() for c in r)]
@@ -813,12 +819,16 @@ class _HTMLRenderer:
             }
             provenance_json = html.escape(json.dumps(provenance_data))
             first_crop = regions[0].get("crop_path", "").replace("\\", "/") if regions else ""
+            if first_crop and not first_crop.startswith('/'):
+                first_crop = '/' + first_crop
             
             img_blocks = []
             for r in regions:
                 cp = r.get("crop_path")
                 if cp:
                     img_src = cp.replace("\\", "/")
+                    if not img_src.startswith('/'):
+                        img_src = '/' + img_src
                     img_blocks.append(
                         f'  <div class="table-visual-region" style="text-align:center; margin: 0.5em 0;">'
                         f'<img src="{img_src}" width="500" />'
@@ -1047,8 +1057,8 @@ class TableProcessor:
                         crop_filename = f"{doc_str}_p{page_num}_y{int(t.bbox[1])}.png"
                         crop_path_abs = os.path.abspath(os.path.join(crop_dir, crop_filename))
                         pix.save(crop_path_abs)
-                        # Store relative media path (media/table_crops/...) for browser security compatibility
-                        crop_path_rel = f"media/table_crops/{crop_filename}"
+                        # Store relative media path (/media/table_crops/...) for browser security compatibility
+                        crop_path_rel = f"/media/table_crops/{crop_filename}"
                     except Exception as e:
                         logger.warning("Failed to generate PNG table crop: %s", e)
 

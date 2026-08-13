@@ -225,6 +225,6 @@ class TableProcessingTests(TestCase):
         lookup = self.processor.process_document(doc_mock, document_id=99)
         self.assertEqual(len(lookup), 1)
         html_val = list(lookup.values())[0]
-        self.assertIn('data-crop-path="media/table_crops/doc99_p1_y20.png"', html_val)
+        self.assertIn('data-crop-path="/media/table_crops/doc99_p1_y20.png"', html_val)
 
 

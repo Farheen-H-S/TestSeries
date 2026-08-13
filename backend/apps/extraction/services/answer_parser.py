@@ -422,11 +422,26 @@ class AnswerParser:
         table_pattern = re.compile(r"\[STRUCTURED_START\](.*?)\[STRUCTURED_END\]", re.DOTALL)
         sep_pat = re.compile(r"^[|\s\-:]+$")
         q_num_pat = re.compile(r"^\s*(\d+)\s*\.?\s*$")
-        opt_pat = re.compile(r"(?i)\bOption\b|\([a-e]\)")
+        opt_pat = re.compile(r"(?i)\bOption\b|\([a-eA-E]\)|\bAns\.?\b")
+        data_table_header_pat = re.compile(
+            r"(?i)\b(Particulars|Description|Details|Debit|Credit|Dr|Cr|Amount|Balance|Schedule|"
+            r"Asset|Liability|Equity|Revenue|Expense|Shares|Cost|Carrying|Penalty|Fine|Offence|"
+            r"Compliance|Audit|CGST|SGST|IGST|Taxable|Exemption|Deduction|Frequency|Probability|"
+            r"Variance|Ratio|Demand|Supply|Output|Variable|Parameter|Specification|Input|State|"
+            r"Condition|Status|Difference|Distinction|Feature|Advantage|Disadvantage|Merit|Demerit|"
+            r"Category|Classification|Remarks|Summary|Item No|Basis of)\b"
+        )
 
         for match in table_pattern.finditer(normalized_text):
             table_start = match.start()
             if self._get_section_type(table_start, sections) != AnswerSectionType.MCQ_ANSWER:
+                continue
+
+            table_content = match.group(1).strip()
+            table_lines = [l.strip() for l in table_content.split("\n") if l.strip() and not sep_pat.match(l.strip())]
+            has_mcq_sig = any(opt_pat.search(cell) for line in table_lines for cell in line.split("|"))
+            if table_lines and data_table_header_pat.search(table_lines[0]) and not has_mcq_sig:
+                # Skip descriptive/financial solution data tables from MCQ answer key parsing
                 continue
 
             raw_rows = []
