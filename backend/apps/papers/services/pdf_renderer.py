@@ -245,14 +245,16 @@ def _render_question_paper_html(
 <body>
 <div class="title-block">
   <h1>{paper_title}</h1>
-  <div class="meta-grid">
-    <span class="label">Subject:</span><span>{subject_name}</span>
-    <span class="label">Exam Level:</span><span>{exam_level}</span>
-    <span class="label">Module:</span><span>{module_display}</span>
-    <span class="label">Total Questions:</span><span>{total_questions}</span>
-    <span class="label">Total Marks:</span><span>{total_marks}</span>
-    <span class="label">Generated On:</span><span>{gen_date}</span>
-  </div>
+  <table class="meta-table">
+    <tr>
+      <td class="label">Subject:</td><td>{subject_name}</td>
+      <td class="label">Exam Level:</td><td>{exam_level}</td>
+    </tr>
+    <tr>
+      <td class="label">Module:</td><td>{module_display}</td>
+      <td class="label">Generated On:</td><td>{gen_date}</td>
+    </tr>
+  </table>
 </div>
 <hr class="divider">
 <p class="instructions">Instructions: Answer all questions.</p>
