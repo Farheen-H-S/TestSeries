@@ -1041,8 +1041,9 @@ class TableProcessor:
                 pt = self.process(raw_grid, bbox=t.bbox, page_number=page_num)
                 
                 # Store every table as visual object except MCQ answer tables
+                # Matches explicit MCQ option signals (Option, Ans, Choice, Key) or cells starting with option letters (a)-(e)
                 is_mcq_table = any(
-                    re.search(r'(?i)\bOption\b|\([a-eA-E]\)|\bAns\.?\b', str(cell or ''))
+                    re.search(r'(?i)\bOption\b|\bAns\.?\b|\bChoice\b|\bKey\b|^\s*\([a-eA-E]\)', str(cell or ''))
                     for row in raw_grid for cell in row
                 )
                 is_complex = not is_mcq_table
