@@ -256,6 +256,9 @@ def extract_document(document: Document, temp_file_path: str = None):
             document.total_pages = len(pages_data)
             document.save(update_fields=["total_pages"])
             
+            # NOTE (FUTURE SCOPE): Automatic chapter mapping currently runs for all documents
+            # processed by the extraction pipeline. If a future release restricts automatic chapter
+            # mapping strictly to RTP document uploads, check: if getattr(document, 'document_type', None) == 'RTP':
             prepared_chapters = get_prepared_chapters(document.subject)
             
             # hierarchy_map: tuple(path) -> Question object
