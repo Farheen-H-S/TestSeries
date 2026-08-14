@@ -103,6 +103,7 @@ class AnswerParser:
 
         parser_state = ParserState.DEFAULT
         working_notes_start_offset = 0
+        last_working_note_offset = 0
         last_working_note_num = 0
         prev_match_end = 0
 
@@ -130,6 +131,7 @@ class AnswerParser:
             if any(re.search(pat, gap_text, re.MULTILINE) for pat in WORKING_NOTE_SECTION_PATTERNS):
                 parser_state = ParserState.WORKING_NOTES
                 working_notes_start_offset = match.start()
+                last_working_note_offset = match.start()
                 last_working_note_num = 0
 
             # 2. Skip matches that are explicit Working Note headers (e.g. "Working Note 1", "W.N. 1")
@@ -156,12 +158,14 @@ class AnswerParser:
                 if c_num > 0:
                     is_working_note = (c_num <= s_num) or (last_working_note_num > 0 and c_num == last_working_note_num + 1) or (last_working_note_num == 0 and c_num == 1)
 
-                # Self-healing recovery if character distance threshold exceeded
-                distance_exceeded = (match.start() - working_notes_start_offset) > max_wn_len
+                # Self-healing recovery if character distance threshold from last working note exceeded
+                ref_offset = last_working_note_offset if last_working_note_offset > 0 else working_notes_start_offset
+                distance_exceeded = (match.start() - ref_offset) > max_wn_len
 
                 if is_strong or distance_exceeded or not is_working_note:
                     parser_state = ParserState.DEFAULT
                     working_notes_start_offset = 0
+                    last_working_note_offset = 0
                     last_working_note_num = 0
                     if distance_exceeded:
                         logger.warning("Working Notes zone auto-recovered due to max distance threshold | start_offset=%d", match.start())
@@ -173,6 +177,7 @@ class AnswerParser:
                     })
                     if c_num > 0:
                         last_working_note_num = c_num
+                        last_working_note_offset = match.start()
                     prev_match_end = match.end()
                     continue
 
