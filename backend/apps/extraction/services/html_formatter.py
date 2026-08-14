@@ -9,10 +9,10 @@ def escape_html(text: str) -> str:
     """
     return html.escape(text)
 
-def clean_metadata_text(text: str, subject_name: Optional[str] = None) -> str:
+def clean_metadata_text(text: str, subject_name: Optional[str] = None, prepared_chapters: Optional[list] = None) -> str:
     """
     Strips metadata header lines (e.g. Part II-Questions and Answers, QUESTIONS,
-    FINAL EXAMINATION, REVISION TEST PAPERS, MAY 2026 EXAMINATION, subject names)
+    FINAL EXAMINATION, REVISION TEST PAPERS, MAY 2026 EXAMINATION, subject names, standalone chapter headers)
     from plain text while leaving question and answer content intact.
     """
     if not text:
@@ -31,6 +31,13 @@ def clean_metadata_text(text: str, subject_name: Optional[str] = None) -> str:
                 break
         if not is_meta and subject_name and re.match(r"(?i)^[ \t]*" + re.escape(subject_name) + r"\s*$", stripped):
             is_meta = True
+
+        if not is_meta and prepared_chapters:
+            from .chapter_mapper import map_question_to_chapter
+            ch = map_question_to_chapter(stripped, prepared_chapters)
+            if ch:
+                if re.search(r"(?i)\b(?:Ind\s*AS|AS|SA|CARO|Chapter|Section)\s*\d+\b", stripped) or (ch.chapter_name and ch.chapter_name.lower() in stripped.lower()):
+                    is_meta = True
 
         if not is_meta:
             cleaned_lines.append(line)

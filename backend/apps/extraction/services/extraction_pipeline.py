@@ -317,9 +317,9 @@ def extract_document(document: Document, temp_file_path: str = None):
                 ans_text = ans.text if ans else ""
 
                 subj_name = document.subject.name if (document and document.subject) else None
-                clean_q_text = clean_metadata_text(pq.text, subject_name=subj_name)
-                clean_shared_ctx = clean_metadata_text(pq.shared_context, subject_name=subj_name) if pq.shared_context else None
-                clean_ans_text = clean_metadata_text(ans_text, subject_name=subj_name)
+                clean_q_text = clean_metadata_text(pq.text, subject_name=subj_name, prepared_chapters=prepared_chapters)
+                clean_shared_ctx = clean_metadata_text(pq.shared_context, subject_name=subj_name, prepared_chapters=prepared_chapters) if pq.shared_context else None
+                clean_ans_text = clean_metadata_text(ans_text, subject_name=subj_name, prepared_chapters=prepared_chapters)
                 
                 # HTML Formatting
                 q_content = format_question_content(clean_q_text, shared_context=clean_shared_ctx)
