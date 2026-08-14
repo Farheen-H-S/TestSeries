@@ -264,24 +264,33 @@ def extract_document(document: Document, temp_file_path: str = None):
 
             for idx, pq in enumerate(parsed_questions):
                 # 7.1 Enrichment
-                # Sequential Chapter Mapping: Scan gap text preceding this question
-                gap_start = 0 if idx == 0 else parsed_questions[idx-1].end_offset
-                gap_text = full_text[gap_start:pq.start_offset].strip()
-                if gap_text:
+                candidate_header_text = ""
+                if idx > 0:
+                    prev_pq = parsed_questions[idx-1]
+                    gap_text = q_part[prev_pq.end_offset:pq.start_offset].strip()
+                    trailing_prev = prev_pq.text[-250:] if prev_pq.text else ""
+                    candidate_header_text = gap_text + "\n" + trailing_prev
+                else:
+                    candidate_header_text = q_part[:pq.start_offset]
+
+                if candidate_header_text:
                     temp_chapter = None
                     try:
                         temp_chapter = map_question_to_chapter(
-                            gap_text,
+                            candidate_header_text,
                             prepared_chapters=prepared_chapters
                         )
                     except Exception:
-                        logger.exception("Sequential chapter mapping failed at offset %d", gap_start)
+                        logger.exception("Sequential chapter mapping failed at index %d", idx)
                     
                     if temp_chapter:
                         active_chapter = temp_chapter
-                        logger.info("Sequential chapter state updated | chapter=%s | offset=%d", active_chapter.name, gap_start)
+                        logger.info("Sequential chapter state updated | chapter=%s | index=%d", active_chapter.chapter_name, idx)
 
                 matched_chapter = active_chapter
+                if not matched_chapter and prepared_chapters:
+                    q_full = (pq.shared_context or "") + "\n" + pq.text
+                    matched_chapter = map_question_to_chapter(q_full, prepared_chapters)
 
                 marks = None
                 try:
@@ -319,6 +328,9 @@ def extract_document(document: Document, temp_file_path: str = None):
                     parent_path = tuple(pq.hierarchy_path[:-1])
                     parent_q = hierarchy_map.get(parent_path)
 
+                if not matched_chapter and parent_q and parent_q.chapter:
+                    matched_chapter = parent_q.chapter
+
                 # 7.3 Create Record
                 sub_label_raw = ".".join(pq.hierarchy_path[1:]) if len(pq.hierarchy_path) > 1 else None
                 sub_question_label = None
@@ -352,6 +364,21 @@ def extract_document(document: Document, temp_file_path: str = None):
                 
                 # Keep track for hierarchy resolution
                 hierarchy_map[tuple(pq.hierarchy_path)] = q_obj
+
+            # Inherit chapter across questions in the same shared_context block
+            context_groups = {}
+            for h_path, q_obj in hierarchy_map.items():
+                if q_obj.question_content and 'shared-context' in q_obj.question_content:
+                    ctx_key = q_obj.question_content.split('shared-context', 1)[1][:200]
+                    context_groups.setdefault(ctx_key, []).append(q_obj)
+
+            for group_qs in context_groups.values():
+                grp_ch = next((q.chapter for q in group_qs if q.chapter), None)
+                if grp_ch:
+                    for q in group_qs:
+                        if not q.chapter:
+                            q.chapter = grp_ch
+                            q.save(update_fields=['chapter'])
 
         # 8. Finalize Success
         document.extraction_status = Document.ExtractionStatus.COMPLETED
