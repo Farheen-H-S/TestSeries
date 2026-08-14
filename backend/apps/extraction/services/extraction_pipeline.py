@@ -7,7 +7,7 @@ from apps.extraction.models import ExtractionLog
 from apps.papers.models import Question
 from .pdf_loader import load_pdf
 from .text_extractor import extract_text
-from .html_formatter import text_to_html, format_question_content, format_answer_content, clean_stored_html_tables
+from .html_formatter import text_to_html, format_question_content, format_answer_content, clean_stored_html_tables, clean_metadata_text
 from .chapter_mapper import map_question_to_chapter, get_prepared_chapters
 
 
@@ -315,11 +315,16 @@ def extract_document(document: Document, temp_file_path: str = None):
                 # Answer Matching
                 ans = answer_lookup.get(tuple(pq.hierarchy_path))
                 ans_text = ans.text if ans else ""
+
+                subj_name = document.subject.name if (document and document.subject) else None
+                clean_q_text = clean_metadata_text(pq.text, subject_name=subj_name)
+                clean_shared_ctx = clean_metadata_text(pq.shared_context, subject_name=subj_name) if pq.shared_context else None
+                clean_ans_text = clean_metadata_text(ans_text, subject_name=subj_name)
                 
                 # HTML Formatting
-                q_content = format_question_content(pq.text, shared_context=pq.shared_context)
+                q_content = format_question_content(clean_q_text, shared_context=clean_shared_ctx)
                 ans_working_notes = ans.working_notes if ans else []
-                a_content = format_answer_content(ans_text, working_notes=ans_working_notes) if (ans_text or ans_working_notes) else ""
+                a_content = format_answer_content(clean_ans_text, working_notes=ans_working_notes) if (clean_ans_text or ans_working_notes) else ""
 
 
                 # 7.2 Resolve Parent deterministically
@@ -352,9 +357,9 @@ def extract_document(document: Document, temp_file_path: str = None):
                     question_number=pq.hierarchy_path[0],
                     sub_question_label=sub_question_label,
                     hierarchy_key=hierarchy_keys[id(pq)],
-                    question_text=pq.text,
+                    question_text=clean_q_text,
                     question_content=clean_q,
-                    answer_text=ans_text,
+                    answer_text=clean_ans_text,
                     answer_content=clean_a,
                     question_type=q_type,
                     instruction_type=instr,

@@ -9,19 +9,58 @@ def escape_html(text: str) -> str:
     """
     return html.escape(text)
 
+def clean_metadata_text(text: str, subject_name: Optional[str] = None) -> str:
+    """
+    Strips metadata header lines (e.g. Part II-Questions and Answers, QUESTIONS,
+    FINAL EXAMINATION, REVISION TEST PAPERS, MAY 2026 EXAMINATION, subject names)
+    from plain text while leaving question and answer content intact.
+    """
+    if not text:
+        return ""
+    from .extraction_patterns import DOCUMENT_METADATA_PATTERNS
+    lines = text.split("\n")
+    cleaned_lines = []
+    for line in lines:
+        stripped = line.strip()
+        if not stripped:
+            continue
+        is_meta = False
+        for pat in DOCUMENT_METADATA_PATTERNS:
+            if re.match(pat, stripped):
+                is_meta = True
+                break
+        if not is_meta and subject_name and re.match(r"(?i)^[ \t]*" + re.escape(subject_name) + r"\s*$", stripped):
+            is_meta = True
+
+        if not is_meta:
+            cleaned_lines.append(line)
+    return "\n".join(cleaned_lines).strip()
+
+
 def preserve_paragraphs(text: str) -> str:
     """
-    Convert double newlines into simple HTML paragraphs and replace single newlines with br tags.
+    Convert double newlines into simple HTML paragraphs and replace single newlines with br tags,
+    skipping metadata noise header paragraphs.
     """
     if not text.strip():
         return ""
     
+    from .extraction_patterns import DOCUMENT_METADATA_PATTERNS
     # Split by double or more newlines to identify paragraphs, handling spaces
     paragraphs = [p.strip() for p in re.split(r"\n\s*\n", text) if p.strip()]
     
     # Wrap each paragraph in <p> tags and convert internal newlines to <br />
     html_paragraphs = []
     for p in paragraphs:
+        plain_p = re.sub(r"<[^>]+>", "", p).strip()
+        is_meta = False
+        for pat in DOCUMENT_METADATA_PATTERNS:
+            if re.match(pat, plain_p):
+                is_meta = True
+                break
+        if is_meta:
+            continue
+
         p_formatted = p.replace('\n', '<br />')
         html_paragraphs.append(f"<p>{p_formatted}</p>")
         
