@@ -33,11 +33,13 @@ def clean_metadata_text(text: str, subject_name: Optional[str] = None, prepared_
             is_meta = True
 
         if not is_meta and prepared_chapters:
-            from .chapter_mapper import map_question_to_chapter
-            ch = map_question_to_chapter(stripped, prepared_chapters)
-            if ch:
-                if re.search(r"(?i)\b(?:Ind\s*AS|AS|SA|CARO|Chapter|Section)\s*\d+\b", stripped) or (ch.chapter_name and ch.chapter_name.lower() in stripped.lower()):
-                    is_meta = True
+            # MCQ options (Option (c)...) or answer choices are NEVER chapter headers
+            if not re.match(r"(?i)^\s*(?:Option\b|Ans\.?|Choice|Key|\([a-eA-E]\))", stripped):
+                from .chapter_mapper import map_question_to_chapter
+                ch = map_question_to_chapter(stripped, prepared_chapters)
+                if ch:
+                    if re.match(r"(?i)^[ \t]*(?:Ind\s*AS|AS|SA|CARO|Chapter|Section)\s*\d+[\s\-–—:]", stripped) or (ch.chapter_name and stripped.strip().lower() == ch.chapter_name.lower()):
+                        is_meta = True
 
         if not is_meta:
             cleaned_lines.append(line)
