@@ -1040,9 +1040,12 @@ class TableProcessor:
                 raw_grid = t.extract()
                 pt = self.process(raw_grid, bbox=t.bbox, page_number=page_num)
                 
-                # Evaluate structural reliability (True = HTML reliable, False = complex visual object)
-                is_reliable = evaluate_structural_reliability(raw_grid)
-                is_complex = not is_reliable
+                # Store every table as visual object except MCQ answer tables
+                is_mcq_table = any(
+                    re.search(r'(?i)\bOption\b|\([a-eA-E]\)|\bAns\.?\b', str(cell or ''))
+                    for row in raw_grid for cell in row
+                )
+                is_complex = not is_mcq_table
                 
                 crop_path_rel = None
                 if t.bbox and hasattr(page, 'get_pixmap'):
