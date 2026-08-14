@@ -36,6 +36,8 @@ const extractTableHtml = (htmlString) => {
   } catch (e) {
     return '';
   }
+};
+
 // Helper to ensure media table crop URLs start with a leading slash /media/
 const fixMediaUrls = (htmlString) => {
   if (!htmlString) return '';
