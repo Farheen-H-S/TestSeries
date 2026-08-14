@@ -274,7 +274,7 @@ def extract_document(document: Document, temp_file_path: str = None):
                     trailing_prev = prev_pq.text[-250:] if prev_pq.text else ""
                     candidate_header_text = gap_text + "\n" + trailing_prev
                 else:
-                    candidate_header_text = q_part[:pq.start_offset]
+                    candidate_header_text = q_part[max(0, pq.start_offset - 500):pq.start_offset].strip()
 
                 if candidate_header_text:
                     temp_chapter = None
@@ -291,9 +291,6 @@ def extract_document(document: Document, temp_file_path: str = None):
                         logger.info("Sequential chapter state updated | chapter=%s | index=%d", active_chapter.chapter_name, idx)
 
                 matched_chapter = active_chapter
-                if not matched_chapter and prepared_chapters:
-                    q_full = (pq.shared_context or "") + "\n" + pq.text
-                    matched_chapter = map_question_to_chapter(q_full, prepared_chapters)
 
                 marks = None
                 try:
