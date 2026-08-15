@@ -27,16 +27,15 @@ class DocumentUploadView(generics.CreateAPIView):
         # permission_classes = [IsAuthenticated]
         # user = self.request.user
         
-        # Temporarily use the first available user as a development placeholder
+        # Temporarily use the first available user or fallback user for Document FK requirement
         from django.contrib.auth import get_user_model
-        from rest_framework.exceptions import ValidationError
         
         User = get_user_model()
         user = User.objects.first()
-
         if user is None:
-            raise ValidationError(
-                {"detail": "No user exists. Create a user before uploading documents."}
+            user, _ = User.objects.get_or_create(
+                username="system_user",
+                defaults={"email": "system@example.com"}
             )
         
         # Save document record with business logic fields
