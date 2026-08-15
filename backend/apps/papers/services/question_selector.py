@@ -124,6 +124,7 @@ class QuestionGroup:
     exam_level: str
     module: str                     # document_type value: RTP | PYQ | MOCK
     document_title: str             # title of original uploaded paper document
+    chapter_name: Optional[str] = None # title of mapped chapter if available
 
 
 @dataclass
@@ -249,6 +250,7 @@ def build_group(q: Question) -> QuestionGroup:
         exam_level=q.document.subject.exam_level,
         module=q.document.document_type,
         document_title=q.document.title,
+        chapter_name=q.chapter.chapter_name if q.chapter else None,
     )
 
 

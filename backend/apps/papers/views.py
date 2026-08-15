@@ -221,6 +221,7 @@ class GenerateQuestionPaperView(APIView):
         paper_title = serializer.validated_data['paper_title']
         root_question_ids = serializer.validated_data['root_question_ids']
         show_source = serializer.validated_data.get('show_source', False)
+        show_chapter = serializer.validated_data.get('show_chapter', False)
 
         _, error = _validate_root_question_ids(root_question_ids)
         if error:
@@ -234,7 +235,7 @@ class GenerateQuestionPaperView(APIView):
             )
 
         try:
-            pdf_bytes = render_question_paper(groups, paper_title, show_source=show_source)
+            pdf_bytes = render_question_paper(groups, paper_title, show_source=show_source, show_chapter=show_chapter)
         except Exception:
             logger.exception("Question paper render failed | title=%r", paper_title)
             return Response(
@@ -267,6 +268,7 @@ class GenerateAnswerSheetView(APIView):
         paper_title = serializer.validated_data['paper_title']
         root_question_ids = serializer.validated_data['root_question_ids']
         show_source = serializer.validated_data.get('show_source', False)
+        show_chapter = serializer.validated_data.get('show_chapter', False)
 
         _, error = _validate_root_question_ids(root_question_ids)
         if error:
@@ -280,7 +282,7 @@ class GenerateAnswerSheetView(APIView):
             )
 
         try:
-            pdf_bytes = render_answer_sheet(groups, paper_title, show_source=show_source)
+            pdf_bytes = render_answer_sheet(groups, paper_title, show_source=show_source, show_chapter=show_chapter)
         except Exception:
             logger.exception("Answer sheet render failed | title=%r", paper_title)
             return Response(

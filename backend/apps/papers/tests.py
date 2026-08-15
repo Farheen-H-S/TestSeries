@@ -125,4 +125,28 @@ class QuestionAPITests(APITestCase):
         ans_bytes = render_answer_sheet([group], "Test Paper", show_source=True)
         self.assertTrue(len(ans_bytes) > 0)
 
+    def test_pdf_renderer_show_chapter_option(self):
+        from apps.papers.services.question_selector import QuestionGroup
+        from apps.papers.services.pdf_renderer import render_question_paper, render_answer_sheet
+
+        group = QuestionGroup(
+            root_question_id=self.question.pk,
+            question_html="<p>Test question</p>",
+            answer_html="<p>Test answer</p>",
+            sub_questions=[],
+            total_marks=5,
+            shared_context_html=None,
+            subject_name=self.subject_a.name,
+            exam_level=self.subject_a.exam_level,
+            module="RTP",
+            document_title=self.document.title,
+            chapter_name="Ind AS 1: Presentation of Financial Statements"
+        )
+
+        qp_bytes = render_question_paper([group], "Test Paper", show_chapter=True)
+        self.assertTrue(len(qp_bytes) > 0)
+
+        ans_bytes = render_answer_sheet([group], "Test Paper", show_source=True, show_chapter=True)
+        self.assertTrue(len(ans_bytes) > 0)
+
 

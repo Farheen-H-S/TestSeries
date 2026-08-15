@@ -44,6 +44,7 @@ const Generate = () => {
   const [yearTo, setYearTo]             = useState('');
   const [examMonth, setExamMonth]       = useState('');
   const [showSource, setShowSource]     = useState(false);
+  const [showChapter, setShowChapter]   = useState(false);
 
   // UI state
   const [subjectSearch, setSubjectSearch] = useState('');
@@ -175,6 +176,7 @@ const Generate = () => {
         paper_title: paperTitle.trim() || 'Untitled Paper',
         root_question_ids: rootQuestionIds,
         show_source: showSource,
+        show_chapter: showChapter,
       });
     } catch {
       setDownloadError('Failed to generate Question Paper. Please try again.');
@@ -192,6 +194,7 @@ const Generate = () => {
         paper_title: paperTitle.trim() || 'Untitled Paper',
         root_question_ids: rootQuestionIds,
         show_source: showSource,
+        show_chapter: showChapter,
       });
     } catch {
       setDownloadError('Failed to generate Answer Sheet. Please try again.');
@@ -506,6 +509,20 @@ const Generate = () => {
                     <span className="checkbox-text">Show Source</span>
                   </label>
                   <span className="form-hint">Display source document title under each question</span>
+                </div>
+
+                {/* Show Chapter */}
+                <div className="form-group checkbox-group">
+                  <label className="checkbox-label" htmlFor="show-chapter">
+                    <input
+                      type="checkbox"
+                      id="show-chapter"
+                      checked={showChapter}
+                      onChange={e => setShowChapter(e.target.checked)}
+                    />
+                    <span className="checkbox-text">Show Chapter</span>
+                  </label>
+                  <span className="form-hint">Display chapter name under each question</span>
                 </div>
 
               </div>

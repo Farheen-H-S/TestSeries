@@ -85,6 +85,17 @@ def _render_shared_context_block(html: str) -> str:
     return f'<div class="shared-context-block">{html}</div>'
 
 
+def _render_question_meta_line(group, show_source: bool, show_chapter: bool) -> str:
+    meta_parts = []
+    if show_source and getattr(group, 'document_title', None):
+        meta_parts.append(f"Source Document: {group.document_title}")
+    if show_chapter and getattr(group, 'chapter_name', None):
+        meta_parts.append(f"Chapter: {group.chapter_name}")
+    if meta_parts:
+        return f'<div class="question-source">[' + " | ".join(meta_parts) + ']</div>'
+    return ''
+
+
 def _render_question_paper_html(
     groups: list,
     paper_title: str,
@@ -94,6 +105,7 @@ def _render_question_paper_html(
     total_marks: int,
     total_questions: int,
     show_source: bool = False,
+    show_chapter: bool = False,
 ) -> str:
     """Build the full HTML string for the question paper."""
     gen_date = _safe_date()
@@ -275,8 +287,9 @@ def _render_question_paper_html(
         parts.append(f'<div class="question-block">')
         parts.append(f'<p class="question-number">{marks_tag}Question {i}.</p>')
 
-        if show_source and getattr(group, 'document_title', None):
-            parts.append(f'<div class="question-source">[Source Document: {group.document_title}]</div>')
+        meta_line = _render_question_meta_line(group, show_source, show_chapter)
+        if meta_line:
+            parts.append(meta_line)
 
         if group.sub_questions:
             parts.append(f'<div class="question-content">{group.question_html}</div>')
@@ -306,6 +319,7 @@ def _render_answer_sheet_html(
     exam_level: str,
     module: str,
     show_source: bool = False,
+    show_chapter: bool = False,
 ) -> str:
     """Build the full HTML string for the answer sheet."""
     gen_date = _safe_date()
@@ -414,8 +428,9 @@ def _render_answer_sheet_html(
         # students refer back to the question paper for context.
         parts.append(f'<div class="question-block">')
         parts.append(f'<p class="question-number">Question {i}.</p>')
-        if show_source and getattr(group, 'document_title', None):
-            parts.append(f'<div class="question-source">[Source Document: {group.document_title}]</div>')
+        meta_line = _render_question_meta_line(group, show_source, show_chapter)
+        if meta_line:
+            parts.append(meta_line)
         if group.answer_html:
             parts.append(
                 f'<div class="answer-label">Answer:</div>'
@@ -445,7 +460,12 @@ def _render_answer_sheet_html(
 # Public API
 # ---------------------------------------------------------------------------
 
-def render_question_paper(groups: list, paper_title: str, show_source: bool = False) -> bytes:
+def render_question_paper(
+    groups: list,
+    paper_title: str,
+    show_source: bool = False,
+    show_chapter: bool = False,
+) -> bytes:
     """
     Render a question paper PDF from fully-assembled QuestionGroup DTOs.
 
@@ -472,16 +492,22 @@ def render_question_paper(groups: list, paper_title: str, show_source: bool = Fa
         total_marks=total_marks,
         total_questions=total_questions,
         show_source=show_source,
+        show_chapter=show_chapter,
     )
 
     logger.info(
-        "Rendering question paper | title=%r | questions=%d | marks=%d | show_source=%s",
-        paper_title, total_questions, total_marks, show_source
+        "Rendering question paper | title=%r | questions=%d | marks=%d | show_source=%s | show_chapter=%s",
+        paper_title, total_questions, total_marks, show_source, show_chapter
     )
     return _html_to_pdf(html_str)
 
 
-def render_answer_sheet(groups: list, paper_title: str, show_source: bool = False) -> bytes:
+def render_answer_sheet(
+    groups: list,
+    paper_title: str,
+    show_source: bool = False,
+    show_chapter: bool = False,
+) -> bytes:
     """
     Render a suggested answer sheet PDF from the same QuestionGroup DTOs.
 
@@ -505,11 +531,12 @@ def render_answer_sheet(groups: list, paper_title: str, show_source: bool = Fals
         exam_level=first.exam_level,
         module=first.module,
         show_source=show_source,
+        show_chapter=show_chapter,
     )
 
     logger.info(
-        "Rendering answer sheet | title=%r | questions=%d | show_source=%s",
-        paper_title, len(groups), show_source
+        "Rendering answer sheet | title=%r | questions=%d | show_source=%s | show_chapter=%s",
+        paper_title, len(groups), show_source, show_chapter
     )
     return _html_to_pdf(html_str)
 
