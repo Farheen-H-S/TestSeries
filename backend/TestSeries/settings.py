@@ -153,9 +153,9 @@ REST_FRAMEWORK = {
 import os
 
 CELERY_BROKER_URL = os.getenv("CELERY_BROKER_URL", "redis://localhost:6379/0")
+
 # No result backend is stored to avoid leaks (Document model serves as status source of truth)
 CELERY_ACCEPT_CONTENT = ["json"]
 CELERY_TASK_SERIALIZER = "json"
 CELERY_TIMEZONE = "UTC"
-
 

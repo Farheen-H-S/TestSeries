@@ -256,9 +256,12 @@ class QuestionParser:
         lines = text.split("\n")
         cleaned_lines = []
         for line in lines:
+            stripped = line.strip()
+            if not stripped:
+                continue
             is_meta = False
             for pat in DOCUMENT_METADATA_PATTERNS:
-                if re.search(pat, line):
+                if re.match(pat, stripped):
                     is_meta = True
                     break
             if not is_meta:

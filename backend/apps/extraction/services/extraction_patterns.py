@@ -34,11 +34,22 @@ WORKING_NOTE_HEADER_PATTERNS = [
 ]
 
 DOCUMENT_METADATA_PATTERNS = [
-    r"(?i)^[ \t]*(?:Revision\s+Test\s+Paper|Mock\s+Test\s+Paper|Model\s+Test\s+Paper)",
-    r"(?i)^[ \t]*(?:FINAL|INTERMEDIATE|FOUNDATION)\s+EXAMINATION",
-    r"(?i)^[ \t]*(?:Time\s+Allowed|Maximum\s+Marks|Max\s+Marks)",
-    r"(?i)^[ \t]*General\s+Instructions",
-    r"(?i)^[ \t]*Roll\s+No",
+    r"(?i)^[ \t]*Part\s+[I|V|X\d]+[-–—\s]+(?:Questions|Multiple\s+Choice\s+Questions|Descriptive\s+Questions)(?:\s+and\s+Answers)?\s*$",
+    r"(?i)^[ \t]*Part\s+[I|V|X\d]+[-–—\s]+Answers?\s*$",
+    r"(?i)^[ \t]*QUESTIONS?\s*$",
+    r"(?i)^[ \t]*ANSWERS?\s*$",
+    r"(?i)^[ \t]*SUGGESTED\s+ANSWERS?\s*$",
+    r"(?i)^[ \t]*SUGGESTED\s+SOLUTIONS?\s*$",
+    r"(?i)^[ \t]*REVISION\s+TEST\s+PAPERS?\s*$",
+    r"(?i)^[ \t]*MOCK\s+TEST\s+PAPERS?\s*$",
+    r"(?i)^[ \t]*MODEL\s+TEST\s+PAPERS?\s*$",
+    r"(?i)^[ \t]*(?:FINAL|INTERMEDIATE|FOUNDATION)\s+(?:EXAMINATION|EXAMS?)\s*$",
+    r"(?i)^[ \t]*(?:JANUARY|FEBRUARY|MARCH|APRIL|MAY|JUNE|JULY|AUGUST|SEPTEMBER|OCTOBER|NOVEMBER|DECEMBER)?\s*\d{4}\s+(?:EXAMINATION|EXAMS?)\s*$",
+    r"(?i)^[ \t]*PAPER\s*[-–—:]\s*\d+[\s\-–—:]*.*$",
+    r"(?i)^[ \t]*(?:FINANCIAL\s+REPORTING|ADVANCED\s+AUDITING|CORPORATE\s+AND\s+ECONOMIC\s+LAWS|DIRECT\s+TAX|INDIRECT\s+TAX|STRATEGIC\s+FINANCIAL\s+MANAGEMENT|AUDITING\s+AND\s+ETHICS|TAXATION|COST\s+AND\s+MANAGEMENT\s+ACCOUNTING)\s*$",
+    r"(?i)^[ \t]*(?:Time\s+Allowed|Maximum\s+Marks|Max\s+Marks).*$",
+    r"(?i)^[ \t]*General\s+Instructions.*$",
+    r"(?i)^[ \t]*Roll\s+No.*$",
 ]
 
 MAIN_ANSWER_SECTION_PATTERNS = [

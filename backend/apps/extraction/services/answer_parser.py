@@ -1,7 +1,7 @@
 import re
 import logging
 from typing import List, Tuple, Optional, Dict, Set
-from .types import ParsedAnswer, ParserConfig, AnswerParseResult, ParsingDiagnostics, ParsingContext, AnswerSectionType, AnswerSource, PromotionReason, PromotionEvaluation, PromotionContext
+from .types import ParsedAnswer, ParserConfig, AnswerParseResult, ParsingDiagnostics, ParsingContext, AnswerSectionType, AnswerSource, PromotionReason, PromotionEvaluation, PromotionContext, WorkingNote
 
 from .normalizer import Normalizer
 from .hierarchy_utils import HierarchyUtils
@@ -103,6 +103,7 @@ class AnswerParser:
 
         parser_state = ParserState.DEFAULT
         working_notes_start_offset = 0
+        last_working_note_offset = 0
         last_working_note_num = 0
         prev_match_end = 0
 
@@ -130,6 +131,7 @@ class AnswerParser:
             if any(re.search(pat, gap_text, re.MULTILINE) for pat in WORKING_NOTE_SECTION_PATTERNS):
                 parser_state = ParserState.WORKING_NOTES
                 working_notes_start_offset = match.start()
+                last_working_note_offset = match.start()
                 last_working_note_num = 0
 
             # 2. Skip matches that are explicit Working Note headers (e.g. "Working Note 1", "W.N. 1")
@@ -156,12 +158,14 @@ class AnswerParser:
                 if c_num > 0:
                     is_working_note = (c_num <= s_num) or (last_working_note_num > 0 and c_num == last_working_note_num + 1) or (last_working_note_num == 0 and c_num == 1)
 
-                # Self-healing recovery if character distance threshold exceeded
-                distance_exceeded = (match.start() - working_notes_start_offset) > max_wn_len
+                # Self-healing recovery if character distance threshold from last working note exceeded
+                ref_offset = last_working_note_offset if last_working_note_offset > 0 else working_notes_start_offset
+                distance_exceeded = (match.start() - ref_offset) > max_wn_len
 
                 if is_strong or distance_exceeded or not is_working_note:
                     parser_state = ParserState.DEFAULT
                     working_notes_start_offset = 0
+                    last_working_note_offset = 0
                     last_working_note_num = 0
                     if distance_exceeded:
                         logger.warning("Working Notes zone auto-recovered due to max distance threshold | start_offset=%d", match.start())
@@ -173,6 +177,7 @@ class AnswerParser:
                     })
                     if c_num > 0:
                         last_working_note_num = c_num
+                        last_working_note_offset = match.start()
                     prev_match_end = match.end()
                     continue
 
@@ -422,11 +427,26 @@ class AnswerParser:
         table_pattern = re.compile(r"\[STRUCTURED_START\](.*?)\[STRUCTURED_END\]", re.DOTALL)
         sep_pat = re.compile(r"^[|\s\-:]+$")
         q_num_pat = re.compile(r"^\s*(\d+)\s*\.?\s*$")
-        opt_pat = re.compile(r"(?i)\bOption\b|\([a-e]\)")
+        opt_pat = re.compile(r"(?i)\bOption\b|\([a-eA-E]\)|\bAns\.?\b")
+        data_table_header_pat = re.compile(
+            r"(?i)\b(Particulars|Description|Details|Debit|Credit|Dr|Cr|Amount|Balance|Schedule|"
+            r"Asset|Liability|Equity|Revenue|Expense|Shares|Cost|Carrying|Penalty|Fine|Offence|"
+            r"Compliance|Audit|CGST|SGST|IGST|Taxable|Exemption|Deduction|Frequency|Probability|"
+            r"Variance|Ratio|Demand|Supply|Output|Variable|Parameter|Specification|Input|State|"
+            r"Condition|Status|Difference|Distinction|Feature|Advantage|Disadvantage|Merit|Demerit|"
+            r"Category|Classification|Remarks|Summary|Item No|Basis of)\b"
+        )
 
         for match in table_pattern.finditer(normalized_text):
             table_start = match.start()
             if self._get_section_type(table_start, sections) != AnswerSectionType.MCQ_ANSWER:
+                continue
+
+            table_content = match.group(1).strip()
+            table_lines = [l.strip() for l in table_content.split("\n") if l.strip() and not sep_pat.match(l.strip())]
+            has_mcq_sig = any(opt_pat.search(cell) for line in table_lines for cell in line.split("|"))
+            if table_lines and data_table_header_pat.search(table_lines[0]) and not has_mcq_sig:
+                # Skip descriptive/financial solution data tables from MCQ answer key parsing
                 continue
 
             raw_rows = []

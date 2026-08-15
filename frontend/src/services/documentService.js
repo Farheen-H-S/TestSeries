@@ -49,6 +49,26 @@ const documentService = {
     });
     return response.data;
   },
+
+  /**
+   * Fetch impact stats for document deletion (extracted questions & logs counts)
+   * @param {number|string} documentId - ID of the document
+   * @returns {Promise<Object>} Statistics object
+   */
+  getDocumentStats: async (documentId) => {
+    const response = await api.get(`/documents/${documentId}/stats/`);
+    return response.data;
+  },
+
+  /**
+   * Delete a document and all associated extracted questions and logs
+   * @param {number|string} documentId - ID of the document
+   * @returns {Promise<void>}
+   */
+  deleteDocument: async (documentId) => {
+    const response = await api.delete(`/documents/${documentId}/`);
+    return response.data;
+  },
 };
 
 export default documentService;

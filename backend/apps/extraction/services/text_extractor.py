@@ -31,7 +31,7 @@ def detect_headers_footers(doc: fitz.Document) -> Set[str]:
     min_pages = max(3, int(total_pages * 0.3))
     return {text for text, count in margin_texts.items() if count >= min_pages}
 
-def extract_text(doc: fitz.Document) -> List[Dict[str, Any]]:
+def extract_text(doc: fitz.Document, document_id: Any = None) -> List[Dict[str, Any]]:
     """
     Extract raw text from a PDF document page-by-page.
     Detects tables and replaces them with wrapped markdown blocks.
@@ -44,7 +44,7 @@ def extract_text(doc: fitz.Document) -> List[Dict[str, Any]]:
 
     # Pass 1: Extract all tables across all pages, process, and merge them
     processor = TableProcessor()
-    table_lookup = processor.process_document(doc)
+    table_lookup = processor.process_document(doc, document_id=document_id)
 
     # Pass 2: Extract text page by page, integrating processed table markdown
     for page in doc:

@@ -123,7 +123,7 @@ class GeneratedPaperQuestion(models.Model):
     )
     question = models.ForeignKey(
         Question,
-        on_delete=models.PROTECT,
+        on_delete=models.CASCADE,
         related_name="paper_mappings"
     )
     question_order = models.PositiveIntegerField()

@@ -166,3 +166,65 @@ class TableProcessingTests(TestCase):
         # Ensure deserialized HTML matches original HTML
         self.assertEqual(deserialized_html_str, html_str)
         self.assertIn("<strong>ASSETS</strong>", html_str)
+
+    def test_evaluate_structural_reliability(self):
+        from ..services.table_processing import evaluate_structural_reliability
+        
+        # Simple reliable table
+        simple_grid = [
+            ["Particulars", "Amount"],
+            ["Item A", "100"],
+            ["Item B", "200"]
+        ]
+        self.assertTrue(evaluate_structural_reliability(simple_grid))
+
+        # Complex table with merged header keywords (e.g. Balance Sheet)
+        complex_grid = [
+            ["Particulars Note No.", "Amount (Rs.)", "Amount (Rs.)", "Amount (Rs.)"],
+            ["A.", "Non-Current Assets", "", ""],
+            ["", "1.", "Property, Plant and Equipment", "10,55,000"]
+        ]
+        self.assertFalse(evaluate_structural_reliability(complex_grid))
+
+    def test_visual_object_html_rendering_with_provenance(self):
+        from ..services.table_processing import Table, _HTMLRenderer
+        
+        table = Table(rows=[])
+        table.properties["is_complex"] = True
+        table.page_start = 42
+        table.page_end = 43
+        table.properties["regions"] = [
+            {"page_number": 42, "bbox": [10.0, 20.0, 500.0, 400.0], "crop_path": "media/table_crops/doc1_p42_y20.png"},
+            {"page_number": 43, "bbox": [10.0, 20.0, 500.0, 300.0], "crop_path": "media/table_crops/doc1_p43_y20.png"}
+        ]
+        
+        rendered_html = _HTMLRenderer.render(table)
+        self.assertIn('data-is-complex="true"', rendered_html)
+        self.assertIn('data-table-provenance=', rendered_html)
+        self.assertIn('doc1_p42_y20.png', rendered_html)
+        self.assertIn('doc1_p43_y20.png', rendered_html)
+        self.assertIn('class="table-visual-region"', rendered_html)
+
+    def test_process_document_relative_paths(self):
+        doc_mock = MagicMock()
+        page_mock = MagicMock()
+        page_mock.number = 0
+        page_mock.get_pixmap.return_value = MagicMock()
+        
+        table_mock = MagicMock()
+        table_mock.bbox = (10.0, 20.0, 500.0, 400.0)
+        table_mock.extract.return_value = [
+            ["Particulars Note No.", "Amount (Rs.)", "Amount (Rs.)"],
+            ["1.", "Property", "100"]
+        ]
+        
+        page_mock.find_tables.return_value.tables = [table_mock]
+        doc_mock.__iter__.return_value = [page_mock]
+        doc_mock.__len__.return_value = 1
+        
+        lookup = self.processor.process_document(doc_mock, document_id=99)
+        self.assertEqual(len(lookup), 1)
+        html_val = list(lookup.values())[0]
+        self.assertIn('data-crop-path="/media/table_crops/doc99_p1_y20.png"', html_val)
+
+

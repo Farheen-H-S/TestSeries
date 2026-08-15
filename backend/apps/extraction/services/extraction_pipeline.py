@@ -7,7 +7,7 @@ from apps.extraction.models import ExtractionLog
 from apps.papers.models import Question
 from .pdf_loader import load_pdf
 from .text_extractor import extract_text
-from .html_formatter import text_to_html, format_question_content, format_answer_content
+from .html_formatter import text_to_html, format_question_content, format_answer_content, clean_stored_html_tables, clean_metadata_text
 from .chapter_mapper import map_question_to_chapter, get_prepared_chapters
 
 
@@ -51,7 +51,7 @@ def extract_document(document: Document, temp_file_path: str = None):
         # 1. Load and Extract Raw Text
         pdf_doc = load_pdf(pdf_path)
         try:
-            pages_data = extract_text(pdf_doc)
+            pages_data = extract_text(pdf_doc, document_id=document.document_id)
             logger.info("Loaded document | pages=%d", len(pages_data))
         finally:
             pdf_doc.close()
@@ -256,6 +256,9 @@ def extract_document(document: Document, temp_file_path: str = None):
             document.total_pages = len(pages_data)
             document.save(update_fields=["total_pages"])
             
+            # NOTE (FUTURE SCOPE): Automatic chapter mapping currently runs for all documents
+            # processed by the extraction pipeline. If a future release restricts automatic chapter
+            # mapping strictly to RTP document uploads, check: if getattr(document, 'document_type', None) == 'RTP':
             prepared_chapters = get_prepared_chapters(document.subject)
             
             # hierarchy_map: tuple(path) -> Question object
@@ -264,22 +267,28 @@ def extract_document(document: Document, temp_file_path: str = None):
 
             for idx, pq in enumerate(parsed_questions):
                 # 7.1 Enrichment
-                # Sequential Chapter Mapping: Scan gap text preceding this question
-                gap_start = 0 if idx == 0 else parsed_questions[idx-1].end_offset
-                gap_text = full_text[gap_start:pq.start_offset].strip()
-                if gap_text:
+                candidate_header_text = ""
+                if idx > 0:
+                    prev_pq = parsed_questions[idx-1]
+                    gap_text = q_part[prev_pq.end_offset:pq.start_offset].strip()
+                    trailing_prev = prev_pq.text[-250:] if prev_pq.text else ""
+                    candidate_header_text = gap_text + "\n" + trailing_prev
+                else:
+                    candidate_header_text = q_part[max(0, pq.start_offset - 500):pq.start_offset].strip()
+
+                if candidate_header_text:
                     temp_chapter = None
                     try:
                         temp_chapter = map_question_to_chapter(
-                            gap_text,
+                            candidate_header_text,
                             prepared_chapters=prepared_chapters
                         )
                     except Exception:
-                        logger.exception("Sequential chapter mapping failed at offset %d", gap_start)
+                        logger.exception("Sequential chapter mapping failed at index %d", idx)
                     
                     if temp_chapter:
                         active_chapter = temp_chapter
-                        logger.info("Sequential chapter state updated | chapter=%s | offset=%d", active_chapter.name, gap_start)
+                        logger.info("Sequential chapter state updated | chapter=%s | index=%d", active_chapter.chapter_name, idx)
 
                 matched_chapter = active_chapter
 
@@ -306,11 +315,16 @@ def extract_document(document: Document, temp_file_path: str = None):
                 # Answer Matching
                 ans = answer_lookup.get(tuple(pq.hierarchy_path))
                 ans_text = ans.text if ans else ""
+
+                subj_name = document.subject.name if (document and document.subject) else None
+                clean_q_text = clean_metadata_text(pq.text, subject_name=subj_name, prepared_chapters=prepared_chapters)
+                clean_shared_ctx = clean_metadata_text(pq.shared_context, subject_name=subj_name, prepared_chapters=prepared_chapters) if pq.shared_context else None
+                clean_ans_text = clean_metadata_text(ans_text, subject_name=subj_name, prepared_chapters=prepared_chapters)
                 
                 # HTML Formatting
-                q_content = format_question_content(pq.text, shared_context=pq.shared_context)
+                q_content = format_question_content(clean_q_text, shared_context=clean_shared_ctx)
                 ans_working_notes = ans.working_notes if ans else []
-                a_content = format_answer_content(ans_text, working_notes=ans_working_notes) if (ans_text or ans_working_notes) else ""
+                a_content = format_answer_content(clean_ans_text, working_notes=ans_working_notes) if (clean_ans_text or ans_working_notes) else ""
 
 
                 # 7.2 Resolve Parent deterministically
@@ -318,6 +332,9 @@ def extract_document(document: Document, temp_file_path: str = None):
                 if len(pq.hierarchy_path) > 1:
                     parent_path = tuple(pq.hierarchy_path[:-1])
                     parent_q = hierarchy_map.get(parent_path)
+
+                if not matched_chapter and parent_q and parent_q.chapter:
+                    matched_chapter = parent_q.chapter
 
                 # 7.3 Create Record
                 sub_label_raw = ".".join(pq.hierarchy_path[1:]) if len(pq.hierarchy_path) > 1 else None
@@ -330,6 +347,9 @@ def extract_document(document: Document, temp_file_path: str = None):
                             sub_label_raw, sub_question_label, pq.hierarchy_path[0], document.document_id
                         )
 
+                clean_q = clean_stored_html_tables(q_content) if '<table' in q_content else q_content
+                clean_a = clean_stored_html_tables(a_content) if '<table' in a_content else a_content
+
                 q_obj = Question.objects.create(
                     document=document,
                     parent_question=parent_q,
@@ -337,10 +357,10 @@ def extract_document(document: Document, temp_file_path: str = None):
                     question_number=pq.hierarchy_path[0],
                     sub_question_label=sub_question_label,
                     hierarchy_key=hierarchy_keys[id(pq)],
-                    question_text=pq.text,
-                    question_content=q_content,
-                    answer_text=ans_text,
-                    answer_content=a_content,
+                    question_text=clean_q_text,
+                    question_content=clean_q,
+                    answer_text=clean_ans_text,
+                    answer_content=clean_a,
                     question_type=q_type,
                     instruction_type=instr,
                     marks=marks,
@@ -349,6 +369,21 @@ def extract_document(document: Document, temp_file_path: str = None):
                 
                 # Keep track for hierarchy resolution
                 hierarchy_map[tuple(pq.hierarchy_path)] = q_obj
+
+            # Inherit chapter across questions in the same shared_context block
+            context_groups = {}
+            for h_path, q_obj in hierarchy_map.items():
+                if q_obj.question_content and 'shared-context' in q_obj.question_content:
+                    ctx_key = q_obj.question_content.split('shared-context', 1)[1][:200]
+                    context_groups.setdefault(ctx_key, []).append(q_obj)
+
+            for group_qs in context_groups.values():
+                grp_ch = next((q.chapter for q in group_qs if q.chapter), None)
+                if grp_ch:
+                    for q in group_qs:
+                        if not q.chapter:
+                            q.chapter = grp_ch
+                            q.save(update_fields=['chapter'])
 
         # 8. Finalize Success
         document.extraction_status = Document.ExtractionStatus.COMPLETED

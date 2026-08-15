@@ -4,6 +4,7 @@ from rest_framework.permissions import AllowAny
 from rest_framework.parsers import MultiPartParser, FormParser
 from rest_framework.response import Response
 from rest_framework import status
+from django.db import transaction
 from django.core.files.storage import default_storage
 from .models import Document
 from .serializers import DocumentUploadSerializer, DocumentListSerializer
@@ -96,10 +97,56 @@ class DocumentListView(generics.ListAPIView):
         return queryset
 
 
-class DocumentDetailView(generics.RetrieveAPIView):
+class DocumentDetailView(generics.RetrieveDestroyAPIView):
     """
-    Retrieve document detail and current status of a specific uploaded document.
+    Retrieve document detail and current status, or delete a specific uploaded document.
     """
     queryset = Document.objects.all()
     serializer_class = DocumentListSerializer
     permission_classes = [AllowAny]
+
+    def destroy(self, request, *args, **kwargs):
+        """
+        Performs a cascade delete of the document and all related questions and logs inside an atomic transaction.
+        Physical file cleanup is executed post DB transaction commit.
+        """
+        instance = self.get_object()
+        storage_path = instance.storage_path
+
+        with transaction.atomic():
+            # Delete database instance (cascades to questions & extraction logs)
+            instance.delete()
+
+            # Schedule physical storage cleanup after DB commit
+            if storage_path:
+                def cleanup_file():
+                    try:
+                        if default_storage.exists(storage_path):
+                            default_storage.delete(storage_path)
+                    except Exception as e:
+                        logger.warning("Failed to delete storage file %s post-commit: %s", storage_path, e)
+                
+                transaction.on_commit(cleanup_file)
+
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+class DocumentStatsView(generics.RetrieveAPIView):
+    """
+    Returns stats about a document (extracted questions & logs counts) to preview before deletion.
+    """
+    queryset = Document.objects.all()
+    serializer_class = DocumentListSerializer
+    permission_classes = [AllowAny]
+
+    def get(self, request, *args, **kwargs):
+        instance = self.get_object()
+        questions_count = instance.questions.count()
+        logs_count = instance.extraction_logs.count()
+        return Response({
+            "document_id": instance.document_id,
+            "title": instance.title,
+            "questions_count": questions_count,
+            "logs_count": logs_count
+        }, status=status.HTTP_200_OK)
+

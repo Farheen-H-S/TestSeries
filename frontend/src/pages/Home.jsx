@@ -17,6 +17,12 @@ const Home = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
+  // Deletion double-confirmation modal state
+  const [deletingDoc, setDeletingDoc] = useState(null);
+  const [deleteStats, setDeleteStats] = useState(null);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState(null);
+
   // Fetch documents inside useEffect asynchronously to avoid synchronous effect states
   useEffect(() => {
     let active = true;
@@ -52,6 +58,39 @@ const Home = () => {
     navigate(`/review/${docId}`);
   };
 
+  // Open double-confirmation delete modal & fetch live impact stats
+  const openDeleteModal = async (doc) => {
+    setDeletingDoc(doc);
+    setDeleteStats(null);
+    setDeleteError(null);
+    try {
+      const stats = await documentService.getDocumentStats(doc.document_id);
+      setDeleteStats(stats);
+    } catch (err) {
+      console.error('Failed to fetch document stats:', err);
+      // Fallback default stats object if stats endpoint fails
+      setDeleteStats({ questions_count: 0, logs_count: 0 });
+    }
+  };
+
+  // Confirm paper deletion
+  const handleConfirmDelete = async () => {
+    if (!deletingDoc) return;
+
+    setIsDeleting(true);
+    setDeleteError(null);
+    try {
+      await documentService.deleteDocument(deletingDoc.document_id);
+      setDocuments((prev) => prev.filter((d) => d.document_id !== deletingDoc.document_id));
+      setDeletingDoc(null);
+    } catch (err) {
+      console.error('Error deleting document:', err);
+      setDeleteError(err.response?.data?.detail || 'Failed to delete paper. Please try again.');
+    } finally {
+      setIsDeleting(false);
+    }
+  };
+
   // Helper trigger to retry fetching documents on error state
   const handleRetry = () => {
     setLoading(true);
@@ -76,9 +115,14 @@ const Home = () => {
         <p className="home-subtitle">
           Upload previous year papers, build your question bank, and generate practice papers.
         </p>
-        <Button variant="secondary" onClick={handleUploadClick} className="home-hero-btn">
-          Upload Paper
-        </Button>
+        <div className="home-hero-actions">
+          <Button variant="secondary" onClick={() => navigate('/subjects')} className="home-hero-btn">
+            Manage Subjects & Chapters
+          </Button>
+          <Button variant="outline" onClick={handleUploadClick} className="home-hero-btn">
+            Upload Paper
+          </Button>
+        </div>
       </section>
 
       {/* Recent Papers List */}
@@ -108,10 +152,12 @@ const Home = () => {
         {!loading && !error && documents.length > 0 && (
           <div className="papers-grid">
             {documents.map((doc) => {
-              // Combine attempt info
-              const attemptLabel = doc.paper_session
-                ? `${doc.paper_session} ${doc.paper_year}`
-                : `${doc.paper_year}`;
+              // Combine attempt info with month and year
+              const attemptLabel = doc.exam_month
+                ? `${doc.exam_month} ${doc.paper_year}`
+                : doc.paper_session
+                  ? `${doc.paper_session} ${doc.paper_year}`
+                  : `${doc.paper_year}`;
 
               return (
                 <Card key={doc.document_id} className="paper-card">
@@ -131,7 +177,6 @@ const Home = () => {
                       <span className="detail-label">Attempt:</span>
                       <span className="detail-value">{attemptLabel}</span>
                     </div>
-                    {/* Subject field is omitted because it is not returned by the backend serializer */}
                   </div>
 
                   <div className="paper-card-actions">
@@ -144,8 +189,7 @@ const Home = () => {
                     </Button>
                     <Button
                       variant="outline"
-                      disabled={true}
-                      tooltip="Delete is currently unavailable."
+                      onClick={() => openDeleteModal(doc)}
                       className="action-btn delete-btn"
                     >
                       Delete
@@ -157,8 +201,68 @@ const Home = () => {
           </div>
         )}
       </section>
+
+      {/* Double-Confirmation Delete Paper Modal */}
+      {deletingDoc && (
+        <div className="modal-backdrop">
+          <div className="modal-card delete-modal-card">
+            <div className="modal-header">
+              <h3>Delete Paper</h3>
+              <button
+                className="close-modal-btn"
+                onClick={() => setDeletingDoc(null)}
+                disabled={isDeleting}
+              >
+                &times;
+              </button>
+            </div>
+            <div className="modal-body">
+              <p className="delete-warning-intro">
+                Are you sure you want to delete <strong>{deletingDoc.title}</strong>?
+              </p>
+
+              {deleteError && <div className="modal-error-message">{deleteError}</div>}
+
+              {deleteStats ? (
+                <div className="delete-stats-container">
+                  <p className="delete-warning-item-title">This action will permanently remove:</p>
+                  <ul className="delete-stats-list">
+                    <li>• <strong>{deleteStats.questions_count}</strong> extracted questions</li>
+                    <li>• Original PDF file and extraction logs</li>
+                  </ul>
+                  <p className="delete-consequences-text">
+                    All extracted questions from this paper will be deleted and removed from practice tests. This action cannot be undone.
+                  </p>
+                </div>
+              ) : (
+                <LoadingSpinner size="small" />
+              )}
+            </div>
+            <div className="modal-footer">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setDeletingDoc(null)}
+                disabled={isDeleting}
+              >
+                Cancel
+              </Button>
+              <Button
+                type="button"
+                variant="primary"
+                className="btn-danger-confirm"
+                onClick={handleConfirmDelete}
+                disabled={isDeleting || !deleteStats}
+              >
+                {isDeleting ? 'Deleting...' : 'Delete Paper'}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
 
 export default Home;
+

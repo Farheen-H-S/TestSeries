@@ -100,8 +100,7 @@ const Processing = () => {
             <h2 className="doc-title">{document.title}</h2>
           </div>
           <div className="doc-meta-sub">
-            <p><strong>Subject:</strong> {document.subject?.name} ({document.subject?.exam_level})</p>
-            <p><strong>Year/Session:</strong> {document.paper_year} {document.paper_session || ''}</p>
+            <p><strong>Attempt:</strong> {document.exam_month ? `${document.exam_month} ${document.paper_year}` : document.paper_session ? `${document.paper_session} ${document.paper_year}` : document.paper_year}</p>
           </div>
         </div>
 
