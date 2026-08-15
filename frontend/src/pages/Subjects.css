@@ -536,6 +536,52 @@
   color: var(--text-primary);
 }
 
+/* Inline delete confirmation styling */
+.chapter-delete-confirm-wrapper {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  width: 100%;
+  justify-content: flex-end;
+}
+
+.chapter-delete-confirm-msg {
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--status-failed-text);
+  margin-right: auto;
+}
+
+.chapter-confirm-btn {
+  padding: 0.25rem 0.625rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  border-radius: var(--border-radius-sm);
+  cursor: pointer;
+  border: 1px solid transparent;
+  transition: all var(--transition-fast);
+}
+
+.confirm-danger {
+  background-color: var(--status-failed-text);
+  color: white;
+}
+
+.confirm-danger:hover {
+  background-color: #b91c1c;
+}
+
+.confirm-cancel {
+  background-color: var(--background-color);
+  color: var(--text-secondary);
+  border-color: var(--border-color);
+}
+
+.confirm-cancel:hover {
+  background-color: var(--border-color);
+  color: var(--text-primary);
+}
+
 /* Animations */
 @keyframes fadeIn {
   from { opacity: 0; }

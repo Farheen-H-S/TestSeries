@@ -38,6 +38,7 @@ const Subjects = () => {
   const [chapterError, setChapterError] = useState(null);
   const [editingChapter, setEditingChapter] = useState(null); // Chapter object for renaming
   const [editingChapterName, setEditingChapterName] = useState('');
+  const [deletingChapterId, setDeletingChapterId] = useState(null);
 
   useEffect(() => {
     fetchSubjects();
@@ -177,6 +178,7 @@ const Subjects = () => {
     setActiveSubject(subject);
     setChapterError(null);
     setEditingChapter(null);
+    setDeletingChapterId(null);
     setChapterForm({ name: '' });
     try {
       const list = await subjectService.getSubjectChapters(subject.subject_id);
@@ -222,6 +224,7 @@ const Subjects = () => {
     setEditingChapter(chapter);
     setEditingChapterName(chapter.chapter_name);
     setChapterError(null);
+    setDeletingChapterId(null);
   };
 
   const handleChapterRename = async (chapterId) => {
@@ -253,6 +256,7 @@ const Subjects = () => {
     setChapterError(null);
     try {
       await subjectService.deleteChapter(chapterId);
+      setDeletingChapterId(null);
       // Refresh list
       const list = await subjectService.getSubjectChapters(activeSubject.subject_id);
       setChapters(list);
@@ -267,6 +271,7 @@ const Subjects = () => {
       );
     } catch (err) {
       console.error('Error deleting chapter:', err);
+      setDeletingChapterId(null);
       if (err.response && err.response.status === 400) {
         setChapterError(err.response.data.detail || 'Cannot delete chapter.');
       } else {
@@ -562,6 +567,24 @@ const Subjects = () => {
                               Cancel
                             </button>
                           </div>
+                        ) : deletingChapterId === ch.chapter_id ? (
+                          <div className="chapter-delete-confirm-wrapper">
+                            <span className="chapter-delete-confirm-msg">Delete chapter?</span>
+                            <button
+                              type="button"
+                              className="chapter-confirm-btn confirm-danger"
+                              onClick={() => handleChapterDelete(ch.chapter_id)}
+                            >
+                              Yes, Delete
+                            </button>
+                            <button
+                              type="button"
+                              className="chapter-confirm-btn confirm-cancel"
+                              onClick={() => setDeletingChapterId(null)}
+                            >
+                              Cancel
+                            </button>
+                          </div>
                         ) : (
                           <>
                             <div className="chapter-item-details">
@@ -600,7 +623,7 @@ const Subjects = () => {
                               <button
                                 type="button"
                                 className="btn-icon delete-ch-btn"
-                                onClick={() => handleChapterDelete(ch.chapter_id)}
+                                onClick={() => setDeletingChapterId(ch.chapter_id)}
                                 title="Delete Chapter"
                               >
                                 Delete
