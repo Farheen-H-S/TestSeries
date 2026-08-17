@@ -1,3 +1,4 @@
+import os
 import logging
 import time
 from typing import List, Dict, Any, Tuple, Optional
@@ -34,7 +35,11 @@ def extract_document(document: Document, temp_file_path: str = None):
     """
     Full Phase 3D pipeline to process a Document with industrial-grade correctness.
     """
-    pdf_path = temp_file_path or document.storage_path
+    raw_path = temp_file_path or (document.storage_path.path if hasattr(document.storage_path, 'path') else str(document.storage_path))
+    if not os.path.isabs(raw_path) and not os.path.exists(raw_path):
+        from django.conf import settings
+        raw_path = os.path.join(settings.MEDIA_ROOT, raw_path)
+    pdf_path = raw_path
     logger.info("Starting extraction | document_id=%s | storage_path=%s | pdf_path=%s", document.document_id, document.storage_path, pdf_path)
     document.extraction_status = Document.ExtractionStatus.PROCESSING
     document.save(update_fields=["extraction_status"])

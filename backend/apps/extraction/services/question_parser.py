@@ -109,6 +109,33 @@ class QuestionParser:
         while i < len(all_potential_matches):
             match = all_potential_matches[i]
             
+            # Check if this match starts an MCQ sequence of options
+            if self._is_mcq_sequence_detected(all_potential_matches, i, normalized_text):
+                context.inside_mcq_sequence = True
+                
+                m0 = all_potential_matches[i]
+                norm0 = self.normalizer.normalize_header(m0.group(0))
+                m1_norm = self.normalizer.normalize_header(all_potential_matches[i+1].group(0)) if i + 1 < len(all_potential_matches) else None
+                
+                norm0_alpha = norm0[-1] if norm0 else ''
+                m1_alpha = m1_norm[-1] if m1_norm else ''
+                
+                # If norm0_alpha == 'a' and m1_alpha == 'c' (embedded b in table), we skip 3 matches (a, c, d), otherwise 4
+                skip_count = 3 if (norm0_alpha == 'a' and m1_alpha == 'c') else 4
+
+                # Reject/skip option matches
+                for skip_offset in range(skip_count):
+                    if i + skip_offset < len(all_potential_matches):
+                        opt_match = all_potential_matches[i + skip_offset]
+                        raw_opt_header = text[opt_match.start():opt_match.end()]
+                        logger.debug("Ignoring MCQ option candidate: %s", raw_opt_header)
+                        diagnostics.rejected_headers.append({
+                            "header": raw_opt_header,
+                            "reason": "MCQ option sequence detected"
+                        })
+                i += skip_count
+                continue
+                
             # Check if this match falls inside a structured block (table region)
             if self._is_inside_structured_block(match.start(), normalized_text):
                 context.inside_structured_block = True
@@ -122,22 +149,6 @@ class QuestionParser:
                 continue
             else:
                 context.inside_structured_block = False
-            
-            # Check if this match starts an MCQ sequence of options
-            if self._is_mcq_sequence_detected(all_potential_matches, i, normalized_text):
-                context.inside_mcq_sequence = True
-                
-                # Reject/skip these next 4 option matches
-                for skip_offset in range(4):
-                    opt_match = all_potential_matches[i + skip_offset]
-                    raw_opt_header = text[opt_match.start():opt_match.end()]
-                    logger.debug("Ignoring MCQ option candidate: %s", raw_opt_header)
-                    diagnostics.rejected_headers.append({
-                        "header": raw_opt_header,
-                        "reason": "MCQ option sequence detected"
-                    })
-                i += 4
-                continue
                 
             normalized_header = match.group(0)
             path = self.normalizer.normalize_header(normalized_header)
@@ -400,6 +411,16 @@ class QuestionParser:
             if alphas[offset] != expected or mains[offset] is not None or romans[offset] is not None:
                 is_seq = False
                 break
+                
+        # Fallback check for embedded table option (e.g. (b) inside markdown table between (a) and (c))
+        if not is_seq and alphas[0] == 'a' and mains[0] is None and romans[0] is None:
+            if len(matches) > current_idx + 2:
+                if alphas[1] == 'c' and alphas[2] == 'd' and mains[1] is None and mains[2] is None:
+                    m0 = matches[current_idx]
+                    m1 = matches[current_idx + 1]
+                    between_text = text[m0.end():m1.start()]
+                    if re.search(r"(?i)\(b\)", between_text):
+                        is_seq = True
                 
         # Verify consecutive 'i', 'ii', 'iii', 'iv'
         expected_roman_seq = ['i', 'ii', 'iii', 'iv']
