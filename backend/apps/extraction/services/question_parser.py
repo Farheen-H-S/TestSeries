@@ -429,9 +429,10 @@ class QuestionParser:
             
         verbs = r"(?i)\b(Explain|Discuss|Determine|State|Compute|Prepare|Journalise|Describe|Analyse|Evaluate|Identify|Compare|Distinguish)\b"
         for opt_text in option_texts:
-            if len(opt_text) > 220:
+            clean_opt = opt_text.split("[STRUCTURED_START]")[0].strip()
+            if len(clean_opt) > 220:
                 return False
-            if re.search(verbs, opt_text):
+            if re.search(verbs, clean_opt):
                 return False
                 
         return True

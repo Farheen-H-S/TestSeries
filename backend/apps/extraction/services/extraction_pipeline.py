@@ -253,6 +253,7 @@ def extract_document(document: Document, temp_file_path: str = None):
 
         # 7. Persistence inside a transaction
         with transaction.atomic():
+            Question.objects.filter(document=document).delete()
             document.total_pages = len(pages_data)
             document.save(update_fields=["total_pages"])
             
