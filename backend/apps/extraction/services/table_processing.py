@@ -796,17 +796,19 @@ class _HTMLRenderer:
 
     @classmethod
     def render(cls, table: 'Table') -> str:
-        # ── Complex Visual Object / Source PDF Region Presentation ──
-        if table.properties.get("is_complex"):
-            regions = table.properties.get("regions", [])
-            crop_path = table.properties.get("crop_path")
-            if not regions and crop_path:
-                regions = [{
-                    "page_number": table.page_number,
-                    "bbox": [round(float(c), 1) for c in table.bbox] if table.bbox else None,
-                    "crop_path": crop_path
-                }]
-                
+        is_complex = table.properties.get("is_complex", False)
+        regions = table.properties.get("regions", [])
+        crop_path = table.properties.get("crop_path")
+        if not regions and crop_path:
+            regions = [{
+                "page_number": table.page_number,
+                "bbox": [round(float(c), 1) for c in table.bbox] if table.bbox else None,
+                "crop_path": crop_path
+            }]
+            
+        provenance_attr = ""
+        crop_attr = ""
+        if regions or crop_path or is_complex:
             provenance_data = {
                 "page_start": table.page_start,
                 "page_end": table.page_end,
@@ -821,29 +823,26 @@ class _HTMLRenderer:
             first_crop = regions[0].get("crop_path", "").replace("\\", "/") if regions else ""
             if first_crop and not first_crop.startswith('/'):
                 first_crop = '/' + first_crop
-            
-            img_blocks = []
-            for r in regions:
-                cp = r.get("crop_path")
-                if cp:
-                    img_src = cp.replace("\\", "/")
-                    if not img_src.startswith('/'):
-                        img_src = '/' + img_src
-                    img_blocks.append(
-                        f'  <div class="table-visual-region" style="text-align:center; margin: 0.5em 0;">'
-                        f'<img src="{img_src}" width="500" />'
-                        f'</div>'
-                    )
-                    
-            if img_blocks:
-                content_inner = "\n".join(img_blocks)
-                return (
-                    f'<div class="table-container" data-is-complex="true" data-crop-path="{first_crop}" data-table-provenance="{provenance_json}">\n'
-                    f'{content_inner}\n'
-                    f'</div>'
-                )
+            provenance_attr = f' data-table-provenance="{provenance_json}"'
+            crop_attr = f' data-crop-path="{first_crop}"' if first_crop else ''
+
+        complex_attr = ' data-is-complex="true"' if is_complex else ''
+        container_attrs = f'{complex_attr}{crop_attr}{provenance_attr}'
 
         if not table.rows:
+            if is_complex and regions:
+                img_blocks = []
+                for r in regions:
+                    cp = r.get("crop_path")
+                    if cp:
+                        img_src = cp.replace("\\", "/").lstrip('/')
+                        img_blocks.append(
+                            f'  <div class="table-visual-region" style="text-align:center; margin: 0.5em 0;">'
+                            f'<img src="/{img_src}" width="500" />'
+                            f'</div>'
+                        )
+                if img_blocks:
+                    return f'<div class="table-container"{container_attrs}>\n' + "\n".join(img_blocks) + '\n</div>'
             return ""
 
         num_cols = max(len(row.cells) for row in table.rows) if table.rows else 0
@@ -881,7 +880,7 @@ class _HTMLRenderer:
         num_cols = len(keep_col_indices)
         is_wide = num_cols >= cls.WIDE_TABLE_THRESHOLD
 
-        html_parts = ['<div class="table-container">']
+        html_parts = [f'<div class="table-container"{container_attrs}>']
 
         # Wide-table note (informational, printed in small italic above the table)
         # The table is NOT truncated; font-size is reduced instead.
@@ -1046,7 +1045,7 @@ class TableProcessor:
                     re.search(r'(?i)\bOption\b|\bAns\.?\b|\bChoice\b|\bKey\b|^\s*\([a-eA-E]\)', str(cell or ''))
                     for row in raw_grid for cell in row
                 )
-                is_complex = not is_mcq_table
+                is_complex = False
                 
                 crop_path_rel = None
                 if t.bbox and hasattr(page, 'get_pixmap'):
@@ -1093,8 +1092,8 @@ class TableProcessor:
                 # Child chunk: render nothing on this page (merged into root)
                 table_lookup[key] = ""
             else:
-                # Root table: serialize full table HTML or markdown
-                md = self.render_to_html(table) if table.properties.get("is_complex") else self.serialize_to_markdown(table)
+                # Root table: serialize full table HTML
+                md = self.render_to_html(table)
                 table_lookup[key] = md
                 
         return table_lookup
