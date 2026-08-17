@@ -575,14 +575,19 @@ class AnswerParser:
 
         # 1. Question Structure Check (Authoritative when child information is present)
         if context.valid_question_paths is not None and context.known_children is not None:
-            parent_path = tuple(hierarchy_stack) if hierarchy_stack else None
-            if parent_path and parent_path in context.known_children:
-                children = context.known_children[parent_path]
-                if children:
-                    if potential_path in children:
-                        return PromotionEvaluation(True, PromotionReason.ACCEPT_QUESTION_STRUCTURE)
-                    else:
-                        return PromotionEvaluation(False, PromotionReason.REJECT_QUESTION_STRUCTURE)
+            parent_path = potential_path[:-1] if len(potential_path) > 1 else None
+            if parent_path is not None:
+                if parent_path in context.known_children:
+                    children = context.known_children[parent_path]
+                    if children:
+                        if potential_path in children:
+                            return PromotionEvaluation(True, PromotionReason.ACCEPT_QUESTION_STRUCTURE)
+                        else:
+                            return PromotionEvaluation(False, PromotionReason.REJECT_QUESTION_STRUCTURE)
+            else:
+                # Top-level main question (e.g. ('2',), ('6',))
+                if potential_path in context.valid_question_paths:
+                    return PromotionEvaluation(True, PromotionReason.ACCEPT_QUESTION_STRUCTURE)
 
         # 2. Sequence Rule (Only when entering a new depth)
         if c_alpha and s_alpha is None:
