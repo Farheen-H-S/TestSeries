@@ -124,6 +124,16 @@ class HeaderValidator:
             if not c_main and not c_alpha:
                 return ValidationResult(False, "alpha label found without parent main number")
 
+        # Main level sequence check: prevent regression (e.g., question 2 appearing after question 13)
+        if candidate_level == "main":
+            c_main, _, _ = HierarchyUtils.decompose_path(current_stack)
+            n_main, _, _ = HierarchyUtils.decompose_path(new_path)
+            if c_main and n_main and c_main.isdigit() and n_main.isdigit():
+                c_num = int(c_main)
+                n_num = int(n_main)
+                if n_num < c_num and (c_num - n_num) > 1:
+                    return ValidationResult(False, f"out of order main question regression: {n_num} < {c_num}")
+
         return ValidationResult(True)
 
 
