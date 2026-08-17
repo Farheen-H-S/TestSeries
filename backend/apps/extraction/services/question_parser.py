@@ -238,11 +238,12 @@ class QuestionParser:
                     v_match = list(re.finditer(r'\n\s*V\.\s+', region_text))
                     if v_match:
                         v_start = v_match[0].start()
-                        d_match = re.search(r'\(d\)[^\n]*', region_text[v_start:])
+                        d_match = re.search(r'\(d\).*?(?=\n\s*(?:[A-Z][A-Za-z\s]{3,30}\n|\[STRUCTURED_START\]|\n\s*\n\s*[A-Z]))', region_text[v_start:], re.DOTALL)
                         if d_match:
                             split_offset = v_start + d_match.end()
                         else:
-                            split_offset = v_start
+                            d_fallback = re.search(r'\(d\)[^\n]*', region_text[v_start:])
+                            split_offset = v_start + d_fallback.end() if d_fallback else v_start
                     else:
                         opt_matches = list(re.finditer(r'\([a-d]\)[^\n]*', region_text))
                         split_offset = opt_matches[-1].end() if opt_matches else 0
@@ -343,15 +344,20 @@ class QuestionParser:
         if preamble_text:
             cleaned = self._clean_document_metadata(preamble_text)
             if cleaned:
-                current_context = cleaned
                 range_match = re.search(r"(?i)Questions?\s+\d+\s+to\s+(\d+)", preamble_text)
                 if range_match:
+                    current_context = cleaned
                     max_q_num = int(range_match.group(1))
+                else:
+                    # Preamble without explicit range belongs to the first question
+                    if parsed_questions:
+                        parsed_questions[0].text = (cleaned + "\n" + parsed_questions[0].text).strip()
 
         for i, pq in enumerate(parsed_questions):
+            main_num = int(pq.hierarchy_path[0]) if (pq.hierarchy_path and pq.hierarchy_path[0].isdigit()) else None
+            
             # Check gap before main question i (where i > 0 and pq is a main question)
             if i > 0 and len(pq.hierarchy_path) == 1:
-                main_num = int(pq.hierarchy_path[0]) if pq.hierarchy_path[0].isdigit() else None
                 prev_match = validated_matches[i-1][0]
                 curr_match = validated_matches[i][0]
                 gap_raw = text[prev_match.end():curr_match.start()]
@@ -370,9 +376,17 @@ class QuestionParser:
                     raw_context = gap_raw[ctx_match.start():].strip()
                     cleaned_context = self._clean_document_metadata(raw_context)
                     if cleaned_context:
-                        current_context = cleaned_context
                         range_match = re.search(r"(?i)Questions?\s+\d+\s+to\s+(\d+)", raw_context)
-                        max_q_num = int(range_match.group(1)) if range_match else None
+                        if range_match:
+                            current_context = cleaned_context
+                            max_q_num = int(range_match.group(1))
+                        elif re.search(r"(?i)Case\s+(?:Scenario|Study)|Scenario", raw_context):
+                            current_context = cleaned_context
+                            max_q_num = None
+                        else:
+                            # Single-question context (no range declaration)
+                            current_context = cleaned_context
+                            max_q_num = main_num
                 elif max_q_num is not None and main_num is not None and main_num > max_q_num:
                     # Beyond declared question range for this context
                     current_context = None
@@ -382,6 +396,9 @@ class QuestionParser:
                     current_context = None
                     max_q_num = None
 
+            if max_q_num is not None and main_num is not None and main_num > max_q_num:
+                current_context = None
+                max_q_num = None
 
             pq.shared_context = current_context
 
