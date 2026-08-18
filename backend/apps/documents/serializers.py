@@ -26,10 +26,17 @@ class DocumentUploadSerializer(serializers.ModelSerializer):
         title = attrs.get('title')
         
         if not title or not title.strip():
-            attrs['title'] = f"{subject.name} - {document_type} - {exam_month} {paper_year}"
+            target_title = f"{subject.name} - {document_type} - {exam_month} {paper_year}"
         else:
-            attrs['title'] = title.strip()
+            target_title = title.strip()
             
+        # Case-insensitive title uniqueness validation
+        if Document.objects.filter(title__iexact=target_title).exists():
+            raise serializers.ValidationError({
+                "title": f"A paper titled '{target_title}' already exists. Please enter a unique title."
+            })
+
+        attrs['title'] = target_title
         return attrs
 
     def validate_file(self, value):

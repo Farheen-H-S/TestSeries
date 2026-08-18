@@ -180,6 +180,82 @@ class DocumentUploadTests(APITestCase):
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
         self.assertIn('subject', response.json())
 
+    def test_document_title_uniqueness_validation(self):
+        subject = Subject.objects.create(name='Advanced Financial Management', exam_level='Final')
+        Document.objects.create(
+            user=self.user,
+            subject=subject,
+            title='AFM May 2024 RTP',
+            document_type='RTP',
+            paper_year=2024,
+            exam_month='May',
+            storage_path='documents/afm_24.pdf'
+        )
+
+        url = reverse('document-upload')
+        pdf_file = SimpleUploadedFile(
+            "test_dup_title.pdf",
+            b"%PDF-1.4 ... dummy content ...",
+            content_type="application/pdf"
+        )
+        
+        # Test exact duplicate title case-insensitively ('afm may 2024 rtp')
+        data = {
+            'subject': subject.subject_id,
+            'title': 'afm may 2024 rtp',
+            'document_type': 'RTP',
+            'paper_year': 2024,
+            'exam_month': 'May',
+            'file': pdf_file
+        }
+        response = self.client.post(url, data, format='multipart')
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn('title', response.json())
+        self.assertIn("already exists", response.json()['title'][0])
+
+    def test_document_list_search_and_filtering(self):
+        subject_afm = Subject.objects.create(name='AFM', exam_level='Final')
+        subject_fr = Subject.objects.create(name='FR', exam_level='Final')
+
+        d1 = Document.objects.create(
+            user=self.user,
+            subject=subject_afm,
+            title='AFM May 2024 Paper',
+            document_type='RTP',
+            paper_year=2024,
+            exam_month='May',
+            storage_path='documents/d1.pdf'
+        )
+        d2 = Document.objects.create(
+            user=self.user,
+            subject=subject_fr,
+            title='FR Nov 2023 Mock Paper',
+            document_type='MOCK',
+            paper_year=2023,
+            exam_month='November',
+            storage_path='documents/d2.pdf'
+        )
+
+        list_url = reverse('document-list')
+
+        # Test search query parameter
+        res_search = self.client.get(f"{list_url}?search=AFM")
+        self.assertEqual(res_search.status_code, status.HTTP_200_OK)
+        self.assertEqual(len(res_search.json()), 1)
+        self.assertEqual(res_search.json()[0]['document_id'], d1.document_id)
+
+        # Test subject filter parameter
+        res_subject = self.client.get(f"{list_url}?subject={subject_fr.subject_id}")
+        self.assertEqual(res_subject.status_code, status.HTTP_200_OK)
+        self.assertEqual(len(res_subject.json()), 1)
+        self.assertEqual(res_subject.json()[0]['document_id'], d2.document_id)
+
+        # Test exam_month and document_type filter
+        res_month = self.client.get(f"{list_url}?exam_month=November&document_type=MOCK")
+        self.assertEqual(res_month.status_code, status.HTTP_200_OK)
+        self.assertEqual(len(res_month.json()), 1)
+        self.assertEqual(res_month.json()[0]['document_id'], d2.document_id)
+
     def test_document_stats_and_delete_cascade(self):
         from apps.papers.models import Question
         from apps.extraction.models import ExtractionLog

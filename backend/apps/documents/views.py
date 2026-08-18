@@ -86,13 +86,27 @@ class DocumentListView(generics.ListAPIView):
     permission_classes = [AllowAny]
 
     def get_queryset(self):
-        # Base queryset ordered by newest first
-        queryset = Document.objects.all().order_by('-uploaded_at')
+        # Base queryset ordered by newest first with select_related for subjects
+        queryset = Document.objects.all().select_related('subject').order_by('-uploaded_at')
         
-        # Ready for future filtering:
-        # if self.request.user.is_authenticated:
-        #     queryset = queryset.filter(user=self.request.user)
+        # Filter query parameters
+        search = self.request.query_params.get('search')
+        subject_id = self.request.query_params.get('subject')
+        doc_type = self.request.query_params.get('document_type')
+        year = self.request.query_params.get('paper_year')
+        month = self.request.query_params.get('exam_month')
         
+        if search and search.strip():
+            queryset = queryset.filter(title__icontains=search.strip())
+        if subject_id:
+            queryset = queryset.filter(subject_id=subject_id)
+        if doc_type:
+            queryset = queryset.filter(document_type__iexact=doc_type.strip())
+        if year:
+            queryset = queryset.filter(paper_year=year)
+        if month:
+            queryset = queryset.filter(exam_month__iexact=month.strip())
+            
         return queryset
 
 
