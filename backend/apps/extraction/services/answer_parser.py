@@ -439,12 +439,16 @@ class AnswerParser:
 
         for match in table_pattern.finditer(normalized_text):
             table_start = match.start()
-            if self._get_section_type(table_start, sections) != AnswerSectionType.MCQ_ANSWER:
-                continue
-
             table_content = match.group(1).strip()
             table_lines = [l.strip() for l in table_content.split("\n") if l.strip() and not sep_pat.match(l.strip())]
+            
             has_mcq_sig = any(opt_pat.search(cell) for line in table_lines for cell in line.split("|"))
+            has_q_no_sig = any(re.search(r"(?i)\bQ\.?\s*No\.?\b|\bQuestion\b", cell) for line in table_lines for cell in line.split("|"))
+            is_mcq_section = (self._get_section_type(table_start, sections) == AnswerSectionType.MCQ_ANSWER)
+
+            if not is_mcq_section and not (has_mcq_sig and has_q_no_sig):
+                continue
+
             if table_lines and data_table_header_pat.search(table_lines[0]) and not has_mcq_sig:
                 # Skip descriptive/financial solution data tables from MCQ answer key parsing
                 continue

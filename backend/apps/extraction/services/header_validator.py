@@ -36,7 +36,7 @@ class HeaderValidator:
                 return ValidationResult(False, "not start of line")
 
         # 2. Hierarchy Validation
-        return self._check_logical_transition(path, current_stack)
+        return self._check_logical_transition(path, current_stack, raw_header)
 
 
     def _is_start_of_line(self, idx: int, text: str) -> bool:
@@ -86,7 +86,12 @@ class HeaderValidator:
             return "main"
         return None
 
-    def _check_logical_transition(self, new_path: List[str], current_stack: List[str]) -> ValidationResult:
+    def _check_logical_transition(
+        self,
+        new_path: List[str],
+        current_stack: List[str],
+        raw_header: str = ""
+    ) -> ValidationResult:
         """
         Transition Grammar Validation.
         Determines valid Parent -> Child transitions using a structural allowed level table.
@@ -103,6 +108,11 @@ class HeaderValidator:
                 # Only allow starting with 'a' or 'A'
                 main, alpha, roman = HierarchyUtils.decompose_path(new_path)
                 if alpha == 'a':
+                    return ValidationResult(True)
+                return ValidationResult(False, "invalid starting numbering sequence")
+            if candidate_level == "roman":
+                # Allow starting with top-level un-bracketed Roman numerals (I., II., III.), reject bracketed "(i)"
+                if raw_header and not raw_header.strip().startswith('('):
                     return ValidationResult(True)
                 return ValidationResult(False, "invalid starting numbering sequence")
             return ValidationResult(False, "invalid starting numbering sequence")

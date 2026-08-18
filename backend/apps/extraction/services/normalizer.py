@@ -98,41 +98,18 @@ class Normalizer:
         
         def repl_prefix(match: re.Match) -> str:
             prefix = match.group(1)
-            mistake = match.group(2)
-            corrected = ocr_map.get(mistake, mistake)
+            mistake_str = match.group(2)
+            corrected = "".join(ocr_map.get(ch, ch) for ch in mistake_str)
             return prefix + corrected
 
-        # Matches headers like: Question S, Q. B, Ans O, Solution I, etc.
-        # Prefix pattern matches case-insensitively.
+        # Matches specific header prefixes followed by label strings (digits or OCR glyphs):
+        # e.g. Question S, Question 12S, Question 1O5, Q. B, Ans O, Solution I
+        # Prefix pattern matches case-insensitively and replaces characters without changing text length.
         text = re.sub(
-            r'(?i)\b(Question\s+(?:No\.\s*)?|Q\.?\s?|Answer\s+(?:to\s+)?(?:Question\s+)?(?:No\.\s*)?|Ans\.?\s*|Solution\s*)([lI|OSBZ])\b',
+            r'(?i)\b(Question\s+(?:No\.\s*)?|Q\.?\s?|Answer\s+(?:to\s+)?(?:Question\s+)?(?:No\.\s*)?|Ans\.?\s*|Solution\s*)([0-9lI|OSBZosbz]+)(?=\s|\(|\.|\)|$)',
             repl_prefix,
             text
         )
-
-        def repl_line_start(match: re.Match) -> str:
-            indent = match.group(1)
-            mistake = match.group(2)
-            suffix = match.group(3)
-            corrected = ocr_map.get(mistake, mistake)
-            return indent + corrected + suffix
-
-        # Numbered list markers at the start of a line, e.g. "l.", "|."
-        text = re.sub(
-            r'(?m)^([ \t]*)([l|])([.)])',
-            repl_line_start,
-            text
-        )
-
-        # Digit-sandwiched substitutions (just like original Normalizer rules)
-        text = re.sub(r'(?<=\d)O|O(?=\d)', '0', text)
-        text = re.sub(r'(?<=\d)o|o(?=\d)', '0', text)
-        text = re.sub(r'(?<=\d)S|S(?=\d)', '5', text)
-        text = re.sub(r'(?<=\d)s|s(?=\d)', '5', text)
-        text = re.sub(r'(?<=\d)B|B(?=\d)', '8', text)
-        text = re.sub(r'(?<=\d)b|b(?=\d)', '8', text)
-        text = re.sub(r'(?<=\d)Z|Z(?=\d)', '2', text)
-        text = re.sub(r'(?<=\d)z|z(?=\d)', '2', text)
 
         if logger.isEnabledFor(logging.DEBUG):
             changes = sum(1 for c1, c2 in zip(original_text, text) if c1 != c2)

@@ -118,7 +118,6 @@ def extract_document(document: Document, temp_file_path: str = None):
             logger.info("Optimizing question region start boundary: relative_offset=%d", q_start_relative)
             q_part = q_part[q_start_relative:]
             q_base_offset += q_start_relative
-            enable_semantic = False
             
         # 4. Parsing with Config and Base Offsets
         context = ParsingContext()
@@ -348,8 +347,8 @@ def extract_document(document: Document, temp_file_path: str = None):
                 sub_label_raw = ".".join(pq.hierarchy_path[1:]) if len(pq.hierarchy_path) > 1 else None
                 sub_question_label = None
                 if sub_label_raw:
-                    sub_question_label = sub_label_raw[:10]
-                    if len(sub_label_raw) > 10:
+                    sub_question_label = sub_label_raw[:50]
+                    if len(sub_label_raw) > 50:
                         logger.warning(
                             "Sub-question label truncated from '%s' to '%s' for question %s (Document ID: %d)",
                             sub_label_raw, sub_question_label, pq.hierarchy_path[0], document.document_id

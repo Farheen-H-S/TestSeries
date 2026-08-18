@@ -15,9 +15,10 @@ ANSWER_SECTION_DELIMITERS = [
 ]
 
 MCQ_ANSWER_SECTION_PATTERNS = [
-    r"(?i)^[ \t]*(?:Answer\s+to\s+)?Multiple\s+Choice\s+Questions(?:\s+Answers?)?",
+    r"(?i)^[ \t]*(?:Answers?\s+to\s+)?Multiple\s+Choice\s+Questions(?:\s+Answers?)?",
     r"(?i)^[ \t]*MCQ\s+Answers?",
-    r"(?i)^[ \t]*Part\s+I[-–—\s]+Multiple\s+Choice\s+Questions",
+    r"(?i)^[ \t]*Part\s+[I|A|B|1|2][-–—\s:]*(?:Multiple\s+Choice\s+Questions|MCQ\s+Answers?)",
+    r"(?i)^[ \t]*ANSWERS?\s+TO\s+(?:MULTIPLE\s+CHOICE\s+QUESTIONS|MCQS?)",
 ]
 
 WORKING_NOTE_SECTION_PATTERNS = [
@@ -67,11 +68,11 @@ MAIN_ANSWER_SECTION_PATTERNS = [
 QUESTION_HEADER_PATTERNS = [
     r"(?i)^[ \t]*Question\s+(?:No\.\s*)?(\d+)(?:[ \t]*\([^)]+\))*",          # Question 1, Question 1(a), Question 1(a)(i)
     r"(?i)^[ \t]*Q\.?\s?(\d+)(?:[ \t]*\([^)]+\))*",                          # Q1, Q. 1, Q1(a)
-    r"^[ \t]*(\d+)[.)](?!\d)(?:[ \t]*\([^)]+\))*",                                 # 1. or 1) or 1.(a)
-    r"^[ \t]*\(([a-zA-Z])\)",                            # (a)
-    r"^[ \t]*\(([ivxIVX]+)\)",                           # (i), (ii), (iv)
-    r"^[ \t]*\d+\s*\(([a-z])\)",                         # 1(a)
-    r"^[ \t]*([a-z])\s*[.)]",                            # a. or a)
+    r"^[ \t]*(\d{1,2})[.)](?!\d)(?:[ \t]*\([^)]+\))*",                       # 1. or 1) or 1.(a) (max 99)
+    r"^[ \t]*\(([a-zA-Z])\)",                                                # (a)
+    r"^[ \t]*\(([ivxIVX]+)\)(?!\s*e\.)",                                     # (i), (ii), (iv)
+    r"^[ \t]*\d{1,2}\s*\(([a-z])\)",                                         # 1(a)
+    r"^[ \t]*([a-z])\s*[.)](?!\s*e\.)(?![a-zA-Z])",                         # a. or a)
 ]
 
 # Answer Header Patterns
@@ -81,9 +82,9 @@ ANSWER_HEADER_PATTERNS = [
     r"(?i)^\s*Ans\.?\s*(\d+)(?:\(([a-z])\))?",                                       # Ans. 1(a)
     r"(?i)^\s*Solution\s*(\d+)(?:\(([a-z])\))?",                                     # Solution 1(a)
     r"(?i)^\s*(?:Question|Q\.?)\s*(?:No\.\s*)?(\d+)(?:\(([a-z])\))?",                # Question 1 or Q1
-    r"^\s*(\d+)[.)](?!\d)(?:\s*\(([a-z])\))?",                                             # 1. or 1.(a)
+    r"^\s*(\d{1,2})[.)](?!\d)(?:\s*\(([a-z])\))?",                                   # 1. or 1.(a)
     r"^\s*\(([a-zA-Z])\)",                                                           # (a)
-    r"^\s*\(([ivxIVX]+)\)",                                                          # (i), (ii), (iv)
+    r"^\s*\(([ivxIVX]+)\)(?!\s*e\.)",                                                # (i), (ii), (iv)
 ]
 
 

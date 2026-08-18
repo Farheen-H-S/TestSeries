@@ -423,8 +423,8 @@ class _CrossPageMerger:
                         x1_diff = abs(table.bbox[2] - last_table.bbox[2])
                         if x0_diff >= self.config.column_coordinate_threshold or x1_diff >= self.config.column_coordinate_threshold:
                             logger.info(
-                                "Rejected merging tables split between page %d and %d: Bounding box misalignment (x0 diff: %.1f, x1 diff: %.1f) | Confidence: LOW",
-                                last_table.page_end, table.page_number, x0_diff, x1_diff
+                                "Rejected merging tables split between page %d and %d: Bounding box misalignment (x0 diff: %s, x1 diff: %s) | Confidence: LOW",
+                                last_table.page_end, table.page_number, f"{x0_diff:.1f}", f"{x1_diff:.1f}"
                             )
                         else:
                             # 4. Vertical margin boundary check: 
@@ -481,8 +481,8 @@ class _CrossPageMerger:
                                             
                             if not is_at_bottom_a or not is_at_top_b:
                                 logger.info(
-                                    "Rejected merging tables split between page %d and %d: Table not adjacent to page margins (A bottom: %.1f, B top: %.1f) | Confidence: LOW",
-                                    last_table.page_end, table.page_number, last_table.bbox[3], table.bbox[1]
+                                    "Rejected merging tables split between page %d and %d: Table not adjacent to page margins (A bottom: %s, B top: %s) | Confidence: LOW",
+                                    last_table.page_end, table.page_number, f"{last_table.bbox[3]:.1f}", f"{table.bbox[1]:.1f}"
                                 )
                             elif ends_with_total:
                                 logger.info(

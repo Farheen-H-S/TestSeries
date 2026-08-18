@@ -61,13 +61,13 @@ def get_prepared_chapters(subject: Subject) -> Sequence[PreparedChapter]:
             patterns_with_weights.append((re.compile(rf"\b{escaped_name}\b", re.IGNORECASE), 5))
             unique_patterns.add(n_name)
             
-        # 2. Code/number designation prefix like "Ind AS 110", "Ind AS 1", "AS 16", "Chapter 3" (weight=3)
+        # 2. Code/number designation prefix like "Ind AS 110", "Ind AS 1", "AS 16", "Chapter 3" (weight=1)
         code_match = re.search(r'(?i)\b(Ind\s*AS\s*\d+|AS\s*\d+|Chapter\s*\d+)\b', name)
         if code_match:
             code_str = normalize_text(code_match.group(1))
             if code_str and code_str not in unique_patterns:
                 escaped_code = re.escape(code_str).replace(r"\ ", r"\s+").replace(" ", r"\s+")
-                patterns_with_weights.append((re.compile(rf"\b{escaped_code}\b", re.IGNORECASE), 3))
+                patterns_with_weights.append((re.compile(rf"\b{escaped_code}\b", re.IGNORECASE), 1))
                 unique_patterns.add(code_str)
 
         # 3. Topic title after colon if present (e.g. "Consolidated Financial Statements") (weight=2)

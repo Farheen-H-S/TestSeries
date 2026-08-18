@@ -49,8 +49,8 @@ class AnswerMatcher:
             if len(qs) == 1 and len(as_) == 1:
                 q = qs[0]
                 a = as_[0]
-                # Prevent self-matching: if their header offsets overlap, they cannot be matched!
-                if q.start_offset < a.end_offset and a.start_offset < q.end_offset:
+                # Prevent self-matching: if their header start offsets are identical, they are the exact same candidate token
+                if q.start_offset == a.start_offset:
                     diagnostics.unmatched_questions.append(key_str)
                     diagnostics.unmatched_answers.append(key_str)
                 else:
