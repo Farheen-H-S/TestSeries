@@ -546,9 +546,13 @@ class _CrossPageMerger:
                     )
                 )
                 logger.info(
-                    "Merged table split between page %d and %d: Root=table_%d_%.1f_%.1f | Child=table_%d_%.1f_%.1f | Confidence: HIGH",
-                    last_table.page_start, table.page_number,
-                    table.page_number, f"{table.bbox[0]:.1f}_{table.bbox[1]:.1f}",
+                    "Merged table split between page %d and %d: Root=table_%d_%s | Child=table_%d_%s | Reasons: %s | Confidence: HIGH",
+                    last_table.page_start,
+                    table.page_number,
+                    last_table.page_number,
+                    f"{last_table.bbox[0]:.1f}_{last_table.bbox[1]:.1f}",
+                    table.page_number,
+                    f"{table.bbox[0]:.1f}_{table.bbox[1]:.1f}",
                     ", ".join(reasons)
                 )
                 continue
