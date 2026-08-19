@@ -125,25 +125,14 @@ class PipelineErrorHandlingTests(TestCase):
             storage_path="documents/test_dup.pdf"
         )
         
-        with self.assertRaises(DuplicateHierarchyError) as context:
-            extract_document(document)
-            
-        err_msg = str(context.exception)
-        self.assertIn("Duplicate hierarchy key detected", err_msg)
-        self.assertIn("Duplicate Test Paper", err_msg)
-        self.assertIn("2.d.i", err_msg)
-        
-        # Assert first occurrence diagnostics
-        self.assertIn("First", err_msg)
-        self.assertIn("['2', 'd', 'i']", err_msg)
-        self.assertIn("Page:\n6", err_msg)
-        self.assertIn("First occurrence text", err_msg)
-        
-        # Assert second occurrence diagnostics
-        self.assertIn("Second", err_msg)
-        self.assertIn("['2', 'd', 'i']", err_msg)
-        self.assertIn("Page:\n8", err_msg)
-        self.assertIn("Second occurrence text", err_msg)
+        extract_document(document)
+        document.refresh_from_db()
+        self.assertEqual(document.extraction_status, Document.ExtractionStatus.COMPLETED)
+        qs = list(Question.objects.filter(document=document).order_by('question_id'))
+        self.assertEqual(len(qs), 2)
+        self.assertEqual(qs[0].hierarchy_key, "2.d.i")
+        self.assertEqual(qs[1].hierarchy_key, "2.d.i.2")
+        self.assertEqual(qs[1].question_text, "Second occurrence text")
 
     @patch('apps.extraction.services.extraction_pipeline.load_pdf')
     @patch('apps.extraction.services.extraction_pipeline.extract_text')

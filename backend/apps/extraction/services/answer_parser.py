@@ -419,15 +419,17 @@ class AnswerParser:
     ) -> List[ParsedAnswer]:
         """
         Parses all structured tables within the MCQ_ANSWER sections and returns ParsedAnswer objects.
+        Supports both HTML structured tables and Markdown pipe tables.
         """
         import re
+        from bs4 import BeautifulSoup
         from .types import ParsedAnswer, AnswerSectionType, AnswerSource
 
         mcq_answers: List[ParsedAnswer] = []
         table_pattern = re.compile(r"\[STRUCTURED_START\](.*?)\[STRUCTURED_END\]", re.DOTALL)
         sep_pat = re.compile(r"^[|\s\-:]+$")
-        q_num_pat = re.compile(r"^\s*(\d+)\s*\.?\s*$")
-        opt_pat = re.compile(r"(?i)\bOption\b|\([a-eA-E]\)|\bAns\.?\b")
+        q_num_pat = re.compile(r"^\s*(?:MCQ\s*(?:No\.?)?\s*|Q\.?\s*(?:No\.?)?\s*)?(\d+)\s*\.?\s*$", re.I)
+        opt_pat = re.compile(r"(?i)\bOption\b|\([a-eA-E]\)|\b[a-eA-E]\b|\bAns\.?\b")
         data_table_header_pat = re.compile(
             r"(?i)\b(Particulars|Description|Details|Debit|Credit|Dr|Cr|Amount|Balance|Schedule|"
             r"Asset|Liability|Equity|Revenue|Expense|Shares|Cost|Carrying|Penalty|Fine|Offence|"
@@ -440,17 +442,83 @@ class AnswerParser:
         for match in table_pattern.finditer(normalized_text):
             table_start = match.start()
             table_content = match.group(1).strip()
+            is_mcq_section = (self._get_section_type(table_start, sections) == AnswerSectionType.MCQ_ANSWER)
+
+            # Case 1: HTML structured table
+            if "<table" in table_content:
+                soup = BeautifulSoup(table_content, "html.parser")
+                rows = []
+                for tr in soup.find_all("tr"):
+                    cells = [td.get_text().strip() for td in tr.find_all(["td", "th"])]
+                    if cells:
+                        rows.append(cells)
+
+                if not rows:
+                    continue
+
+                # Check if this table has MCQ signals
+                has_mcq_sig = any(opt_pat.search(cell) for r in rows for cell in r)
+                has_q_no_sig = any(re.search(r"(?i)\bQ\.?\s*No\.?\b|\bMCQ\s*No\.?\b|\bQuestion\b", cell) for r in rows for cell in r)
+
+                if not is_mcq_section and not (has_mcq_sig and has_q_no_sig):
+                    continue
+
+                if rows and data_table_header_pat.search(" ".join(rows[0])) and not has_mcq_sig:
+                    continue
+
+                table_answers = []
+                explicit_opt_count = 0
+
+                for row in rows:
+                    col_idx = 0
+                    while col_idx < len(row):
+                        cell_clean = row[col_idx].replace("*", "").strip()
+                        m_q = q_num_pat.match(cell_clean)
+                        if m_q:
+                            q_num = m_q.group(1)
+                            # Look for option content in subsequent cells in the same row
+                            opt_content = None
+                            for next_idx in range(col_idx + 1, min(col_idx + 4, len(row))):
+                                next_cell = row[next_idx].strip()
+                                m_opt = opt_pat.search(next_cell)
+                                if m_opt:
+                                    opt_content = next_cell
+                                    explicit_opt_count += 1
+                                    col_idx = next_idx + 1
+                                    break
+                            else:
+                                col_idx += 1
+
+                            if opt_content:
+                                start_offset = base_offset + table_start
+                                start_page = HierarchyUtils.get_page_num_fast(start_offset, page_offsets, page_keys)
+                                table_answers.append(ParsedAnswer(
+                                    hierarchy_path=[q_num],
+                                    raw_header=f"\n{q_num}.",
+                                    text=opt_content,
+                                    start_offset=start_offset,
+                                    end_offset=start_offset + len(table_content),
+                                    start_page=start_page,
+                                    end_page=start_page,
+                                    section_type=AnswerSectionType.MCQ_ANSWER,
+                                    source=AnswerSource.MCQ_TABLE
+                                ))
+                        else:
+                            col_idx += 1
+
+                if explicit_opt_count >= 1:
+                    mcq_answers.extend(table_answers)
+                continue
+
+            # Case 2: Markdown pipe-delimited table fallback
             table_lines = [l.strip() for l in table_content.split("\n") if l.strip() and not sep_pat.match(l.strip())]
-            
             has_mcq_sig = any(opt_pat.search(cell) for line in table_lines for cell in line.split("|"))
             has_q_no_sig = any(re.search(r"(?i)\bQ\.?\s*No\.?\b|\bQuestion\b", cell) for line in table_lines for cell in line.split("|"))
-            is_mcq_section = (self._get_section_type(table_start, sections) == AnswerSectionType.MCQ_ANSWER)
 
             if not is_mcq_section and not (has_mcq_sig and has_q_no_sig):
                 continue
 
             if table_lines and data_table_header_pat.search(table_lines[0]) and not has_mcq_sig:
-                # Skip descriptive/financial solution data tables from MCQ answer key parsing
                 continue
 
             raw_rows = []
@@ -498,7 +566,6 @@ class AnswerParser:
                     if not opt_content:
                         for cell in cells:
                             clean_cell = re.sub(r'<br\s*/?>', '', cell).strip()
-                            # Strip asterisks here as well for consistency
                             clean_c = clean_cell.replace("*", "").strip()
                             if clean_cell and not q_num_pat.match(clean_c):
                                 opt_content = cell
@@ -548,14 +615,8 @@ class AnswerParser:
 
             save_aggregated()
 
-            # Require at least 1 explicit option cell match to recognize the block as an MCQ table.
-            # This is safe because:
-            # 1. The method only processes tables inside MCQ_ANSWER sections.
-            # 2. It requires at least one option prefix (e.g. "Option (a)", "(c)") in the cells.
-            # 3. Descriptive/financial tables (e.g. Balance Sheet) contain 0 option prefixes,
-            #    giving them explicit_opt_count = 0, so they are correctly ignored.
             if explicit_opt_count >= 1:
-                    mcq_answers.extend(table_answers)
+                mcq_answers.extend(table_answers)
 
         return mcq_answers
 

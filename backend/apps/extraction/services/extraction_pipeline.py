@@ -25,7 +25,7 @@ from .instruction_detector import InstructionDetector
 
 from .extraction_patterns import get_default_parser_config
 from .hierarchy_utils import build_hierarchy_key
-from .exceptions import DuplicateHierarchyError
+from .exceptions import DuplicateHierarchyError, ExtractionError
 from .constants import UNMATCHED_RATIO_THRESHOLD, UNMATCHED_COUNT_THRESHOLD
 
 # Initialize logger
@@ -113,7 +113,7 @@ def extract_document(document: Document, temp_file_path: str = None):
             if m:
                 q_start_relative = m.start()
                 break
-        enable_semantic = True
+        enable_semantic = (q_start_relative is None)
         if q_start_relative is not None:
             logger.info("Optimizing question region start boundary: relative_offset=%d", q_start_relative)
             q_part = q_part[q_start_relative:]
@@ -222,38 +222,24 @@ def extract_document(document: Document, temp_file_path: str = None):
         # Build lookup for matched answers based on canonical path tuple
         answer_lookup = {tuple(q.hierarchy_path): a for q, a in match_res.matches}
 
-        # Duplicate detection/logging before persistence
+        # Duplicate detection/deduplication before persistence
         seen_questions = {}
-        # Cache uses id(pq) because the same ParsedQuestion instance is reused throughout the pipeline.
-        # This avoids recomputing hierarchy_key without relying on hierarchy content as a lookup key.
         hierarchy_keys = {}
         for pq in parsed_questions:
             h_key = build_hierarchy_key(pq.hierarchy_path)
             if h_key in seen_questions:
                 prev_q = seen_questions[h_key]
-                raise DuplicateHierarchyError(
-                    f"Duplicate hierarchy key detected\n\n"
-                    f"Document:\n"
-                    f"{document.title} (ID: {document.document_id})\n\n"
-                    f"Hierarchy key:\n"
-                    f"{h_key}\n\n"
-                    f"First\n"
-                    f"-----\n"
-                    f"Raw path:\n"
-                    f"{prev_q.hierarchy_path}\n\n"
-                    f"Page:\n"
-                    f"{prev_q.start_page}\n\n"
-                    f"Preview:\n"
-                    f"'{prev_q.text[:80]}...'\n\n"
-                    f"Second\n"
-                    f"------\n"
-                    f"Raw path:\n"
-                    f"{pq.hierarchy_path}\n\n"
-                    f"Page:\n"
-                    f"{pq.start_page}\n\n"
-                    f"Preview:\n"
-                    f"'{pq.text[:80]}...'"
+                suffix = 2
+                dedup_key = f"{h_key}.{suffix}"
+                while dedup_key in seen_questions:
+                    suffix += 1
+                    dedup_key = f"{h_key}.{suffix}"
+                logger.warning(
+                    "Duplicate hierarchy key '%s' detected between p.%d and p.%d; deduplicating to '%s'",
+                    h_key, prev_q.start_page, pq.start_page, dedup_key
                 )
+                pq.hierarchy_path = pq.hierarchy_path + [str(suffix)]
+                h_key = dedup_key
             seen_questions[h_key] = pq
             hierarchy_keys[id(pq)] = h_key
 
@@ -391,6 +377,13 @@ def extract_document(document: Document, temp_file_path: str = None):
                         if not q.chapter:
                             q.chapter = grp_ch
                             q.save(update_fields=['chapter'])
+
+        # Guard against zero-question empty extractions
+        if not parsed_questions:
+            raise ExtractionError(
+                f"Zero questions extracted from document '{document.title}' (ID: {document.document_id}). "
+                f"Total potential matches evaluated: {q_parser.diagnostics.total_matches}."
+            )
 
         # 8. Finalize Success
         document.extraction_status = Document.ExtractionStatus.COMPLETED

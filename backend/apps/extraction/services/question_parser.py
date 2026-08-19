@@ -202,6 +202,9 @@ class QuestionParser:
                 old_stack = list(hierarchy_stack)
                 # Update stack to get the full hierarchical path for this question
                 HierarchyUtils.update_hierarchy_stack(hierarchy_stack, path)
+                if not hierarchy_stack:
+                    i += 1
+                    continue
                 logger.debug(
                     "Hierarchy stack transition | old_stack=%s | new_stack=%s | header=%s | start_offset=%d",
                     old_stack, hierarchy_stack, normalized_header, match.start()

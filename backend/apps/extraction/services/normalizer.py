@@ -136,13 +136,19 @@ class Normalizer:
 
         path = []
 
-        # Step 1: Leading main number
-        main_match = re.search(r'(\d+)', header)
-        if main_match:
-            path.append(main_match.group(1))
-            current_pos = main_match.end()
+        # Step 1: Check for decimal case-study style header (e.g. "1.1", "1.2", "2.1")
+        decimal_match = re.match(r'^([1-9])\.([1-9]|1[0-5])\b', header)
+        if decimal_match:
+            path.extend([decimal_match.group(1), decimal_match.group(2)])
+            current_pos = decimal_match.end()
         else:
-            current_pos = 0
+            # Leading main number
+            main_match = re.search(r'(\d+)', header)
+            if main_match:
+                path.append(main_match.group(1))
+                current_pos = main_match.end()
+            else:
+                current_pos = 0
 
         # Step 2: Sequential bracketed sub-labels after the main number
         label_regex = re.compile(r'\(([^)]+)\)')

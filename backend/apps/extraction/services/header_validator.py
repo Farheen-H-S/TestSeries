@@ -111,8 +111,8 @@ class HeaderValidator:
                     return ValidationResult(True)
                 return ValidationResult(False, "invalid starting numbering sequence")
             if candidate_level == "roman":
-                # Allow starting with top-level un-bracketed Roman numerals (I., II., III.), reject bracketed "(i)"
-                if raw_header and not raw_header.strip().startswith('('):
+                # Allow starting with top-level uppercase Roman numerals (I., II., III.), reject bracketed "(i)" and lowercase "i."
+                if raw_header and re.match(r'^[IVXLCDM]+[.)]', raw_header.strip()):
                     return ValidationResult(True)
                 return ValidationResult(False, "invalid starting numbering sequence")
             return ValidationResult(False, "invalid starting numbering sequence")

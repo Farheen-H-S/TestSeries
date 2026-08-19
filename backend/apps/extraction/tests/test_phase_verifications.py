@@ -157,3 +157,51 @@ class Phase4VerificationTests(TestCase):
         mapped = map_question_to_chapter(q_text, prepared)
 
         self.assertEqual(mapped, ch1, "Topic title matching must take precedence over generic Chapter 2 cross-reference")
+
+    def test_e2e_html_mcq_table_extraction(self):
+        """Verify that HTML structured MCQ tables are parsed into MCQ ParsedAnswers."""
+        from apps.extraction.services.answer_parser import AnswerParser
+        from apps.extraction.services.extraction_patterns import get_default_parser_config
+
+        config = get_default_parser_config()
+        parser = AnswerParser(config)
+
+        html_text = (
+            "Suggested Answers\n"
+            "Answers to Multiple Choice Questions\n"
+            "[STRUCTURED_START]\n"
+            "<table class=\"structured-table\"><thead><tr><th>Question No.</th><th>Answer</th></tr></thead>"
+            "<tbody><tr><td>1.</td><td>(b)</td></tr><tr><td>2.</td><td>(c)</td></tr><tr><td>3.</td><td>(a)</td></tr></tbody></table>\n"
+            "[STRUCTURED_END]\n"
+            "Question 4\nDescriptive answer details."
+        )
+
+        answers = parser.parse(html_text, [(0, 1)])
+        paths = [a.hierarchy_path for a in answers]
+        self.assertIn(["1"], paths)
+        self.assertIn(["2"], paths)
+        self.assertIn(["3"], paths)
+        self.assertIn(["4"], paths)
+
+        # Check MCQ answers text
+        a1 = next(a for a in answers if a.hierarchy_path == ["1"])
+        self.assertEqual(a1.text, "(b)")
+
+    def test_e2e_decimal_hierarchy_normalization(self):
+        """Verify that decimal Case Study questions (e.g. 1.1, 1.2, 2.1) decompose into ['1', '1'], ['1', '2']."""
+        from apps.extraction.services.normalizer import Normalizer
+        from apps.extraction.services.question_parser import QuestionParser
+        from apps.extraction.services.extraction_patterns import get_default_parser_config
+
+        norm = Normalizer()
+        self.assertEqual(norm.normalize_header("1.1"), ["1", "1"])
+        self.assertEqual(norm.normalize_header("1.2"), ["1", "2"])
+        self.assertEqual(norm.normalize_header("2.5"), ["2", "5"])
+
+        config = get_default_parser_config()
+        q_parser = QuestionParser(config)
+        doc_text = "QUESTIONS\n1.1\nCase question 1 text\n(a) Option A\n(b) Option B\n1.2\nCase question 2 text\n(a) Opt A\n(b) Opt B\n"
+        qs = q_parser.parse(doc_text, [(0, 1)], enable_semantic_validation=False)
+        q_paths = [q.hierarchy_path for q in qs]
+        self.assertIn(["1", "1"], q_paths)
+        self.assertIn(["1", "2"], q_paths)

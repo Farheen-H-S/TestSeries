@@ -64,8 +64,9 @@ MAIN_ANSWER_SECTION_PATTERNS = [
 
 
 # Question Header Patterns
-# Matches: Question 1, Q1, Q.1, 1., 1(a), (a), (i)
+# Matches: Question 1, Q1, Q.1, 1., 1.1, 1(a), (a), (i)
 QUESTION_HEADER_PATTERNS = [
+    r"^[ \t]*([1-9])\.([1-9]|1[0-5])[ \t]*$",                                 # 1.1, 1.2, 2.1 (Case study decimal questions 1.1 to 9.15)
     r"(?i)^[ \t]*Question\s+(?:No\.\s*)?(\d+)(?:[ \t]*\([^)]+\))*",          # Question 1, Question 1(a), Question 1(a)(i)
     r"(?i)^[ \t]*Q\.?\s?(\d+)(?:[ \t]*\([^)]+\))*",                          # Q1, Q. 1, Q1(a)
     r"^[ \t]*(\d{1,2})[.)](?!\d)(?:[ \t]*\([^)]+\))*",                       # 1. or 1) or 1.(a) (max 99)
@@ -76,8 +77,9 @@ QUESTION_HEADER_PATTERNS = [
 ]
 
 # Answer Header Patterns
-# Matches: Answer to Question 1, Ans. 1, Solution 1, or just 1. in Answer section
+# Matches: Answer to Question 1, Ans. 1, Solution 1, 1.1, or just 1. in Answer section
 ANSWER_HEADER_PATTERNS = [
+    r"^[ \t]*([1-9])\.([1-9]|1[0-5])[ \t]*$",                                         # 1.1, 1.2, 2.1
     r"(?i)^\s*Answer\s+(?:to\s+)?(?:Question\s+)?(?:No\.\s*)?(\d+)(?:\(([a-z])\))?", # Answer to Question 1(a)
     r"(?i)^\s*Ans\.?\s*(\d+)(?:\(([a-z])\))?",                                       # Ans. 1(a)
     r"(?i)^\s*Solution\s*(\d+)(?:\(([a-z])\))?",                                     # Solution 1(a)
