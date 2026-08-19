@@ -1,5 +1,4 @@
 import re
-import bisect
 import logging
 from typing import List, Optional, Dict, Any, Tuple
 from .types import ParsedQuestion, QuestionLevel, ParserConfig, ParsingDiagnostics, QuestionParseResult, ParsingContext

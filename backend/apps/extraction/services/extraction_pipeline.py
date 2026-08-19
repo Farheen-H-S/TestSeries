@@ -8,12 +8,12 @@ from apps.extraction.models import ExtractionLog
 from apps.papers.models import Question
 from .pdf_loader import load_pdf
 from .text_extractor import extract_text
-from .html_formatter import text_to_html, format_question_content, format_answer_content, clean_stored_html_tables, clean_metadata_text
+from .html_formatter import format_question_content, format_answer_content, clean_stored_html_tables, clean_metadata_text
 from .chapter_mapper import map_question_to_chapter, get_prepared_chapters
 
 
 # Phase 3D Services
-from .types import LayoutType, QuestionLevel, ParsingContext
+from .types import LayoutType, ParsingContext
 from .layout_detector import DocumentLayoutDetector
 from .section_splitter import SectionSplitter
 from .question_parser import QuestionParser
@@ -25,7 +25,7 @@ from .instruction_detector import InstructionDetector
 
 from .extraction_patterns import get_default_parser_config
 from .hierarchy_utils import build_hierarchy_key
-from .exceptions import DuplicateHierarchyError, ExtractionError
+from .exceptions import ExtractionError
 from .constants import UNMATCHED_RATIO_THRESHOLD, UNMATCHED_COUNT_THRESHOLD
 
 # Initialize logger
@@ -242,6 +242,12 @@ def extract_document(document: Document, temp_file_path: str = None):
                 h_key = dedup_key
             seen_questions[h_key] = pq
             hierarchy_keys[id(pq)] = h_key
+        # Guard against zero-question empty extractions
+        if not parsed_questions:
+            raise ExtractionError(
+                f"Zero questions extracted from document '{document.title}' (ID: {document.document_id}). "
+                f"Total potential matches evaluated: {q_parser.diagnostics.total_matches}."
+            )
 
         # 7. Persistence inside a transaction
         with transaction.atomic():
@@ -377,13 +383,6 @@ def extract_document(document: Document, temp_file_path: str = None):
                         if not q.chapter:
                             q.chapter = grp_ch
                             q.save(update_fields=['chapter'])
-
-        # Guard against zero-question empty extractions
-        if not parsed_questions:
-            raise ExtractionError(
-                f"Zero questions extracted from document '{document.title}' (ID: {document.document_id}). "
-                f"Total potential matches evaluated: {q_parser.diagnostics.total_matches}."
-            )
 
         # 8. Finalize Success
         document.extraction_status = Document.ExtractionStatus.COMPLETED
