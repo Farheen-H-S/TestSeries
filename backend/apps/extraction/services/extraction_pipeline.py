@@ -128,7 +128,7 @@ def extract_document(document: Document, temp_file_path: str = None):
         if layout_res.layout != LayoutType.UNKNOWN:
             parsed_answers = a_parser.parse(a_part, page_offsets, base_offset=a_base_offset, context=context)
             if parsed_answers:
-                context.valid_question_paths = {tuple(a.hierarchy_path) for a in parsed_answers if tuple(a.hierarchy_path)[0].isdigit()}
+                context.valid_question_paths = {tuple(a.hierarchy_path) for a in parsed_answers if a.hierarchy_path}
 
         parsed_questions = q_parser.parse(q_part, page_offsets, base_offset=q_base_offset, enable_semantic_validation=enable_semantic, context=context)
         

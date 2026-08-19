@@ -469,6 +469,32 @@ class AnswerParser:
                 table_answers = []
                 explicit_opt_count = 0
 
+                # Check for multi-item embedded cells (e.g. ITL table where Q1..Q9 are listed in one cell)
+                for row in rows:
+                    for c_idx, cell in enumerate(row):
+                        q_nums = re.findall(r"\b(\d{1,2})\.", cell)
+                        if len(q_nums) >= 2:
+                            for opt_idx, opt_cell in enumerate(row):
+                                if opt_idx == c_idx: continue
+                                opt_matches = list(re.finditer(r"\(([a-eA-E])\)", opt_cell))
+                                if len(opt_matches) == len(q_nums):
+                                    start_offset = base_offset + table_start
+                                    start_page = HierarchyUtils.get_page_num_fast(start_offset, page_offsets, page_keys)
+                                    for qn, opt_m in zip(q_nums, opt_matches):
+                                        table_answers.append(ParsedAnswer(
+                                            hierarchy_path=[qn],
+                                            raw_header=f"\n{qn}.",
+                                            text=f"({opt_m.group(1)})",
+                                            start_offset=start_offset,
+                                            end_offset=start_offset + len(table_content),
+                                            start_page=start_page,
+                                            end_page=start_page,
+                                            section_type=AnswerSectionType.MCQ_ANSWER,
+                                            source=AnswerSource.MCQ_TABLE
+                                        ))
+                                        explicit_opt_count += 1
+                                    break
+
                 for row in rows:
                     col_idx = 0
                     while col_idx < len(row):

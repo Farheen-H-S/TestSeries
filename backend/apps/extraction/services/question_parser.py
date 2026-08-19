@@ -199,6 +199,27 @@ class QuestionParser:
             # 2. Structural/Hierarchy Validation
             result = self.validator.is_valid(match, path, hierarchy_stack, normalized_text)
             if result.is_valid:
+                # 2.1 Answer-Key-Guided Sub-Question Filtering
+                if context and context.valid_question_paths:
+                    temp_stack = list(hierarchy_stack)
+                    HierarchyUtils.update_hierarchy_stack(temp_stack, path)
+                    temp_tuple = tuple(temp_stack)
+                    if len(temp_tuple) >= 2:
+                        has_exact_or_child = any(
+                            vp == temp_tuple or (len(vp) > len(temp_tuple) and vp[:len(temp_tuple)] == temp_tuple)
+                            for vp in context.valid_question_paths
+                        )
+                        if not has_exact_or_child:
+                            parent_tuple = temp_tuple[:-1]
+                            if parent_tuple in context.valid_question_paths or (temp_tuple[0],) in context.valid_question_paths:
+                                raw_header = text[match.start():match.end()]
+                                diagnostics.rejected_headers.append({
+                                    "header": raw_header,
+                                    "reason": "sub-question not present in answer key (unified parent question)"
+                                })
+                                i += 1
+                                continue
+
                 old_stack = list(hierarchy_stack)
                 # Update stack to get the full hierarchical path for this question
                 HierarchyUtils.update_hierarchy_stack(hierarchy_stack, path)
