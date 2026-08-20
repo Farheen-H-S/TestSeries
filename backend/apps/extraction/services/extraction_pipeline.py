@@ -1,4 +1,5 @@
 import os
+import re
 import logging
 import time
 from typing import List, Dict, Any, Tuple, Optional
@@ -219,8 +220,8 @@ def extract_document(document: Document, temp_file_path: str = None):
         classifier = QuestionClassifier() # Uses CLASSIFICATION_RULES internally
         instr_det = InstructionDetector(config.instruction_priority)
         
-        # Build lookup for matched answers based on canonical path tuple
-        answer_lookup = {tuple(q.hierarchy_path): a for q, a in match_res.matches}
+        # Build lookup for all parsed answers
+        all_answers_lookup = {tuple(a.hierarchy_path): a for a in parsed_answers if a.hierarchy_path}
 
         # Duplicate detection/deduplication before persistence
         seen_questions = {}
@@ -329,9 +330,9 @@ def extract_document(document: Document, temp_file_path: str = None):
                 
                 for sub in pqs:
                     h_tuple = tuple(sub.hierarchy_path)
-                    if h_tuple in answer_lookup and h_tuple not in seen_ans_keys:
+                    if h_tuple in all_answers_lookup and h_tuple not in seen_ans_keys:
                         seen_ans_keys.add(h_tuple)
-                        ans = answer_lookup[h_tuple]
+                        ans = all_answers_lookup[h_tuple]
                         if ans.text and ans.text.strip():
                             sub_label = ".".join(sub.hierarchy_path[1:]) if len(sub.hierarchy_path) > 1 else None
                             if sub_label and sub.raw_header and not ans.text.strip().startswith(sub.raw_header.strip()):
@@ -341,32 +342,41 @@ def extract_document(document: Document, temp_file_path: str = None):
                         if ans.working_notes:
                             ans_working_notes.extend(ans.working_notes)
                             
-                # Also check any child answers in answer_lookup (e.g. answer key has (a), (b) under a leaf question)
-                for p, ans in answer_lookup.items():
-                    if p and p[0] == pqs[0].hierarchy_path[0] and p not in seen_ans_keys:
+                # Also check any child answers under this primary question key (e.g. answer key has (a), (b) under a leaf question)
+                for p, ans in all_answers_lookup.items():
+                    if p and p[0] == q_key and p not in seen_ans_keys:
                         seen_ans_keys.add(p)
                         if ans.text and ans.text.strip():
                             ans_text_parts.append(ans.text.strip())
                         if ans.working_notes:
                             ans_working_notes.extend(ans.working_notes)
                             
-                ans_text = "\n\n".join(ans_text_parts)
-                if not ans_text.strip() and ans_working_notes:
-                    wn_parts = []
-                    for wn in ans_working_notes:
-                        if isinstance(wn, dict):
-                            title = wn.get("title", "")
-                            content = wn.get("content", "")
-                            wn_parts.append(f"{title}\n{content}".strip())
-                        elif hasattr(wn, "content"):
-                            title = getattr(wn, "title", "") or ""
-                            content = getattr(wn, "content", "") or ""
-                            wn_parts.append(f"{title}\n{content}".strip())
-                        elif isinstance(wn, str):
-                            wn_parts.append(wn.strip())
-                    ans_text = "\n\n".join(filter(None, wn_parts))
-                    
-                clean_ans_text = clean_metadata_text(ans_text, subject_name=subj_name, prepared_chapters=prepared_chapters)
+                wn_parts = []
+                for wn in ans_working_notes:
+                    if isinstance(wn, dict):
+                        title = wn.get("title", "")
+                        content = wn.get("content", "")
+                        wn_parts.append(f"{title}\n{content}".strip() if title else content.strip())
+                    elif hasattr(wn, "content"):
+                        title = getattr(wn, "title", "") or ""
+                        content = getattr(wn, "content", "") or ""
+                        wn_parts.append(f"{title}\n{content}".strip() if title else content.strip())
+                    elif isinstance(wn, str):
+                        wn_parts.append(wn.strip())
+                wn_text = "\n\n".join(filter(None, wn_parts))
+                main_ans_text = "\n\n".join(filter(None, ans_text_parts))
+                
+                # Combine Working Notes and main answer text together so no solution content is lost
+                full_ans_text = "\n\n".join(filter(None, [wn_text, main_ans_text]))
+
+                # Rupee normalization: map backticks before digits or currency amounts to ₹
+                clean_q_raw = re.sub(r'[`\u0060](?=\s*[\d,])', '₹ ', consolidated_q_text)
+                clean_ans_raw = re.sub(r'[`\u0060](?=\s*[\d,])', '₹ ', full_ans_text)
+                
+                clean_q_text = clean_metadata_text(clean_q_raw, subject_name=subj_name, prepared_chapters=prepared_chapters)
+                clean_ans_text = clean_metadata_text(clean_ans_raw, subject_name=subj_name, prepared_chapters=prepared_chapters)
+                
+                q_content = format_question_content(clean_q_text, shared_context=consolidated_shared_ctx)
                 a_content = format_answer_content(clean_ans_text, working_notes=ans_working_notes) if (clean_ans_text or ans_working_notes) else ""
 
                 # 7.4 Marks Extraction
@@ -402,7 +412,7 @@ def extract_document(document: Document, temp_file_path: str = None):
                     question_number=q_key,
                     sub_question_label=None,
                     hierarchy_key=build_hierarchy_key([q_key]),
-                    question_text=consolidated_q_text,
+                    question_text=clean_q_text,
                     question_content=clean_q,
                     answer_text=clean_ans_text,
                     answer_content=clean_a,
