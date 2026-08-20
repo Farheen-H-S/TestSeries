@@ -205,8 +205,7 @@ const Review = () => {
   const stats = useMemo(() => {
     const total = reviewableQuestions.length;
     const withAnswers = reviewableQuestions.filter(q => !isAnswerMissing(q.answer_text)).length;
-    const parentCount = reviewableQuestions.filter(q => parentIds.has(q.question_id)).length;
-    const withoutAnswers = Math.max(0, total - withAnswers - parentCount);
+    const withoutAnswers = reviewableQuestions.filter(q => !parentIds.has(q.question_id) && isAnswerMissing(q.answer_text)).length;
     return { total, withAnswers, withoutAnswers };
   }, [reviewableQuestions, parentIds]);
 
