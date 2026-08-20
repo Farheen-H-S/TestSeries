@@ -832,21 +832,22 @@ class _HTMLRenderer:
 
         complex_attr = ' data-is-complex="true"' if is_complex else ''
         container_attrs = f'{complex_attr}{crop_attr}{provenance_attr}'
+        # ── Complex Visual Object / Source PDF Region Presentation ──
+        if is_complex and regions:
+            img_blocks = []
+            for r in regions:
+                cp = r.get("crop_path")
+                if cp:
+                    img_src = cp.replace("\\", "/").lstrip('/')
+                    img_blocks.append(
+                        f'  <div class="table-visual-region" style="text-align:center; margin: 0.5em 0;">'
+                        f'<img src="/{img_src}" width="500" />'
+                        f'</div>'
+                    )
+            if img_blocks:
+                return f'<div class="table-container"{container_attrs}>\n' + "\n".join(img_blocks) + '\n</div>'
 
         if not table.rows:
-            if is_complex and regions:
-                img_blocks = []
-                for r in regions:
-                    cp = r.get("crop_path")
-                    if cp:
-                        img_src = cp.replace("\\", "/").lstrip('/')
-                        img_blocks.append(
-                            f'  <div class="table-visual-region" style="text-align:center; margin: 0.5em 0;">'
-                            f'<img src="/{img_src}" width="500" />'
-                            f'</div>'
-                        )
-                if img_blocks:
-                    return f'<div class="table-container"{container_attrs}>\n' + "\n".join(img_blocks) + '\n</div>'
             return ""
 
         num_cols = max(len(row.cells) for row in table.rows) if table.rows else 0
@@ -1049,7 +1050,7 @@ class TableProcessor:
                     re.search(r'(?i)\bOption\b|\bAns\.?\b|\bChoice\b|\bKey\b|^\s*\([a-eA-E]\)', str(cell or ''))
                     for row in raw_grid for cell in row
                 )
-                is_complex = False
+                is_complex = not is_mcq_table
                 
                 crop_path_rel = None
                 if t.bbox and hasattr(page, 'get_pixmap'):
