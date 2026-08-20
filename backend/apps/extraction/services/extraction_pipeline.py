@@ -249,12 +249,16 @@ def extract_document(document: Document, temp_file_path: str = None):
                 f"Total potential matches evaluated: {q_parser.diagnostics.total_matches}."
             )
 
-        # Precompute question parent paths to know which questions are leaf questions
-        parent_q_paths = set()
+        # Group parsed_questions by primary question key
+        grouped_questions: Dict[str, List[ParsedQuestion]] = {}
         for pq in parsed_questions:
-            if len(pq.hierarchy_path) > 1:
-                for depth in range(1, len(pq.hierarchy_path)):
-                    parent_q_paths.add(tuple(pq.hierarchy_path[:depth]))
+            if not pq.hierarchy_path:
+                continue
+            if len(pq.hierarchy_path) >= 2 and pq.hierarchy_path[0].isdigit() and pq.hierarchy_path[1].isdigit():
+                key = f"{pq.hierarchy_path[0]}.{pq.hierarchy_path[1]}"
+            else:
+                key = pq.hierarchy_path[0]
+            grouped_questions.setdefault(key, []).append(pq)
 
         # 7. Persistence inside a transaction
         with transaction.atomic():
@@ -262,25 +266,24 @@ def extract_document(document: Document, temp_file_path: str = None):
             document.total_pages = len(pages_data)
             document.save(update_fields=["total_pages"])
             
-            # NOTE (FUTURE SCOPE): Automatic chapter mapping currently runs for all documents
-            # processed by the extraction pipeline. If a future release restricts automatic chapter
-            # mapping strictly to RTP document uploads, check: if getattr(document, 'document_type', None) == 'RTP':
             prepared_chapters = get_prepared_chapters(document.subject)
-            
-            # hierarchy_map: tuple(path) -> Question object
-            hierarchy_map = {}
+            subj_name = document.subject.name if (document and document.subject) else None
             active_chapter = None
 
-            for idx, pq in enumerate(parsed_questions):
-                # 7.1 Enrichment
+            for idx, (q_key, pqs) in enumerate(grouped_questions.items()):
+                first_pq = pqs[0]
+                last_pq = pqs[-1]
+
+                # 7.1 Sequential Chapter Mapping
                 candidate_header_text = ""
                 if idx > 0:
-                    prev_pq = parsed_questions[idx-1]
-                    gap_text = q_part[prev_pq.end_offset:pq.start_offset].strip()
-                    trailing_prev = prev_pq.text[-250:] if prev_pq.text else ""
+                    prev_pqs = list(grouped_questions.values())[idx-1]
+                    prev_last_pq = prev_pqs[-1]
+                    gap_text = q_part[prev_last_pq.end_offset:first_pq.start_offset].strip()
+                    trailing_prev = prev_last_pq.text[-250:] if prev_last_pq.text else ""
                     candidate_header_text = gap_text + "\n" + trailing_prev
                 else:
-                    candidate_header_text = q_part[max(0, pq.start_offset - 500):pq.start_offset].strip()
+                    candidate_header_text = q_part[max(0, first_pq.start_offset - 500):first_pq.start_offset].strip()
 
                 if candidate_header_text:
                     temp_chapter = None
@@ -298,55 +301,55 @@ def extract_document(document: Document, temp_file_path: str = None):
 
                 matched_chapter = active_chapter
 
-                marks = None
-                try:
-                    # Provide larger context to marks extractor
-                    marks = marks_ext.extract(pq.text)
-                except Exception:
-                    logger.exception("Marks extraction failed for %s", pq.raw_header)
+                # 7.2 Consolidate Question Text and HTML Content
+                q_text_parts = []
+                shared_contexts = []
                 
-                q_type = "UNIDENTIFIED"
-                try:
-                    q_type = classifier.classify(pq.text)
-                except Exception:
-                    logger.exception("Classification failed for %s", pq.raw_header)
-                
-                # Instruction detection
-                instr = None
-                try:
-                    instr = instr_det.detect(pq.text)
-                except Exception:
-                    logger.exception("Instruction detection failed for %s", pq.raw_header)
-                
-                # Answer Matching
-                h_tuple = tuple(pq.hierarchy_path)
-                is_leaf_q = h_tuple not in parent_q_paths
-                ans = answer_lookup.get(h_tuple)
-                
-                # If question is a leaf question in the paper, rollup child answers from the answer key
-                child_answers = []
-                if is_leaf_q:
-                    child_answers = [
-                        a for p, a in answer_lookup.items()
-                        if len(p) > len(h_tuple) and p[:len(h_tuple)] == h_tuple
-                    ]
-                    child_answers.sort(key=lambda a: a.start_offset)
-                    
+                for sub in pqs:
+                    sub_label = ".".join(sub.hierarchy_path[1:]) if len(sub.hierarchy_path) > 1 else None
+                    clean_text = clean_metadata_text(sub.text, subject_name=subj_name, prepared_chapters=prepared_chapters)
+                    if sub.shared_context:
+                        clean_ctx = clean_metadata_text(sub.shared_context, subject_name=subj_name, prepared_chapters=prepared_chapters)
+                        if clean_ctx and clean_ctx not in shared_contexts:
+                            shared_contexts.append(clean_ctx)
+                            
+                    if sub_label and sub.raw_header:
+                        q_text_parts.append(f"{sub.raw_header.strip()} {clean_text}".strip())
+                    else:
+                        q_text_parts.append(clean_text)
+                        
+                consolidated_q_text = "\n\n".join(filter(None, q_text_parts))
+                consolidated_shared_ctx = "\n\n".join(shared_contexts) if shared_contexts else None
+                q_content = format_question_content(consolidated_q_text, shared_context=consolidated_shared_ctx)
+
+                # 7.3 Consolidate Answer Text and HTML Content
                 ans_text_parts = []
                 ans_working_notes = []
+                seen_ans_keys = set()
                 
-                if ans:
-                    if ans.text and ans.text.strip():
-                        ans_text_parts.append(ans.text.strip())
-                    if ans.working_notes:
-                        ans_working_notes.extend(ans.working_notes)
-                        
-                for ca in child_answers:
-                    if ca.text and ca.text.strip():
-                        ans_text_parts.append(ca.text.strip())
-                    if ca.working_notes:
-                        ans_working_notes.extend(ca.working_notes)
-                        
+                for sub in pqs:
+                    h_tuple = tuple(sub.hierarchy_path)
+                    if h_tuple in answer_lookup and h_tuple not in seen_ans_keys:
+                        seen_ans_keys.add(h_tuple)
+                        ans = answer_lookup[h_tuple]
+                        if ans.text and ans.text.strip():
+                            sub_label = ".".join(sub.hierarchy_path[1:]) if len(sub.hierarchy_path) > 1 else None
+                            if sub_label and sub.raw_header and not ans.text.strip().startswith(sub.raw_header.strip()):
+                                ans_text_parts.append(f"{sub.raw_header.strip()} {ans.text.strip()}")
+                            else:
+                                ans_text_parts.append(ans.text.strip())
+                        if ans.working_notes:
+                            ans_working_notes.extend(ans.working_notes)
+                            
+                # Also check any child answers in answer_lookup (e.g. answer key has (a), (b) under a leaf question)
+                for p, ans in answer_lookup.items():
+                    if p and p[0] == pqs[0].hierarchy_path[0] and p not in seen_ans_keys:
+                        seen_ans_keys.add(p)
+                        if ans.text and ans.text.strip():
+                            ans_text_parts.append(ans.text.strip())
+                        if ans.working_notes:
+                            ans_working_notes.extend(ans.working_notes)
+                            
                 ans_text = "\n\n".join(ans_text_parts)
                 if not ans_text.strip() and ans_working_notes:
                     wn_parts = []
@@ -362,74 +365,52 @@ def extract_document(document: Document, temp_file_path: str = None):
                         elif isinstance(wn, str):
                             wn_parts.append(wn.strip())
                     ans_text = "\n\n".join(filter(None, wn_parts))
-
-                subj_name = document.subject.name if (document and document.subject) else None
-                clean_q_text = clean_metadata_text(pq.text, subject_name=subj_name, prepared_chapters=prepared_chapters)
-                clean_shared_ctx = clean_metadata_text(pq.shared_context, subject_name=subj_name, prepared_chapters=prepared_chapters) if pq.shared_context else None
+                    
                 clean_ans_text = clean_metadata_text(ans_text, subject_name=subj_name, prepared_chapters=prepared_chapters)
-                
-                # HTML Formatting
-                q_content = format_question_content(clean_q_text, shared_context=clean_shared_ctx)
                 a_content = format_answer_content(clean_ans_text, working_notes=ans_working_notes) if (clean_ans_text or ans_working_notes) else ""
 
+                # 7.4 Marks Extraction
+                marks = None
+                sub_marks = []
+                for sub in pqs:
+                    m = marks_ext.extract(sub.text)
+                    if m:
+                        sub_marks.append(m)
+                if sub_marks:
+                    marks = sum(sub_marks) if len(sub_marks) > 1 else sub_marks[0]
 
-                # 7.2 Resolve Parent deterministically
-                parent_q = None
-                if len(pq.hierarchy_path) > 1:
-                    parent_path = tuple(pq.hierarchy_path[:-1])
-                    parent_q = hierarchy_map.get(parent_path)
+                # 7.5 Classification & Instruction
+                q_type = "UNIDENTIFIED"
+                try:
+                    q_type = classifier.classify(consolidated_q_text)
+                except Exception:
+                    logger.exception("Classification failed for %s", q_key)
 
-                if not matched_chapter and parent_q and parent_q.chapter:
-                    matched_chapter = parent_q.chapter
-
-                # 7.3 Create Record
-                sub_label_raw = ".".join(pq.hierarchy_path[1:]) if len(pq.hierarchy_path) > 1 else None
-                sub_question_label = None
-                if sub_label_raw:
-                    sub_question_label = sub_label_raw[:50]
-                    if len(sub_label_raw) > 50:
-                        logger.warning(
-                            "Sub-question label truncated from '%s' to '%s' for question %s (Document ID: %d)",
-                            sub_label_raw, sub_question_label, pq.hierarchy_path[0], document.document_id
-                        )
+                instr = None
+                try:
+                    instr = instr_det.detect(consolidated_q_text)
+                except Exception:
+                    logger.exception("Instruction detection failed for %s", q_key)
 
                 clean_q = clean_stored_html_tables(q_content) if '<table' in q_content else q_content
                 clean_a = clean_stored_html_tables(a_content) if '<table' in a_content else a_content
 
-                q_obj = Question.objects.create(
+                Question.objects.create(
                     document=document,
-                    parent_question=parent_q,
+                    parent_question=None,
                     chapter=matched_chapter,
-                    question_number=pq.hierarchy_path[0],
-                    sub_question_label=sub_question_label,
-                    hierarchy_key=hierarchy_keys[id(pq)],
-                    question_text=clean_q_text,
+                    question_number=q_key,
+                    sub_question_label=None,
+                    hierarchy_key=build_hierarchy_key([q_key]),
+                    question_text=consolidated_q_text,
                     question_content=clean_q,
                     answer_text=clean_ans_text,
                     answer_content=clean_a,
                     question_type=q_type,
                     instruction_type=instr,
                     marks=marks,
-                    source_page=pq.start_page
+                    source_page=first_pq.start_page
                 )
-                
-                # Keep track for hierarchy resolution
-                hierarchy_map[tuple(pq.hierarchy_path)] = q_obj
-
-            # Inherit chapter across questions in the same shared_context block
-            context_groups = {}
-            for h_path, q_obj in hierarchy_map.items():
-                if q_obj.question_content and 'shared-context' in q_obj.question_content:
-                    ctx_key = q_obj.question_content.split('shared-context', 1)[1][:200]
-                    context_groups.setdefault(ctx_key, []).append(q_obj)
-
-            for group_qs in context_groups.values():
-                grp_ch = next((q.chapter for q in group_qs if q.chapter), None)
-                if grp_ch:
-                    for q in group_qs:
-                        if not q.chapter:
-                            q.chapter = grp_ch
-                            q.save(update_fields=['chapter'])
 
         # 8. Finalize Success
         document.extraction_status = Document.ExtractionStatus.COMPLETED
