@@ -385,9 +385,9 @@ class QuestionParser:
                 curr_match = validated_matches[i][0]
                 gap_raw = text[prev_match.end():curr_match.start()]
                 
-                # Check for shared context headers in gap_raw
+                # Check for shared context headers in gap_raw (explicit Case Scenarios or Question ranges only)
                 ctx_match = re.search(
-                    r"(?im)^[ \t]*(?:Case\s+(?:Scenario|Study)|Scenario|Read\s+the\s+following|Based\b|The\s+following\b)",
+                    r"(?im)^[ \t]*(?:Case\s+(?:Scenario|Study)\b|(?:(?:Read|Based\s+on|The)\s+.*?\b)?Questions?\s+\d+\s+to\s+\d+)",
                     gap_raw
                 )
                 if ctx_match:
@@ -403,19 +403,17 @@ class QuestionParser:
                         if range_match:
                             current_context = cleaned_context
                             max_q_num = int(range_match.group(1))
-                        elif re.search(r"(?i)Case\s+(?:Scenario|Study)|Scenario", raw_context):
+                        elif re.search(r"(?i)\bCase\s+(?:Scenario|Study)\b", raw_context):
                             current_context = cleaned_context
                             max_q_num = None
                         else:
-                            # Single-question context (no range declaration)
                             current_context = cleaned_context
                             max_q_num = main_num
-                elif max_q_num is not None and main_num is not None and main_num > max_q_num:
-                    # Beyond declared question range for this context
+                elif re.search(r"(?im)^[ \t]*(?:Part\b|Section\b|Descriptive\s+Questions|[A-Z][A-Za-z\s&,–-]{4,50}\b(?:\n|$))", gap_raw):
+                    # Section break or topic heading in gap
                     current_context = None
                     max_q_num = None
-                elif re.search(r"(?im)^[ \t]*(?:Part\b|Section\b|Descriptive\s+Questions)", gap_raw):
-                    # Section break in gap
+                elif max_q_num is not None and main_num is not None and main_num > max_q_num:
                     current_context = None
                     max_q_num = None
 

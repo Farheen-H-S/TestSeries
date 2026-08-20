@@ -377,10 +377,39 @@ def evaluate_structural_reliability(raw_grid: List[List[str]]) -> bool:
     if col_counts:
         max_c = max(col_counts)
         min_c = min(col_counts)
-        if max_c - min_c >= 2 and max_c >= 4:
-            return False
-
     return True
+
+
+def is_narrative_text_box(grid: List[List[str]]) -> bool:
+    """
+    Detects whether an extracted table grid from PyMuPDF is actually a bordered
+    callout box, decorative banner, or narrative paragraph rather than a true data table.
+    """
+    if not grid or not grid[0]:
+        return True
+    total_non_empty_cells = 0
+    non_empty_rows = 0
+    multi_cell_rows = 0
+    for r in grid:
+        non_empty_in_row = sum(1 for c in r if str(c or '').strip())
+        if non_empty_in_row > 0:
+            non_empty_rows += 1
+            total_non_empty_cells += non_empty_in_row
+            if non_empty_in_row >= 2:
+                multi_cell_rows += 1
+    if non_empty_rows == 0:
+        return True
+    all_text = ' '.join(str(c or '').strip() for r in grid for c in r if str(c or '').strip())
+    is_mcq_key = bool(re.search(r'(?i)\bOption\b|\bAns\.?\b|\bChoice\b|\bKey\b', all_text))
+    if multi_cell_rows == 0 and not is_mcq_key:
+        return True
+    if multi_cell_rows / non_empty_rows < 0.4 and not is_mcq_key:
+        if any(len(str(c or '').strip()) > 50 for r in grid for c in r):
+            return True
+    if len(grid) == 1 and not is_mcq_key:
+        if len(all_text) > 40:
+            return True
+    return False
 
 
 class _CrossPageMerger:
@@ -1042,6 +1071,8 @@ class TableProcessor:
             page_tables = page.find_tables().tables
             for t in page_tables:
                 raw_grid = t.extract()
+                if is_narrative_text_box(raw_grid):
+                    continue
                 pt = self.process(raw_grid, bbox=t.bbox, page_number=page_num)
                 
                 # Store every table as visual object except MCQ answer tables

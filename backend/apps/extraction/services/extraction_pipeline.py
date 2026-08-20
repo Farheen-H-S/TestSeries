@@ -249,6 +249,13 @@ def extract_document(document: Document, temp_file_path: str = None):
                 f"Total potential matches evaluated: {q_parser.diagnostics.total_matches}."
             )
 
+        # Precompute question parent paths to know which questions are leaf questions
+        parent_q_paths = set()
+        for pq in parsed_questions:
+            if len(pq.hierarchy_path) > 1:
+                for depth in range(1, len(pq.hierarchy_path)):
+                    parent_q_paths.add(tuple(pq.hierarchy_path[:depth]))
+
         # 7. Persistence inside a transaction
         with transaction.atomic():
             Question.objects.filter(document=document).delete()
@@ -304,7 +311,7 @@ def extract_document(document: Document, temp_file_path: str = None):
                 except Exception:
                     logger.exception("Classification failed for %s", pq.raw_header)
                 
-                # ... rest of loop
+                # Instruction detection
                 instr = None
                 try:
                     instr = instr_det.detect(pq.text)
@@ -312,8 +319,49 @@ def extract_document(document: Document, temp_file_path: str = None):
                     logger.exception("Instruction detection failed for %s", pq.raw_header)
                 
                 # Answer Matching
-                ans = answer_lookup.get(tuple(pq.hierarchy_path))
-                ans_text = ans.text if ans else ""
+                h_tuple = tuple(pq.hierarchy_path)
+                is_leaf_q = h_tuple not in parent_q_paths
+                ans = answer_lookup.get(h_tuple)
+                
+                # If question is a leaf question in the paper, rollup child answers from the answer key
+                child_answers = []
+                if is_leaf_q:
+                    child_answers = [
+                        a for p, a in answer_lookup.items()
+                        if len(p) > len(h_tuple) and p[:len(h_tuple)] == h_tuple
+                    ]
+                    child_answers.sort(key=lambda a: a.start_offset)
+                    
+                ans_text_parts = []
+                ans_working_notes = []
+                
+                if ans:
+                    if ans.text and ans.text.strip():
+                        ans_text_parts.append(ans.text.strip())
+                    if ans.working_notes:
+                        ans_working_notes.extend(ans.working_notes)
+                        
+                for ca in child_answers:
+                    if ca.text and ca.text.strip():
+                        ans_text_parts.append(ca.text.strip())
+                    if ca.working_notes:
+                        ans_working_notes.extend(ca.working_notes)
+                        
+                ans_text = "\n\n".join(ans_text_parts)
+                if not ans_text.strip() and ans_working_notes:
+                    wn_parts = []
+                    for wn in ans_working_notes:
+                        if isinstance(wn, dict):
+                            title = wn.get("title", "")
+                            content = wn.get("content", "")
+                            wn_parts.append(f"{title}\n{content}".strip())
+                        elif hasattr(wn, "content"):
+                            title = getattr(wn, "title", "") or ""
+                            content = getattr(wn, "content", "") or ""
+                            wn_parts.append(f"{title}\n{content}".strip())
+                        elif isinstance(wn, str):
+                            wn_parts.append(wn.strip())
+                    ans_text = "\n\n".join(filter(None, wn_parts))
 
                 subj_name = document.subject.name if (document and document.subject) else None
                 clean_q_text = clean_metadata_text(pq.text, subject_name=subj_name, prepared_chapters=prepared_chapters)
@@ -322,7 +370,6 @@ def extract_document(document: Document, temp_file_path: str = None):
                 
                 # HTML Formatting
                 q_content = format_question_content(clean_q_text, shared_context=clean_shared_ctx)
-                ans_working_notes = ans.working_notes if ans else []
                 a_content = format_answer_content(clean_ans_text, working_notes=ans_working_notes) if (clean_ans_text or ans_working_notes) else ""
 
 

@@ -56,13 +56,12 @@ def extract_text(doc: fitz.Document, document_id: Any = None) -> List[Dict[str, 
         
         page_tables = page.find_tables().tables
         blocks = page.get_text("blocks")
-        
-        # Segment page blocks and tables together by vertical position
         items = []
-        table_bboxes = [t.bbox for t in page_tables]
+        valid_page_tables = [t for t in page_tables if (page_num, round(t.bbox[0], 1), round(t.bbox[1], 1)) in table_lookup]
+        table_bboxes = [t.bbox for t in valid_page_tables]
         
         # Add tables
-        for t in page_tables:
+        for t in valid_page_tables:
             key = (page_num, round(t.bbox[0], 1), round(t.bbox[1], 1))
             md_content = table_lookup.get(key, "")
             items.append({

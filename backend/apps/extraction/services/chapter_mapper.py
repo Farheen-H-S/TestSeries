@@ -57,8 +57,12 @@ def get_prepared_chapters(subject: Subject) -> Sequence[PreparedChapter]:
         
         # 1. Full chapter name pattern (weight=5)
         if n_name:
+            var_name = re.sub(r'ing\b', '(?:ing|s)?', n_name)
             escaped_name = re.escape(n_name).replace(r"\ ", r"\s+").replace(" ", r"\s+")
             patterns_with_weights.append((re.compile(rf"\b{escaped_name}\b", re.IGNORECASE), 5))
+            if var_name != n_name:
+                escaped_var = var_name.replace(" ", r"\s+")
+                patterns_with_weights.append((re.compile(rf"\b{escaped_var}\b", re.IGNORECASE), 5))
             unique_patterns.add(n_name)
             
         # 2. Code/number designation prefix like "Ind AS 110", "Ind AS 1", "AS 16", "Chapter 3" (weight=1)
@@ -107,6 +111,7 @@ def map_question_to_chapter(
 ) -> Optional[Chapter]:
     """
     Deterministically map text to a chapter based on weighted pattern scores.
+    Uses longest-match tie-breaking for nested chapter names (e.g. 'Interest Rate Risk Management' vs 'Risk Management').
     """
     normalized_q = normalize_text(question_text)
     if not normalized_q or not prepared_chapters:
@@ -114,20 +119,31 @@ def map_question_to_chapter(
         
     best_chapter: Optional[Chapter] = None
     max_score: int = 0
+    best_match_len: int = 0
     is_tie: bool = False
     
     for item in prepared_chapters:
         score: int = 0
+        current_max_len: int = 0
         for pattern, weight in item["patterns_with_weights"]:
-            if pattern.search(normalized_q):
+            match = pattern.search(normalized_q)
+            if match:
                 score += weight
+                current_max_len = max(current_max_len, len(match.group(0)))
         
         if score > max_score:
             max_score = score
             best_chapter = item["chapter"]
+            best_match_len = current_max_len
             is_tie = False
         elif score == max_score and score >= MINIMUM_MAPPING_SCORE:
-            is_tie = True
+            if current_max_len > best_match_len:
+                # Longer, more specific chapter name match breaks the tie
+                best_chapter = item["chapter"]
+                best_match_len = current_max_len
+                is_tie = False
+            elif current_max_len == best_match_len:
+                is_tie = True
             
     if max_score >= MINIMUM_MAPPING_SCORE and not is_tie:
         return best_chapter
