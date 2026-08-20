@@ -48,31 +48,46 @@ def normalize_text_glyphs(text: str) -> str:
         return ""
     for pua, char in PUA_SYMBOL_MAP.items():
         text = text.replace(pua, char)
-    # Map backtick used as rupee symbol before digits to ₹ (normalizing space)
-    text = re.sub(r'[`\u0060]\s*(?=[\d,])', '₹ ', text)
+    # Replace all backtick characters used as Indian Rupee symbols
+    text = text.replace("`", "₹").replace("\u0060", "₹")
     return text
 
 def find_standalone_equation_regions(page: fitz.Page, table_bboxes: List[Any]) -> List[Tuple[float, float, float, float]]:
     """
     Detects bounding boxes of standalone mathematical formulas/equations outside of tables
-    that have severe vertical stacking or fraction fragmentation.
+    using both horizontal fraction bar vector drawings and fragmented text block layout analysis.
     """
-    blocks = page.get_text('dict')['blocks']
     raw_regions = []
     
+    # 1. Detect from fraction bar drawings (must be inside body area, width between 12 and 320pt)
+    drawings = page.get_drawings()
+    for d in drawings:
+        rect = d['rect']
+        if 12 <= rect.width <= 320 and rect.height <= 2.5 and 145 <= rect.y0 <= 700:
+            bx0, by0, bx1, by1 = rect.x0, rect.y0, rect.x1, rect.y1
+            cx, cy = (bx0 + bx1) / 2, (by0 + by1) / 2
+            inside_tbl = any((tx0 <= cx <= tx1) and (ty0 <= cy <= ty1) for tx0, ty0, tx1, ty1 in table_bboxes)
+            if not inside_tbl:
+                # Expand box vertically for numerator/denominator and horizontally for formula labels
+                frac_box = (
+                    max(0, rect.x0 - 45),
+                    max(0, rect.y0 - 18),
+                    min(page.rect.width, rect.x1 + 25),
+                    min(page.rect.height, rect.y1 + 18)
+                )
+                raw_regions.append(frac_box)
+                
+    # 2. Detect from text block density & math glyphs
+    blocks = page.get_text('dict')['blocks']
     for b in blocks:
         if 'lines' not in b:
             continue
         bbox = b['bbox']
-        # Check if inside table
+        if bbox[1] < 140 or bbox[3] > 710:
+            continue
         bx0, by0, bx1, by1 = bbox
-        cx = (bx0 + bx1) / 2
-        cy = (by0 + by1) / 2
-        inside_tbl = False
-        for tx0, ty0, tx1, ty1 in table_bboxes:
-            if (tx0 <= cx <= tx1) and (ty0 <= cy <= ty1):
-                inside_tbl = True
-                break
+        cx, cy = (bx0 + bx1) / 2, (by0 + by1) / 2
+        inside_tbl = any((tx0 <= cx <= tx1) and (ty0 <= cy <= ty1) for tx0, ty0, tx1, ty1 in table_bboxes)
         if inside_tbl:
             continue
             
@@ -97,12 +112,14 @@ def find_standalone_equation_regions(page: fitz.Page, table_bboxes: List[Any]) -
         return []
         
     merged = []
-    for r in sorted(raw_regions, key=lambda x: x[1]):
+    for r in sorted(raw_regions, key=lambda x: (x[1], x[0])):
         if not merged:
             merged.append(list(r))
         else:
             prev = merged[-1]
-            if r[1] <= prev[3] + 18:
+            v_overlap = (r[1] <= prev[3] + 12) and (r[3] >= prev[1] - 12)
+            h_overlap = not (r[2] < prev[0] - 25 or r[0] > prev[2] + 25)
+            if v_overlap and h_overlap:
                 prev[0] = min(prev[0], r[0])
                 prev[1] = min(prev[1], r[1])
                 prev[2] = max(prev[2], r[2])
@@ -215,7 +232,18 @@ def extract_text(doc: fitz.Document, document_id: Any = None) -> List[Dict[str, 
                     inside_visual = True
                     break
 
-            if not inside_visual:
+            if inside_visual:
+                # If block starts in left margin (x0 < 132) and contains a question/answer header, preserve the header text!
+                m_hdr = re.match(r'^\s*(\d+\.|\([a-z]\)|\([ivx\d]+\))\s*', text_val, re.IGNORECASE)
+                if m_hdr and bx0 < 132:
+                    hdr_text = m_hdr.group(1)
+                    items.append({
+                        "type": "text",
+                        "y0": by0,
+                        "x0": bx0,
+                        "content": hdr_text
+                    })
+            else:
                 items.append({
                     "type": "text",
                     "y0": by0,

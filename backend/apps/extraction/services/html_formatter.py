@@ -17,6 +17,7 @@ def clean_metadata_text(text: str, subject_name: Optional[str] = None, prepared_
     """
     if not text:
         return ""
+    text = text.replace("`", "₹").replace("\u0060", "₹")
     from .extraction_patterns import DOCUMENT_METADATA_PATTERNS
     lines = text.split("\n")
     cleaned_lines = []

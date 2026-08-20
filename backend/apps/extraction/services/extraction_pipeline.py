@@ -323,61 +323,73 @@ def extract_document(document: Document, temp_file_path: str = None):
                 consolidated_shared_ctx = "\n\n".join(shared_contexts) if shared_contexts else None
                 q_content = format_question_content(consolidated_q_text, shared_context=consolidated_shared_ctx)
 
-                # 7.3 Consolidate Answer Text and HTML Content
-                ans_text_parts = []
-                ans_working_notes = []
+                # 7.3 Consolidate Answer Text and HTML Content in Natural Document Order
+                answer_segments = []
                 seen_ans_keys = set()
                 
+                # Direct matching sub-answers
                 for sub in pqs:
                     h_tuple = tuple(sub.hierarchy_path)
                     if h_tuple in all_answers_lookup and h_tuple not in seen_ans_keys:
                         seen_ans_keys.add(h_tuple)
                         ans = all_answers_lookup[h_tuple]
+                        sub_label = ".".join(sub.hierarchy_path[1:]) if len(sub.hierarchy_path) > 1 else None
                         if ans.text and ans.text.strip():
-                            sub_label = ".".join(sub.hierarchy_path[1:]) if len(sub.hierarchy_path) > 1 else None
                             if sub_label and sub.raw_header and not ans.text.strip().startswith(sub.raw_header.strip()):
-                                ans_text_parts.append(f"{sub.raw_header.strip()} {ans.text.strip()}")
+                                answer_segments.append((ans.start_offset, f"{sub.raw_header.strip()} {ans.text.strip()}"))
                             else:
-                                ans_text_parts.append(ans.text.strip())
-                        if ans.working_notes:
-                            ans_working_notes.extend(ans.working_notes)
-                            
-                # Also check any child answers under this primary question key (e.g. answer key has (a), (b) under a leaf question)
+                                answer_segments.append((ans.start_offset, ans.text.strip()))
+                        for wn_idx, wn in enumerate(ans.working_notes or []):
+                            if isinstance(wn, dict):
+                                title = wn.get("title", "")
+                                content = wn.get("content", "")
+                                wn_str = f"{title}\n{content}".strip() if title else content.strip()
+                            elif hasattr(wn, "content"):
+                                title = getattr(wn, "title", "") or ""
+                                content = getattr(wn, "content", "") or ""
+                                wn_str = f"{title}\n{content}".strip() if title else content.strip()
+                            elif isinstance(wn, str):
+                                wn_str = wn.strip()
+                            else:
+                                wn_str = str(wn).strip()
+                            if wn_str:
+                                answer_segments.append((ans.start_offset + 0.1 + wn_idx * 0.01, wn_str))
+                                
+                # Also check any child answers under this primary question key (e.g. answer key has (a), (b) under question 10)
                 for p, ans in all_answers_lookup.items():
                     if p and p[0] == q_key and p not in seen_ans_keys:
                         seen_ans_keys.add(p)
                         if ans.text and ans.text.strip():
-                            ans_text_parts.append(ans.text.strip())
-                        if ans.working_notes:
-                            ans_working_notes.extend(ans.working_notes)
-                            
-                wn_parts = []
-                for wn in ans_working_notes:
-                    if isinstance(wn, dict):
-                        title = wn.get("title", "")
-                        content = wn.get("content", "")
-                        wn_parts.append(f"{title}\n{content}".strip() if title else content.strip())
-                    elif hasattr(wn, "content"):
-                        title = getattr(wn, "title", "") or ""
-                        content = getattr(wn, "content", "") or ""
-                        wn_parts.append(f"{title}\n{content}".strip() if title else content.strip())
-                    elif isinstance(wn, str):
-                        wn_parts.append(wn.strip())
-                wn_text = "\n\n".join(filter(None, wn_parts))
-                main_ans_text = "\n\n".join(filter(None, ans_text_parts))
-                
-                # Combine Working Notes and main answer text together so no solution content is lost
-                full_ans_text = "\n\n".join(filter(None, [wn_text, main_ans_text]))
+                            answer_segments.append((ans.start_offset, ans.text.strip()))
+                        for wn_idx, wn in enumerate(ans.working_notes or []):
+                            if isinstance(wn, dict):
+                                title = wn.get("title", "")
+                                content = wn.get("content", "")
+                                wn_str = f"{title}\n{content}".strip() if title else content.strip()
+                            elif hasattr(wn, "content"):
+                                title = getattr(wn, "title", "") or ""
+                                content = getattr(wn, "content", "") or ""
+                                wn_str = f"{title}\n{content}".strip() if title else content.strip()
+                            elif isinstance(wn, str):
+                                wn_str = wn.strip()
+                            else:
+                                wn_str = str(wn).strip()
+                            if wn_str:
+                                answer_segments.append((ans.start_offset + 0.1 + wn_idx * 0.01, wn_str))
 
-                # Rupee normalization: map backticks before digits or currency amounts to ₹
-                clean_q_raw = re.sub(r'[`\u0060](?=\s*[\d,])', '₹ ', consolidated_q_text)
-                clean_ans_raw = re.sub(r'[`\u0060](?=\s*[\d,])', '₹ ', full_ans_text)
+                # Order all answer segments in natural document sequence
+                answer_segments.sort(key=lambda x: x[0])
+                full_ans_text = "\n\n".join([s[1] for s in answer_segments if s[1]])
+
+                # Universal Rupee normalization: map all backtick characters to ₹
+                clean_q_raw = consolidated_q_text.replace("`", "₹").replace("\u0060", "₹")
+                clean_ans_raw = full_ans_text.replace("`", "₹").replace("\u0060", "₹")
                 
                 clean_q_text = clean_metadata_text(clean_q_raw, subject_name=subj_name, prepared_chapters=prepared_chapters)
                 clean_ans_text = clean_metadata_text(clean_ans_raw, subject_name=subj_name, prepared_chapters=prepared_chapters)
                 
                 q_content = format_question_content(clean_q_text, shared_context=consolidated_shared_ctx)
-                a_content = format_answer_content(clean_ans_text, working_notes=ans_working_notes) if (clean_ans_text or ans_working_notes) else ""
+                a_content = format_answer_content(clean_ans_text) if clean_ans_text else ""
 
                 # 7.4 Marks Extraction
                 marks = None
