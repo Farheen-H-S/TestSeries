@@ -359,18 +359,34 @@ class QuestionParser:
             return
 
         current_context = None
+        min_q_num = None
         max_q_num = None
 
         # Check preamble before the first question
         first_start = validated_matches[0][0].start()
         preamble_text = text[:first_start].strip()
         if preamble_text:
-            cleaned = self._clean_document_metadata(preamble_text)
+            # If preamble contains a Case Scenario or explicit Question range, slice from that header
+            ctx_start_match = re.search(
+                r"(?im)^[ \t]*(?:Case\s+(?:Scenario|Study)\b|(?:(?:Read|Based\s+on|The)\s+.*?\b)?(?:Questions?|MCQs?|MCQ\s+Nos?\.?)\s*(?:from\s+)?\d+\s+to\s+\d+)",
+                preamble_text
+            )
+            raw_scenario = preamble_text[ctx_start_match.start():] if ctx_start_match else preamble_text
+            cleaned = self._clean_document_metadata(raw_scenario)
             if cleaned:
-                range_match = re.search(r"(?i)Questions?\s+\d+\s+to\s+(\d+)", preamble_text)
+                # Check for explicit range or Case Scenario / Study in preamble
+                range_match = re.search(r"(?i)(?:Questions?|MCQs?|MCQ\s+Nos?\.?)\s*(?:from\s+)?(\d+)\s+to\s+(\d+)", preamble_text)
+                is_case_scenario = bool(re.search(r"(?i)\bCase\s+(?:Scenario|Study)\b", preamble_text))
+                
                 if range_match:
                     current_context = cleaned
-                    max_q_num = int(range_match.group(1))
+                    min_q_num = int(range_match.group(1))
+                    max_q_num = int(range_match.group(2))
+                elif is_case_scenario:
+                    current_context = cleaned
+                    min_q_num = 1
+                    inner_rng = re.search(r"(?i)(?:Questions?|MCQs?|MCQ\s+Nos?\.?)\s*(?:from\s+)?(\d+)\s+to\s+(\d+)", cleaned)
+                    max_q_num = int(inner_rng.group(2)) if inner_rng else None
                 else:
                     # Preamble without explicit range belongs to the first question
                     if parsed_questions:
@@ -387,7 +403,7 @@ class QuestionParser:
                 
                 # Check for shared context headers in gap_raw (explicit Case Scenarios or Question ranges only)
                 ctx_match = re.search(
-                    r"(?im)^[ \t]*(?:Case\s+(?:Scenario|Study)\b|(?:(?:Read|Based\s+on|The)\s+.*?\b)?Questions?\s+\d+\s+to\s+\d+)",
+                    r"(?im)^[ \t]*(?:Case\s+(?:Scenario|Study)\b|(?:(?:Read|Based\s+on|The)\s+.*?\b)?(?:Questions?|MCQs?|MCQ\s+Nos?\.?)\s*(?:from\s+)?\d+\s+to\s+\d+)",
                     gap_raw
                 )
                 if ctx_match:
@@ -399,29 +415,39 @@ class QuestionParser:
                     raw_context = gap_raw[ctx_match.start():].strip()
                     cleaned_context = self._clean_document_metadata(raw_context)
                     if cleaned_context:
-                        range_match = re.search(r"(?i)Questions?\s+\d+\s+to\s+(\d+)", raw_context)
+                        range_match = re.search(r"(?i)(?:Questions?|MCQs?|MCQ\s+Nos?\.?)\s*(?:from\s+)?(\d+)\s+to\s+(\d+)", raw_context)
                         if range_match:
                             current_context = cleaned_context
-                            max_q_num = int(range_match.group(1))
+                            min_q_num = int(range_match.group(1))
+                            max_q_num = int(range_match.group(2))
                         elif re.search(r"(?i)\bCase\s+(?:Scenario|Study)\b", raw_context):
                             current_context = cleaned_context
-                            max_q_num = None
+                            min_q_num = main_num
+                            inner_rng = re.search(r"(?i)(?:Questions?|MCQs?|MCQ\s+Nos?\.?)\s*(?:from\s+)?(\d+)\s+to\s+(\d+)", cleaned_context)
+                            max_q_num = int(inner_rng.group(2)) if inner_rng else None
                         else:
                             current_context = cleaned_context
+                            min_q_num = main_num
                             max_q_num = main_num
-                elif re.search(r"(?im)^[ \t]*(?:Part\b|Section\b|Descriptive\s+Questions|[A-Z][A-Za-z\s&,–-]{4,50}\b(?:\n|$))", gap_raw):
-                    # Section break or topic heading in gap
+                elif re.search(r"(?im)^[ \t]*(?:PART|SECTION|DIVISION)\s*[-–—:]?\s*[A-Z\d]+\s*(?:[-–—:]\s*(?:DESCRIPTIVE\s+QUESTIONS|MULTIPLE\s+CHOICE\s+QUESTIONS|CASE\s+SCENARIOS?)|$)", gap_raw):
+                    # Section break in gap
                     current_context = None
+                    min_q_num = None
                     max_q_num = None
                 elif max_q_num is not None and main_num is not None and main_num > max_q_num:
                     current_context = None
+                    min_q_num = None
                     max_q_num = None
 
             if max_q_num is not None and main_num is not None and main_num > max_q_num:
                 current_context = None
+                min_q_num = None
                 max_q_num = None
 
-            pq.shared_context = current_context
+            if min_q_num is not None and main_num is not None and main_num < min_q_num:
+                pq.shared_context = None
+            else:
+                pq.shared_context = current_context
 
 
 

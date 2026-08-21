@@ -72,9 +72,19 @@ def find_standalone_equation_regions(page: fitz.Page, table_bboxes: List[Any]) -
     drawings = page.get_drawings()
     for d in drawings:
         rect = d['rect']
-        # Genuine fraction line: width between 12 and 180pt, height <= 2.5pt, not near any table
-        if 12 <= rect.width <= 180 and rect.height <= 2.5 and 140 <= rect.y0 <= 700:
+        # Genuine fraction line: width between 12 and 180pt, height <= 2.5pt, strictly within body area (155-695pt) and not near any table
+        if 12 <= rect.width <= 180 and rect.height <= 2.5 and 155 <= rect.y0 <= 695:
             if not is_near_table(rect, table_bboxes, margin=8):
+                # Ensure drawing is not part of a header banner
+                is_header_meta = any(
+                    re.search(r'(?i)\b(?:REVISION\s+TEST\s+PAPERS?|FINAL\s+EXAMINATION|DIRECT\s+TAX|FINANCIAL\s+MANAGEMENT|FINANCIAL\s+REPORTING|EXAMINATION)\b', s.get('text', ''))
+                    for b in page.get_text('dict')['blocks'] if 'lines' in b
+                    for l in b['lines'] for s in l['spans']
+                    if rect.y0 - 25 <= s['bbox'][1] <= rect.y0 + 25
+                )
+                if is_header_meta:
+                    continue
+
                 # Find all text spans on this page within y0 - 15 to y1 + 15
                 line_spans = []
                 for b in page.get_text('dict')['blocks']:

@@ -384,11 +384,14 @@ def extract_document(document: Document, temp_file_path: str = None):
                 # Universal Rupee normalization: map all backtick characters to ₹
                 clean_q_raw = consolidated_q_text.replace("`", "₹").replace("\u0060", "₹")
                 clean_ans_raw = full_ans_text.replace("`", "₹").replace("\u0060", "₹")
+                clean_shared_raw = consolidated_shared_ctx.replace("`", "₹").replace("\u0060", "₹") if consolidated_shared_ctx else None
                 
+                clean_shared_ctx = clean_metadata_text(clean_shared_raw, subject_name=subj_name, prepared_chapters=prepared_chapters) if clean_shared_raw else None
                 clean_q_text = clean_metadata_text(clean_q_raw, subject_name=subj_name, prepared_chapters=prepared_chapters)
                 clean_ans_text = clean_metadata_text(clean_ans_raw, subject_name=subj_name, prepared_chapters=prepared_chapters)
                 
-                q_content = format_question_content(clean_q_text, shared_context=consolidated_shared_ctx)
+                full_q_text = f"{clean_shared_ctx}\n\n{clean_q_text}" if clean_shared_ctx else clean_q_text
+                q_content = format_question_content(clean_q_text, shared_context=clean_shared_ctx)
                 a_content = format_answer_content(clean_ans_text) if clean_ans_text else ""
 
                 # 7.4 Marks Extraction
@@ -424,7 +427,7 @@ def extract_document(document: Document, temp_file_path: str = None):
                     question_number=q_key,
                     sub_question_label=None,
                     hierarchy_key=build_hierarchy_key([q_key]),
-                    question_text=clean_q_text,
+                    question_text=full_q_text,
                     question_content=clean_q,
                     answer_text=clean_ans_text,
                     answer_content=clean_a,

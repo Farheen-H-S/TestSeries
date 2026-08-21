@@ -999,6 +999,38 @@ class _HTMLRenderer:
 
 
 
+def is_mcq_answer_key_table(raw_grid: List[List[Any]]) -> bool:
+    """
+    Identifies true MCQ answer key mapping tables (e.g. Q. No | Most Appropriate Answer).
+    Financial statement tables or itemized computation adjustments are never MCQ answer keys.
+    """
+    if not raw_grid or len(raw_grid) < 2:
+        return False
+        
+    full_text = ' '.join(str(c or '') for row in raw_grid for c in row)
+    
+    # If table contains computation/accounting statement keywords, it's NOT an answer key
+    if re.search(r'(?i)\b(?:Net\s+profit|Income\s+from|Statement\s+of\s+profit|Debit|Credit|Balance\s+Sheet|Assessee|Tax\s+payable|Tax\s+liability|Amount\s+in\s+[₹`])\b', full_text):
+        return False
+        
+    header_text = ' '.join(str(c or '') for c in raw_grid[:2] for c in (c if isinstance(c, list) else [c]))
+    if re.search(r'(?i)\b(?:MCQ\s*No\.?|Most\s+Appropriate\s+Answer|Answer\s+Key)\b', header_text):
+        return True
+        
+    # Check if rows are pairs of (Q_num, Option_letter)
+    mcq_pairs = 0
+    total_non_empty = 0
+    for row in raw_grid[1:]:
+        non_empty = [str(c).strip() for c in row if c and str(c).strip()]
+        if len(non_empty) in [2, 4]:
+            if re.match(r'^\d+\.?$', non_empty[0]) and re.match(r'^\(?[a-eA-E]\)?\.?$', non_empty[1]):
+                mcq_pairs += 1
+        if non_empty:
+            total_non_empty += 1
+            
+    return total_non_empty > 0 and (mcq_pairs >= total_non_empty * 0.5)
+
+
 class TableProcessor:
     def __init__(self, config: Optional[TableProcessingConfig] = None):
         self.config = config or TableProcessingConfig()
@@ -1075,12 +1107,8 @@ class TableProcessor:
                     continue
                 pt = self.process(raw_grid, bbox=t.bbox, page_number=page_num)
                 
-                # Store every table as visual object except MCQ answer tables
-                # Matches explicit MCQ option signals (Option, Ans, Choice, Key) or cells starting with option letters (a)-(e)
-                is_mcq_table = any(
-                    re.search(r'(?i)\bOption\b|\bAns\.?\b|\bChoice\b|\bKey\b|^\s*\([a-eA-E]\)', str(cell or ''))
-                    for row in raw_grid for cell in row
-                )
+                # Store every table as visual object except genuine MCQ answer key tables
+                is_mcq_table = is_mcq_answer_key_table(raw_grid)
                 is_complex = not is_mcq_table
                 
                 crop_path_rel = None
