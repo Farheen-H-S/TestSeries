@@ -57,8 +57,8 @@ class Normalizer:
         if not text:
             return ""
 
-        # Rule 1: Isolated OCR glyphs for digit 1 at word boundaries
-        text = re.sub(r'\b[lI|]\b', '1', text)
+        # Rule 1: Isolated OCR glyphs for digit 1 at word boundaries (excluding bracketed Roman numerals)
+        text = re.sub(r'(?<!\()\b[lI|]\b(?!\))', '1', text)
 
         # Rule 2: Single-character substitutions when sandwiched between digits
         text = re.sub(r'(?<=\d)O|O(?=\d)', '0', text)

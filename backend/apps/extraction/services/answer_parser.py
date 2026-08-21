@@ -44,6 +44,9 @@ class AnswerParser:
         Parses text and returns an AnswerParseResult that bundles the
         answers list with the diagnostics from this run.
         """
+        if valid_question_paths is None and context and context.valid_question_paths:
+            valid_question_paths = context.valid_question_paths
+
         # Pre-normalize the text for OCR errors before matching
         normalized_text = self.normalizer.pre_normalize_ocr(text)
 
@@ -196,7 +199,7 @@ class AnswerParser:
                 continue
                     
             # 5. Pure structural and hierarchy validation using HeaderValidator
-            result = self.validator.is_valid(match, path, hierarchy_stack, normalized_text)
+            result = self.validator.is_valid(match, path, hierarchy_stack, normalized_text, valid_question_paths=valid_question_paths)
             if result.is_valid:
                 # Context-aware list item rejection via weighted heuristics
                 next_match_start = all_potential_matches[idx+1].start() if idx + 1 < len(all_potential_matches) else len(normalized_text)
