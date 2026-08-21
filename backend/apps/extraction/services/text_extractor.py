@@ -52,62 +52,86 @@ def normalize_text_glyphs(text: str) -> str:
     text = text.replace("`", "₹").replace("\u0060", "₹")
     return text
 
+def is_near_table(bbox: Tuple[float, float, float, float], table_bboxes: List[Any], margin: float = 10.0) -> bool:
+    bx0, by0, bx1, by1 = bbox
+    cx = (bx0 + bx1) / 2
+    cy = (by0 + by1) / 2
+    for tx0, ty0, tx1, ty1 in table_bboxes:
+        if (tx0 - margin <= cx <= tx1 + margin) and (ty0 - margin <= cy <= ty1 + margin):
+            return True
+    return False
+
 def find_standalone_equation_regions(page: fitz.Page, table_bboxes: List[Any]) -> List[Tuple[float, float, float, float]]:
     """
     Detects bounding boxes of standalone mathematical formulas/equations outside of tables
-    using both horizontal fraction bar vector drawings and fragmented text block layout analysis.
+    using horizontal fraction bar drawings, math glyph heuristics, and multi-line equation layout analysis.
     """
     raw_regions = []
     
-    # 1. Detect from fraction bar drawings (must be inside body area, width between 12 and 320pt)
+    # 1. Detect from true fraction bar drawings
     drawings = page.get_drawings()
     for d in drawings:
         rect = d['rect']
-        if 12 <= rect.width <= 320 and rect.height <= 2.5 and 145 <= rect.y0 <= 700:
-            bx0, by0, bx1, by1 = rect.x0, rect.y0, rect.x1, rect.y1
-            cx, cy = (bx0 + bx1) / 2, (by0 + by1) / 2
-            inside_tbl = any((tx0 <= cx <= tx1) and (ty0 <= cy <= ty1) for tx0, ty0, tx1, ty1 in table_bboxes)
-            if not inside_tbl:
-                # Expand box vertically for numerator/denominator and horizontally for formula labels
-                frac_box = (
-                    max(0, rect.x0 - 45),
-                    max(0, rect.y0 - 18),
-                    min(page.rect.width, rect.x1 + 25),
-                    min(page.rect.height, rect.y1 + 18)
-                )
-                raw_regions.append(frac_box)
-                
-    # 2. Detect from text block density & math glyphs
-    blocks = page.get_text('dict')['blocks']
-    for b in blocks:
+        # Genuine fraction line: width between 12 and 180pt, height <= 2.5pt, not near any table
+        if 12 <= rect.width <= 180 and rect.height <= 2.5 and 140 <= rect.y0 <= 700:
+            if not is_near_table(rect, table_bboxes, margin=8):
+                # Find all text spans on this page within y0 - 15 to y1 + 15
+                line_spans = []
+                for b in page.get_text('dict')['blocks']:
+                    if 'lines' in b:
+                        for l in b['lines']:
+                            for s in l['spans']:
+                                s_bbox = s['bbox']
+                                if (rect.y0 - 15 <= s_bbox[1] <= rect.y1 + 15) or (rect.y0 - 15 <= s_bbox[3] <= rect.y1 + 15):
+                                    line_spans.append(s_bbox)
+                                    
+                if line_spans:
+                    min_x = max(132.0, min(s[0] for s in line_spans) - 5)
+                    max_x = min(page.rect.width, max(s[2] for s in line_spans) + 8)
+                    min_y = max(0, min(s[1] for s in line_spans) - 4)
+                    max_y = min(page.rect.height, max(s[3] for s in line_spans) + 4)
+                    raw_regions.append((min_x, min_y, max_x, max_y))
+                else:
+                    raw_regions.append((
+                        max(132.0, rect.x0 - 45),
+                        max(0, rect.y0 - 18),
+                        min(page.rect.width, rect.x1 + 25),
+                        min(page.rect.height, rect.y1 + 18)
+                    ))
+
+    # 2. Detect multi-line / complex math formula blocks (Greek symbols with powers, radicals, stacked lines)
+    for b in page.get_text('dict')['blocks']:
         if 'lines' not in b:
             continue
         bbox = b['bbox']
-        if bbox[1] < 140 or bbox[3] > 710:
+        if bbox[1] < 140 or bbox[3] > 710 or is_near_table(bbox, table_bboxes, margin=8):
             continue
-        bx0, by0, bx1, by1 = bbox
-        cx, cy = (bx0 + bx1) / 2, (by0 + by1) / 2
-        inside_tbl = any((tx0 <= cx <= tx1) and (ty0 <= cy <= ty1) for tx0, ty0, tx1, ty1 in table_bboxes)
-        if inside_tbl:
-            continue
-            
-        height = bbox[3] - bbox[1]
         lines = [''.join([s['text'] for s in l['spans']]).strip() for l in b['lines']]
         lines = [l for l in lines if l]
-        if not lines or height <= 0:
-            continue
-            
-        density = len(lines) / height
-        short_lines = [l for l in lines if len(l) <= 8]
-        short_ratio = len(short_lines) / len(lines)
+        text = ' '.join(lines)
         
-        is_formula = (
-            (len(lines) >= 3 and density >= 0.25 and short_ratio >= 0.6) or 
-            (len(lines) >= 8 and density >= 0.30)
+        has_math_symbols = any(c in text for c in ['\uf073', 'σ', '\uf062', 'β', '\uf06d', 'μ', '\uf072', 'ρ', 'XABC', 'X_ABC', 'Cov.AX', 'Cov.', 'Po =', 'FCFE =', 'Ke =', 'EPS =', 'No. of Shares ='])
+        
+        height = bbox[3] - bbox[1]
+        density = len(lines) / max(1, height)
+        short_lines = [l for l in lines if len(l) <= 8]
+        short_ratio = len(short_lines) / max(1, len(lines))
+        
+        is_formula_block = (
+            (len(lines) >= 3 and density >= 0.25 and short_ratio >= 0.6) or
+            (len(lines) >= 8 and density >= 0.30) or
+            (has_math_symbols and ('=' in text or '(%)' in text or 'Cov' in text) and len(lines) >= 1)
         )
-        if is_formula:
-            raw_regions.append(bbox)
-            
+        if is_formula_block:
+            if len(text.split()) > 15 and not ('=' in text and any(c in text for c in ['\uf073', 'σ', 'β', 'Po', 'EPS'])):
+                continue
+            raw_regions.append((
+                max(132.0, bbox[0] - 5),
+                max(0, bbox[1] - 3),
+                min(page.rect.width, bbox[2] + 8),
+                min(page.rect.height, bbox[3] + 3)
+            ))
+
     if not raw_regions:
         return []
         
@@ -130,10 +154,10 @@ def find_standalone_equation_regions(page: fitz.Page, table_bboxes: List[Any]) -
     final_regions = []
     for r in merged:
         final_regions.append((
-            max(0, r[0] - 8),
-            max(0, r[1] - 4),
-            min(page.rect.width, r[2] + 8),
-            min(page.rect.height, r[3] + 4)
+            max(132.0, r[0] - 3),
+            max(0, r[1] - 3),
+            min(page.rect.width, r[2] + 5),
+            min(page.rect.height, r[3] + 3)
         ))
     return final_regions
 
@@ -196,11 +220,12 @@ def extract_text(doc: fitz.Document, document_id: Any = None) -> List[Dict[str, 
             pix = page.get_pixmap(matrix=fitz.Matrix(200/72, 200/72), clip=f_rect)
             pix.save(crop_path)
             
+            disp_width = int(f_box[2] - f_box[0])
             crop_rel_path = f"/media/formula_crops/{crop_filename}"
             html_rep = (
                 f'<div class="formula-container" data-is-complex="true" data-crop-path="{crop_rel_path}">'
                 f'<div class="formula-visual-region" style="text-align:center; margin: 0.5em 0;">'
-                f'<img src="{crop_rel_path}" width="450" />'
+                f'<img src="{crop_rel_path}" style="max-width: 100%; width: {disp_width}px; height: auto; display: inline-block;" />'
                 f'</div></div>'
             )
             items.append({
