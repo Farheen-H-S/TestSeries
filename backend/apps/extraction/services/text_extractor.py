@@ -85,6 +85,26 @@ def find_standalone_equation_regions(page: fitz.Page, table_bboxes: List[Any]) -
                 if is_header_meta:
                     continue
 
+                # Ensure drawing is not a footnote separator line
+                is_footnote = False
+                if rect.y0 >= 630 or rect.x0 <= 125:
+                    below_text = []
+                    above_text = []
+                    for b in page.get_text('dict')['blocks']:
+                        if 'lines' in b:
+                            for l in b['lines']:
+                                for s in l['spans']:
+                                    if rect.y1 <= s['bbox'][1] <= rect.y1 + 45:
+                                        below_text.append(s['text'])
+                                    if rect.y0 - 20 <= s['bbox'][3] <= rect.y0:
+                                        above_text.append(s['text'])
+                    bt = ' '.join(below_text)
+                    at = ' '.join(above_text)
+                    if any(k in bt for k in ['CIT', 'v.', 'ITR', 'Federal Bank', 'Rent received', 'Gross Annual Value', 'Municipal', '¹', '²', '³', '4', '5', 'High Court', 'Supreme Court', 'Notification', 'Circular']) or (rect.x0 <= 115 and not at):
+                        is_footnote = True
+                if is_footnote:
+                    continue
+
                 # Find all text spans on this page within y0 - 15 to y1 + 15
                 line_spans = []
                 for b in page.get_text('dict')['blocks']:
@@ -96,14 +116,14 @@ def find_standalone_equation_regions(page: fitz.Page, table_bboxes: List[Any]) -
                                     line_spans.append(s_bbox)
                                     
                 if line_spans:
-                    min_x = max(132.0, min(s[0] for s in line_spans) - 5)
+                    min_x = max(page.rect.x0 + 10.0, min(s[0] for s in line_spans) - 6)
                     max_x = min(page.rect.width, max(s[2] for s in line_spans) + 8)
                     min_y = max(0, min(s[1] for s in line_spans) - 4)
                     max_y = min(page.rect.height, max(s[3] for s in line_spans) + 4)
                     raw_regions.append((min_x, min_y, max_x, max_y))
                 else:
                     raw_regions.append((
-                        max(132.0, rect.x0 - 45),
+                        max(page.rect.x0 + 10.0, rect.x0 - 45),
                         max(0, rect.y0 - 18),
                         min(page.rect.width, rect.x1 + 25),
                         min(page.rect.height, rect.y1 + 18)
@@ -136,10 +156,10 @@ def find_standalone_equation_regions(page: fitz.Page, table_bboxes: List[Any]) -
             if len(text.split()) > 15 and not ('=' in text and any(c in text for c in ['\uf073', 'σ', 'β', 'Po', 'EPS'])):
                 continue
             raw_regions.append((
-                max(132.0, bbox[0] - 5),
-                max(0, bbox[1] - 3),
+                max(page.rect.x0 + 10.0, bbox[0] - 6),
+                max(0, bbox[1] - 4),
                 min(page.rect.width, bbox[2] + 8),
-                min(page.rect.height, bbox[3] + 3)
+                min(page.rect.height, bbox[3] + 4)
             ))
 
     if not raw_regions:

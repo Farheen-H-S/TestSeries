@@ -299,7 +299,7 @@ class AnswerParser:
         )
         parsed_answers.extend(mcq_table_answers)
         
-        # Deduplicate parsed answers by hierarchy path to avoid ambiguous matching conflicts
+        # Deduplicate / merge parsed answers by hierarchy path to avoid ambiguous matching conflicts while preserving multi-part content
         seen_answers = {}
         for ans in parsed_answers:
             path_key = tuple(ans.hierarchy_path)
@@ -309,20 +309,36 @@ class AnswerParser:
                 existing = seen_answers[path_key]
                 # Conflict resolution rules:
                 # 1. Prefer MCQ Table parser over descriptive regex parser
-                # 2. Otherwise, prefer the one with longer text length
-                # 3. If text lengths are equal, prefer the one starting earlier in the document
                 if ans.source is AnswerSource.MCQ_TABLE and existing.source is not AnswerSource.MCQ_TABLE:
                     seen_answers[path_key] = ans
                 elif existing.source is AnswerSource.MCQ_TABLE and ans.source is not AnswerSource.MCQ_TABLE:
                     pass  # Keep existing (mcq_table wins)
                 else:
-                    len_ans = len(ans.text) if ans.text else 0
-                    len_existing = len(existing.text) if existing.text else 0
-                    if len_ans > len_existing:
-                        seen_answers[path_key] = ans
-                    elif len_ans == len_existing:
-                        if ans.start_offset < existing.start_offset:
+                    # Both are descriptive/regex segments: merge text if at distinct offsets to preserve all answer sub-parts
+                    if abs(ans.start_offset - existing.start_offset) > 50:
+                        merged_text = f"{existing.text}\n\n{ans.text}".strip() if existing.text and ans.text else (existing.text or ans.text)
+                        merged_wn = (existing.working_notes or []) + (ans.working_notes or [])
+                        merged_ans = ParsedAnswer(
+                            hierarchy_path=existing.hierarchy_path,
+                            raw_header=existing.raw_header,
+                            text=merged_text,
+                            start_offset=min(existing.start_offset, ans.start_offset),
+                            end_offset=max(existing.end_offset, ans.end_offset),
+                            start_page=min(existing.start_page, ans.start_page),
+                            end_page=max(existing.end_page, ans.end_page),
+                            section_type=existing.section_type,
+                            working_notes=merged_wn if merged_wn else None,
+                            source=existing.source
+                        )
+                        seen_answers[path_key] = merged_ans
+                    else:
+                        len_ans = len(ans.text) if ans.text else 0
+                        len_existing = len(existing.text) if existing.text else 0
+                        if len_ans > len_existing:
                             seen_answers[path_key] = ans
+                        elif len_ans == len_existing:
+                            if ans.start_offset < existing.start_offset:
+                                seen_answers[path_key] = ans
 
         parsed_answers = list(seen_answers.values())
         parsed_answers.sort(key=lambda x: x.start_offset)
