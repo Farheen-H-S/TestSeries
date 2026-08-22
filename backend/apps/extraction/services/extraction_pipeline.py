@@ -407,7 +407,11 @@ def extract_document(document: Document, temp_file_path: str = None):
                 # 7.5 Classification & Instruction
                 q_type = "UNIDENTIFIED"
                 try:
-                    q_type = classifier.classify(consolidated_q_text)
+                    q_type = classifier.classify(
+                        consolidated_q_text,
+                        shared_context=clean_shared_ctx,
+                        answer_text=clean_ans_text
+                    )
                 except Exception:
                     logger.exception("Classification failed for %s", q_key)
 
