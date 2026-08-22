@@ -50,16 +50,14 @@ class QuestionSerializer(serializers.ModelSerializer):
 
         if 'chapter' in attrs:
             chapter = attrs['chapter']
-            if chapter is None:
-                raise serializers.ValidationError({"chapter": "Chapter is required."})
-
-            # Check that the chapter belongs to the subject associated with the question's document
-            if self.instance:
-                document = attrs.get('document', self.instance.document)
-                if document and chapter.subject_id != document.subject_id:
-                    raise serializers.ValidationError({
-                        "chapter": f"Chapter '{chapter.chapter_name}' does not belong to the subject '{document.subject.name}'."
-                    })
+            if chapter is not None:
+                # Check that the chapter belongs to the subject associated with the question's document
+                if self.instance:
+                    document = attrs.get('document', self.instance.document)
+                    if document and chapter.subject_id != document.subject_id:
+                        raise serializers.ValidationError({
+                            "chapter": f"Chapter '{chapter.chapter_name}' does not belong to the subject '{document.subject.name}'."
+                        })
         return attrs
 
     def update(self, instance, validated_data):

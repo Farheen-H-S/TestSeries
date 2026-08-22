@@ -380,9 +380,6 @@ const Review = () => {
     if (!editForm.answer_text.trim()) {
       errors.answer_text = 'Answer content is required.';
     }
-    if (!editForm.chapter) {
-      errors.chapter = 'Chapter mapping is required.';
-    }
     return errors;
   };
 
@@ -398,13 +395,14 @@ const Review = () => {
     setEditGeneralError(null);
 
     try {
-      const updatedQ = await questionService.updateQuestion(qId, {
+      const payload = {
         question_number: editForm.question_number.trim(),
         question_text: editForm.question_text,
         answer_text: editForm.answer_text,
-        chapter: Number(editForm.chapter),
+        chapter: editForm.chapter ? Number(editForm.chapter) : null,
         question_type: editForm.question_type || 'DESCRIPTIVE'
-      });
+      };
+      const updatedQ = await questionService.updateQuestion(qId, payload);
 
       // Update question locally inside state (no reload)
       setQuestions(prev => prev.map(q => q.question_id === qId ? updatedQ : q));
@@ -839,13 +837,12 @@ const Review = () => {
                               label="Chapter Mapping"
                               id={`edit-chapter-${q.question_id}`}
                               name="chapter"
-                              placeholder="Search chapters..."
+                              placeholder="Search chapters (optional)..."
                               options={chapterOptions}
                               value={editForm.chapter}
                               onChange={handleChapterDropdownChange}
                               error={editErrors.chapter}
                               onCreateOption={handleCreateChapterPrompt}
-                              required
                             />
                           </div>
                         </div>
