@@ -71,7 +71,8 @@ const Review = () => {
     question_number: '',
     question_text: '',
     answer_text: '',
-    chapter: ''
+    chapter: '',
+    question_type: ''
   });
   const [editTables, setEditTables] = useState({
     question_table: null,
@@ -127,7 +128,8 @@ const Review = () => {
       String(editForm.question_number ?? '') !== String(originalQ.question_number ?? '') ||
       String(editForm.question_text ?? '') !== String(originalQ.question_text ?? '') ||
       String(editForm.answer_text ?? '') !== String(originalQ.answer_text ?? '') ||
-      String(editForm.chapter ?? '') !== String(originalQ.chapter ?? '')
+      String(editForm.chapter ?? '') !== String(originalQ.chapter ?? '') ||
+      String(editForm.question_type ?? '') !== String(originalQ.question_type ?? '')
     );
   }, [editingQuestionId, editForm, questions]);
 
@@ -205,8 +207,7 @@ const Review = () => {
   const stats = useMemo(() => {
     const total = reviewableQuestions.length;
     const withAnswers = reviewableQuestions.filter(q => !isAnswerMissing(q.answer_text)).length;
-    const parentCount = reviewableQuestions.filter(q => parentIds.has(q.question_id)).length;
-    const withoutAnswers = Math.max(0, total - withAnswers - parentCount);
+    const withoutAnswers = reviewableQuestions.filter(q => !parentIds.has(q.question_id) && isAnswerMissing(q.answer_text)).length;
     return { total, withAnswers, withoutAnswers };
   }, [reviewableQuestions, parentIds]);
 
@@ -332,7 +333,8 @@ const Review = () => {
       question_number: q.question_number || '',
       question_text: q.question_text || '',
       answer_text: q.answer_text || '',
-      chapter: q.chapter || ''
+      chapter: q.chapter || '',
+      question_type: q.question_type || 'DESCRIPTIVE'
     });
   };
 
@@ -400,7 +402,8 @@ const Review = () => {
         question_number: editForm.question_number.trim(),
         question_text: editForm.question_text,
         answer_text: editForm.answer_text,
-        chapter: Number(editForm.chapter)
+        chapter: Number(editForm.chapter),
+        question_type: editForm.question_type || 'DESCRIPTIVE'
       });
 
       // Update question locally inside state (no reload)
@@ -759,6 +762,11 @@ const Review = () => {
                     <span className="question-number-title">
                       Question {q.question_number ?? '—'}{q.sub_question_label ? ` (${q.sub_question_label})` : ''}
                     </span>
+                    {q.question_type && (
+                      <span className="doc-type-badge" style={{ textTransform: 'uppercase', fontWeight: 600, background: 'rgba(59, 130, 246, 0.1)', color: 'var(--primary, #2563eb)' }}>
+                        {q.question_type}
+                      </span>
+                    )}
                     {q.marks !== null && q.marks !== undefined && (
                       <span className="doc-type-badge" style={{ textTransform: 'lowercase' }}>
                         {q.marks} marks
@@ -807,6 +815,23 @@ const Review = () => {
                             {editErrors.question_number && (
                               <span className="field-error-text">{editErrors.question_number}</span>
                             )}
+                          </div>
+
+                          <div className="edit-input-wrapper">
+                            <label className="field-label">Question Type</label>
+                            <div className="select-wrapper">
+                              <select
+                                name="question_type"
+                                value={editForm.question_type}
+                                onChange={handleFormChange}
+                                className="select-field input-field"
+                              >
+                                <option value="THEORY">THEORY</option>
+                                <option value="PRACTICAL">PRACTICAL</option>
+                                <option value="MCQ">MCQ</option>
+                                <option value="DESCRIPTIVE">DESCRIPTIVE</option>
+                              </select>
+                            </div>
                           </div>
 
                           <div className="edit-input-wrapper">

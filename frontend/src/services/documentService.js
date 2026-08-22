@@ -8,8 +8,8 @@ const documentService = {
    * Fetch all documents from the backend
    * @returns {Promise<Array>} List of document items
    */
-  getDocuments: async () => {
-    const response = await api.get('/documents/');
+  getDocuments: async (params = {}) => {
+    const response = await api.get('/documents/', { params });
     return response.data;
   },
 

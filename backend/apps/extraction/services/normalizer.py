@@ -57,8 +57,8 @@ class Normalizer:
         if not text:
             return ""
 
-        # Rule 1: Isolated OCR glyphs for digit 1 at word boundaries
-        text = re.sub(r'\b[lI|]\b', '1', text)
+        # Rule 1: Isolated OCR glyphs for digit 1 at word boundaries (excluding bracketed Roman numerals)
+        text = re.sub(r'(?<!\()\b[lI|]\b(?!\))', '1', text)
 
         # Rule 2: Single-character substitutions when sandwiched between digits
         text = re.sub(r'(?<=\d)O|O(?=\d)', '0', text)
@@ -98,41 +98,18 @@ class Normalizer:
         
         def repl_prefix(match: re.Match) -> str:
             prefix = match.group(1)
-            mistake = match.group(2)
-            corrected = ocr_map.get(mistake, mistake)
+            mistake_str = match.group(2)
+            corrected = "".join(ocr_map.get(ch, ch) for ch in mistake_str)
             return prefix + corrected
 
-        # Matches headers like: Question S, Q. B, Ans O, Solution I, etc.
-        # Prefix pattern matches case-insensitively.
+        # Matches specific header prefixes followed by label strings (digits or OCR glyphs):
+        # e.g. Question S, Question 12S, Question 1O5, Q. B, Ans O, Solution I
+        # Prefix pattern matches case-insensitively and replaces characters without changing text length.
         text = re.sub(
-            r'(?i)\b(Question\s+(?:No\.\s*)?|Q\.?\s?|Answer\s+(?:to\s+)?(?:Question\s+)?(?:No\.\s*)?|Ans\.?\s*|Solution\s*)([lI|OSBZ])\b',
+            r'(?i)\b(Question\s+(?:No\.\s*)?|Q\.?\s?|Answer\s+(?:to\s+)?(?:Question\s+)?(?:No\.\s*)?|Ans\.?\s*|Solution\s*)([0-9lI|OSBZosbz]+)(?=\s|\(|\.|\)|$)',
             repl_prefix,
             text
         )
-
-        def repl_line_start(match: re.Match) -> str:
-            indent = match.group(1)
-            mistake = match.group(2)
-            suffix = match.group(3)
-            corrected = ocr_map.get(mistake, mistake)
-            return indent + corrected + suffix
-
-        # Numbered list markers at the start of a line, e.g. "l.", "|."
-        text = re.sub(
-            r'(?m)^([ \t]*)([l|])([.)])',
-            repl_line_start,
-            text
-        )
-
-        # Digit-sandwiched substitutions (just like original Normalizer rules)
-        text = re.sub(r'(?<=\d)O|O(?=\d)', '0', text)
-        text = re.sub(r'(?<=\d)o|o(?=\d)', '0', text)
-        text = re.sub(r'(?<=\d)S|S(?=\d)', '5', text)
-        text = re.sub(r'(?<=\d)s|s(?=\d)', '5', text)
-        text = re.sub(r'(?<=\d)B|B(?=\d)', '8', text)
-        text = re.sub(r'(?<=\d)b|b(?=\d)', '8', text)
-        text = re.sub(r'(?<=\d)Z|Z(?=\d)', '2', text)
-        text = re.sub(r'(?<=\d)z|z(?=\d)', '2', text)
 
         if logger.isEnabledFor(logging.DEBUG):
             changes = sum(1 for c1, c2 in zip(original_text, text) if c1 != c2)
@@ -159,13 +136,19 @@ class Normalizer:
 
         path = []
 
-        # Step 1: Leading main number
-        main_match = re.search(r'(\d+)', header)
-        if main_match:
-            path.append(main_match.group(1))
-            current_pos = main_match.end()
+        # Step 1: Check for decimal case-study style header (e.g. "1.1", "1.2", "2.1")
+        decimal_match = re.match(r'^([1-9])\.([1-9]|1[0-5])\b', header)
+        if decimal_match:
+            path.extend([decimal_match.group(1), decimal_match.group(2)])
+            current_pos = decimal_match.end()
         else:
-            current_pos = 0
+            # Leading main number
+            main_match = re.search(r'(\d+)', header)
+            if main_match:
+                path.append(main_match.group(1))
+                current_pos = main_match.end()
+            else:
+                current_pos = 0
 
         # Step 2: Sequential bracketed sub-labels after the main number
         label_regex = re.compile(r'\(([^)]+)\)')

@@ -1,3 +1,5 @@
+import os
+import re
 import logging
 import time
 from typing import List, Dict, Any, Tuple, Optional
@@ -7,12 +9,12 @@ from apps.extraction.models import ExtractionLog
 from apps.papers.models import Question
 from .pdf_loader import load_pdf
 from .text_extractor import extract_text
-from .html_formatter import text_to_html, format_question_content, format_answer_content, clean_stored_html_tables, clean_metadata_text
+from .html_formatter import format_question_content, format_answer_content, clean_stored_html_tables, clean_metadata_text
 from .chapter_mapper import map_question_to_chapter, get_prepared_chapters
 
 
 # Phase 3D Services
-from .types import LayoutType, QuestionLevel, ParsingContext
+from .types import LayoutType, ParsingContext
 from .layout_detector import DocumentLayoutDetector
 from .section_splitter import SectionSplitter
 from .question_parser import QuestionParser
@@ -24,7 +26,7 @@ from .instruction_detector import InstructionDetector
 
 from .extraction_patterns import get_default_parser_config
 from .hierarchy_utils import build_hierarchy_key
-from .exceptions import DuplicateHierarchyError
+from .exceptions import ExtractionError
 from .constants import UNMATCHED_RATIO_THRESHOLD, UNMATCHED_COUNT_THRESHOLD
 
 # Initialize logger
@@ -34,7 +36,11 @@ def extract_document(document: Document, temp_file_path: str = None):
     """
     Full Phase 3D pipeline to process a Document with industrial-grade correctness.
     """
-    pdf_path = temp_file_path or document.storage_path
+    raw_path = temp_file_path or (document.storage_path.path if hasattr(document.storage_path, 'path') else str(document.storage_path))
+    if not os.path.isabs(raw_path) and not os.path.exists(raw_path):
+        from django.conf import settings
+        raw_path = os.path.join(settings.MEDIA_ROOT, raw_path)
+    pdf_path = raw_path
     logger.info("Starting extraction | document_id=%s | storage_path=%s | pdf_path=%s", document.document_id, document.storage_path, pdf_path)
     document.extraction_status = Document.ExtractionStatus.PROCESSING
     document.save(update_fields=["extraction_status"])
@@ -108,29 +114,28 @@ def extract_document(document: Document, temp_file_path: str = None):
             if m:
                 q_start_relative = m.start()
                 break
-        enable_semantic = True
+        enable_semantic = (q_start_relative is None)
         if q_start_relative is not None:
             logger.info("Optimizing question region start boundary: relative_offset=%d", q_start_relative)
             q_part = q_part[q_start_relative:]
             q_base_offset += q_start_relative
-            enable_semantic = False
             
         # 4. Parsing with Config and Base Offsets
         context = ParsingContext()
         q_parser = QuestionParser(config)
         a_parser = AnswerParser(config)
         
+        parsed_answers = []
+        if layout_res.layout != LayoutType.UNKNOWN:
+            parsed_answers = a_parser.parse(a_part, page_offsets, base_offset=a_base_offset, context=context)
+            if parsed_answers:
+                context.valid_question_paths = {tuple(a.hierarchy_path) for a in parsed_answers if a.hierarchy_path}
+
         parsed_questions = q_parser.parse(q_part, page_offsets, base_offset=q_base_offset, enable_semantic_validation=enable_semantic, context=context)
         
         valid_question_paths = {tuple(q.hierarchy_path) for q in parsed_questions}
         
-        # Best-effort Answer Parsing for UNKNOWN layout
-        parsed_answers = []
-        # UNKNOWN should require actual header signals to avoid false positives (e.g. "Answer the following")
-        if layout_res.layout != LayoutType.UNKNOWN:
-            parsed_answers = a_parser.parse(a_part, page_offsets, base_offset=a_base_offset, context=context, valid_question_paths=valid_question_paths)
-        else:
-            # Best effort: require at least 2 distinct answer headers
+        if not parsed_answers and layout_res.layout == LayoutType.UNKNOWN:
             signals = 0
             for p in config.answer_header_patterns:
                 signals += len(p.findall(a_part))
@@ -138,6 +143,8 @@ def extract_document(document: Document, temp_file_path: str = None):
                 
             if signals >= 2:
                 parsed_answers = a_parser.parse(a_part, page_offsets, base_offset=a_base_offset, context=context, valid_question_paths=valid_question_paths)
+        elif parsed_answers:
+            parsed_answers = a_parser.parse(a_part, page_offsets, base_offset=a_base_offset, context=context, valid_question_paths=valid_question_paths)
 
         # 5. Matching using Canonical Hierarchy Paths
         logger.info(
@@ -213,68 +220,71 @@ def extract_document(document: Document, temp_file_path: str = None):
         classifier = QuestionClassifier() # Uses CLASSIFICATION_RULES internally
         instr_det = InstructionDetector(config.instruction_priority)
         
-        # Build lookup for matched answers based on canonical path tuple
-        answer_lookup = {tuple(q.hierarchy_path): a for q, a in match_res.matches}
+        # Build lookup for all parsed answers
+        all_answers_lookup = {tuple(a.hierarchy_path): a for a in parsed_answers if a.hierarchy_path}
 
-        # Duplicate detection/logging before persistence
+        # Duplicate detection/deduplication before persistence
         seen_questions = {}
-        # Cache uses id(pq) because the same ParsedQuestion instance is reused throughout the pipeline.
-        # This avoids recomputing hierarchy_key without relying on hierarchy content as a lookup key.
         hierarchy_keys = {}
         for pq in parsed_questions:
             h_key = build_hierarchy_key(pq.hierarchy_path)
             if h_key in seen_questions:
                 prev_q = seen_questions[h_key]
-                raise DuplicateHierarchyError(
-                    f"Duplicate hierarchy key detected\n\n"
-                    f"Document:\n"
-                    f"{document.title} (ID: {document.document_id})\n\n"
-                    f"Hierarchy key:\n"
-                    f"{h_key}\n\n"
-                    f"First\n"
-                    f"-----\n"
-                    f"Raw path:\n"
-                    f"{prev_q.hierarchy_path}\n\n"
-                    f"Page:\n"
-                    f"{prev_q.start_page}\n\n"
-                    f"Preview:\n"
-                    f"'{prev_q.text[:80]}...'\n\n"
-                    f"Second\n"
-                    f"------\n"
-                    f"Raw path:\n"
-                    f"{pq.hierarchy_path}\n\n"
-                    f"Page:\n"
-                    f"{pq.start_page}\n\n"
-                    f"Preview:\n"
-                    f"'{pq.text[:80]}...'"
+                suffix = 2
+                dedup_key = f"{h_key}.{suffix}"
+                while dedup_key in seen_questions:
+                    suffix += 1
+                    dedup_key = f"{h_key}.{suffix}"
+                logger.warning(
+                    "Duplicate hierarchy key '%s' detected between p.%d and p.%d; deduplicating to '%s'",
+                    h_key, prev_q.start_page, pq.start_page, dedup_key
                 )
+                pq.hierarchy_path = pq.hierarchy_path + [str(suffix)]
+                h_key = dedup_key
             seen_questions[h_key] = pq
             hierarchy_keys[id(pq)] = h_key
+        # Guard against zero-question empty extractions
+        if not parsed_questions:
+            raise ExtractionError(
+                f"Zero questions extracted from document '{document.title}' (ID: {document.document_id}). "
+                f"Total potential matches evaluated: {q_parser.diagnostics.total_matches}."
+            )
+
+        # Group parsed_questions by primary question key
+        grouped_questions: Dict[str, List[ParsedQuestion]] = {}
+        for pq in parsed_questions:
+            if not pq.hierarchy_path:
+                continue
+            if len(pq.hierarchy_path) >= 2 and pq.hierarchy_path[0].isdigit() and pq.hierarchy_path[1].isdigit():
+                key = f"{pq.hierarchy_path[0]}.{pq.hierarchy_path[1]}"
+            else:
+                key = pq.hierarchy_path[0]
+            grouped_questions.setdefault(key, []).append(pq)
 
         # 7. Persistence inside a transaction
         with transaction.atomic():
+            Question.objects.filter(document=document).delete()
             document.total_pages = len(pages_data)
             document.save(update_fields=["total_pages"])
             
-            # NOTE (FUTURE SCOPE): Automatic chapter mapping currently runs for all documents
-            # processed by the extraction pipeline. If a future release restricts automatic chapter
-            # mapping strictly to RTP document uploads, check: if getattr(document, 'document_type', None) == 'RTP':
             prepared_chapters = get_prepared_chapters(document.subject)
-            
-            # hierarchy_map: tuple(path) -> Question object
-            hierarchy_map = {}
+            subj_name = document.subject.name if (document and document.subject) else None
             active_chapter = None
 
-            for idx, pq in enumerate(parsed_questions):
-                # 7.1 Enrichment
+            for idx, (q_key, pqs) in enumerate(grouped_questions.items()):
+                first_pq = pqs[0]
+                last_pq = pqs[-1]
+
+                # 7.1 Sequential Chapter Mapping
                 candidate_header_text = ""
                 if idx > 0:
-                    prev_pq = parsed_questions[idx-1]
-                    gap_text = q_part[prev_pq.end_offset:pq.start_offset].strip()
-                    trailing_prev = prev_pq.text[-250:] if prev_pq.text else ""
+                    prev_pqs = list(grouped_questions.values())[idx-1]
+                    prev_last_pq = prev_pqs[-1]
+                    gap_text = q_part[prev_last_pq.end_offset:first_pq.start_offset].strip()
+                    trailing_prev = prev_last_pq.text[-250:] if prev_last_pq.text else ""
                     candidate_header_text = gap_text + "\n" + trailing_prev
                 else:
-                    candidate_header_text = q_part[max(0, pq.start_offset - 500):pq.start_offset].strip()
+                    candidate_header_text = q_part[max(0, first_pq.start_offset - 500):first_pq.start_offset].strip()
 
                 if candidate_header_text:
                     temp_chapter = None
@@ -292,98 +302,144 @@ def extract_document(document: Document, temp_file_path: str = None):
 
                 matched_chapter = active_chapter
 
-                marks = None
-                try:
-                    # Provide larger context to marks extractor
-                    marks = marks_ext.extract(pq.text)
-                except Exception:
-                    logger.exception("Marks extraction failed for %s", pq.raw_header)
+                # 7.2 Consolidate Question Text and HTML Content
+                q_text_parts = []
+                shared_contexts = []
                 
+                for sub in pqs:
+                    sub_label = ".".join(sub.hierarchy_path[1:]) if len(sub.hierarchy_path) > 1 else None
+                    clean_text = clean_metadata_text(sub.text, subject_name=subj_name, prepared_chapters=prepared_chapters)
+                    if sub.shared_context:
+                        clean_ctx = clean_metadata_text(sub.shared_context, subject_name=subj_name, prepared_chapters=prepared_chapters)
+                        if clean_ctx and clean_ctx not in shared_contexts:
+                            shared_contexts.append(clean_ctx)
+                            
+                    if sub_label and sub.raw_header:
+                        q_text_parts.append(f"{sub.raw_header.strip()} {clean_text}".strip())
+                    else:
+                        q_text_parts.append(clean_text)
+                        
+                consolidated_q_text = "\n\n".join(filter(None, q_text_parts))
+                consolidated_shared_ctx = "\n\n".join(shared_contexts) if shared_contexts else None
+                q_content = format_question_content(consolidated_q_text, shared_context=consolidated_shared_ctx)
+
+                # 7.3 Consolidate Answer Text and HTML Content in Natural Document Order
+                answer_segments = []
+                seen_ans_keys = set()
+                
+                # Direct matching sub-answers
+                for sub in pqs:
+                    h_tuple = tuple(sub.hierarchy_path)
+                    if h_tuple in all_answers_lookup and h_tuple not in seen_ans_keys:
+                        seen_ans_keys.add(h_tuple)
+                        ans = all_answers_lookup[h_tuple]
+                        sub_label = ".".join(sub.hierarchy_path[1:]) if len(sub.hierarchy_path) > 1 else None
+                        if ans.text and ans.text.strip():
+                            if sub_label and sub.raw_header and not ans.text.strip().startswith(sub.raw_header.strip()):
+                                answer_segments.append((ans.start_offset, f"{sub.raw_header.strip()} {ans.text.strip()}"))
+                            else:
+                                answer_segments.append((ans.start_offset, ans.text.strip()))
+                        for wn_idx, wn in enumerate(ans.working_notes or []):
+                            if isinstance(wn, dict):
+                                title = wn.get("title", "")
+                                content = wn.get("content", "")
+                                wn_str = f"{title}\n{content}".strip() if title else content.strip()
+                            elif hasattr(wn, "content"):
+                                title = getattr(wn, "title", "") or ""
+                                content = getattr(wn, "content", "") or ""
+                                wn_str = f"{title}\n{content}".strip() if title else content.strip()
+                            elif isinstance(wn, str):
+                                wn_str = wn.strip()
+                            else:
+                                wn_str = str(wn).strip()
+                            if wn_str:
+                                answer_segments.append((ans.start_offset + 0.1 + wn_idx * 0.01, wn_str))
+                                
+                # Also check any child answers under this primary question key (e.g. answer key has (a), (b) under question 10)
+                for p, ans in all_answers_lookup.items():
+                    if p and p[0] == q_key and p not in seen_ans_keys:
+                        seen_ans_keys.add(p)
+                        if ans.text and ans.text.strip():
+                            answer_segments.append((ans.start_offset, ans.text.strip()))
+                        for wn_idx, wn in enumerate(ans.working_notes or []):
+                            if isinstance(wn, dict):
+                                title = wn.get("title", "")
+                                content = wn.get("content", "")
+                                wn_str = f"{title}\n{content}".strip() if title else content.strip()
+                            elif hasattr(wn, "content"):
+                                title = getattr(wn, "title", "") or ""
+                                content = getattr(wn, "content", "") or ""
+                                wn_str = f"{title}\n{content}".strip() if title else content.strip()
+                            elif isinstance(wn, str):
+                                wn_str = wn.strip()
+                            else:
+                                wn_str = str(wn).strip()
+                            if wn_str:
+                                answer_segments.append((ans.start_offset + 0.1 + wn_idx * 0.01, wn_str))
+
+                # Order all answer segments in natural document sequence
+                answer_segments.sort(key=lambda x: x[0])
+                full_ans_text = "\n\n".join([s[1] for s in answer_segments if s[1]])
+
+                # Universal Rupee normalization: map all backtick characters to ₹
+                clean_q_raw = consolidated_q_text.replace("`", "₹").replace("\u0060", "₹")
+                clean_ans_raw = full_ans_text.replace("`", "₹").replace("\u0060", "₹")
+                clean_shared_raw = consolidated_shared_ctx.replace("`", "₹").replace("\u0060", "₹") if consolidated_shared_ctx else None
+                
+                clean_shared_ctx = clean_metadata_text(clean_shared_raw, subject_name=subj_name, prepared_chapters=prepared_chapters) if clean_shared_raw else None
+                clean_q_text = clean_metadata_text(clean_q_raw, subject_name=subj_name, prepared_chapters=prepared_chapters)
+                clean_ans_text = clean_metadata_text(clean_ans_raw, subject_name=subj_name, prepared_chapters=prepared_chapters)
+                
+                full_q_text = f"{clean_shared_ctx}\n\n{clean_q_text}" if clean_shared_ctx else clean_q_text
+                q_content = format_question_content(clean_q_text, shared_context=clean_shared_ctx)
+                a_content = format_answer_content(clean_ans_text) if clean_ans_text else ""
+
+                # 7.4 Marks Extraction
+                marks = None
+                sub_marks = []
+                for sub in pqs:
+                    m = marks_ext.extract(sub.text)
+                    if m:
+                        sub_marks.append(m)
+                if sub_marks:
+                    marks = sum(sub_marks) if len(sub_marks) > 1 else sub_marks[0]
+
+                # 7.5 Classification & Instruction
                 q_type = "UNIDENTIFIED"
                 try:
-                    q_type = classifier.classify(pq.text)
+                    q_type = classifier.classify(
+                        consolidated_q_text,
+                        shared_context=clean_shared_ctx,
+                        answer_text=clean_ans_text
+                    )
                 except Exception:
-                    logger.exception("Classification failed for %s", pq.raw_header)
-                
-                # ... rest of loop
+                    logger.exception("Classification failed for %s", q_key)
+
                 instr = None
                 try:
-                    instr = instr_det.detect(pq.text)
+                    instr = instr_det.detect(consolidated_q_text)
                 except Exception:
-                    logger.exception("Instruction detection failed for %s", pq.raw_header)
-                
-                # Answer Matching
-                ans = answer_lookup.get(tuple(pq.hierarchy_path))
-                ans_text = ans.text if ans else ""
-
-                subj_name = document.subject.name if (document and document.subject) else None
-                clean_q_text = clean_metadata_text(pq.text, subject_name=subj_name, prepared_chapters=prepared_chapters)
-                clean_shared_ctx = clean_metadata_text(pq.shared_context, subject_name=subj_name, prepared_chapters=prepared_chapters) if pq.shared_context else None
-                clean_ans_text = clean_metadata_text(ans_text, subject_name=subj_name, prepared_chapters=prepared_chapters)
-                
-                # HTML Formatting
-                q_content = format_question_content(clean_q_text, shared_context=clean_shared_ctx)
-                ans_working_notes = ans.working_notes if ans else []
-                a_content = format_answer_content(clean_ans_text, working_notes=ans_working_notes) if (clean_ans_text or ans_working_notes) else ""
-
-
-                # 7.2 Resolve Parent deterministically
-                parent_q = None
-                if len(pq.hierarchy_path) > 1:
-                    parent_path = tuple(pq.hierarchy_path[:-1])
-                    parent_q = hierarchy_map.get(parent_path)
-
-                if not matched_chapter and parent_q and parent_q.chapter:
-                    matched_chapter = parent_q.chapter
-
-                # 7.3 Create Record
-                sub_label_raw = ".".join(pq.hierarchy_path[1:]) if len(pq.hierarchy_path) > 1 else None
-                sub_question_label = None
-                if sub_label_raw:
-                    sub_question_label = sub_label_raw[:10]
-                    if len(sub_label_raw) > 10:
-                        logger.warning(
-                            "Sub-question label truncated from '%s' to '%s' for question %s (Document ID: %d)",
-                            sub_label_raw, sub_question_label, pq.hierarchy_path[0], document.document_id
-                        )
+                    logger.exception("Instruction detection failed for %s", q_key)
 
                 clean_q = clean_stored_html_tables(q_content) if '<table' in q_content else q_content
                 clean_a = clean_stored_html_tables(a_content) if '<table' in a_content else a_content
 
-                q_obj = Question.objects.create(
+                Question.objects.create(
                     document=document,
-                    parent_question=parent_q,
+                    parent_question=None,
                     chapter=matched_chapter,
-                    question_number=pq.hierarchy_path[0],
-                    sub_question_label=sub_question_label,
-                    hierarchy_key=hierarchy_keys[id(pq)],
-                    question_text=clean_q_text,
+                    question_number=q_key,
+                    sub_question_label=None,
+                    hierarchy_key=build_hierarchy_key([q_key]),
+                    question_text=full_q_text,
                     question_content=clean_q,
                     answer_text=clean_ans_text,
                     answer_content=clean_a,
                     question_type=q_type,
                     instruction_type=instr,
                     marks=marks,
-                    source_page=pq.start_page
+                    source_page=first_pq.start_page
                 )
-                
-                # Keep track for hierarchy resolution
-                hierarchy_map[tuple(pq.hierarchy_path)] = q_obj
-
-            # Inherit chapter across questions in the same shared_context block
-            context_groups = {}
-            for h_path, q_obj in hierarchy_map.items():
-                if q_obj.question_content and 'shared-context' in q_obj.question_content:
-                    ctx_key = q_obj.question_content.split('shared-context', 1)[1][:200]
-                    context_groups.setdefault(ctx_key, []).append(q_obj)
-
-            for group_qs in context_groups.values():
-                grp_ch = next((q.chapter for q in group_qs if q.chapter), None)
-                if grp_ch:
-                    for q in group_qs:
-                        if not q.chapter:
-                            q.chapter = grp_ch
-                            q.save(update_fields=['chapter'])
 
         # 8. Finalize Success
         document.extraction_status = Document.ExtractionStatus.COMPLETED

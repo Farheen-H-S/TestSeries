@@ -15,9 +15,10 @@ ANSWER_SECTION_DELIMITERS = [
 ]
 
 MCQ_ANSWER_SECTION_PATTERNS = [
-    r"(?i)^[ \t]*(?:Answer\s+to\s+)?Multiple\s+Choice\s+Questions(?:\s+Answers?)?",
+    r"(?i)^[ \t]*(?:Answers?\s+to\s+)?Multiple\s+Choice\s+Questions(?:\s+Answers?)?",
     r"(?i)^[ \t]*MCQ\s+Answers?",
-    r"(?i)^[ \t]*Part\s+I[-–—\s]+Multiple\s+Choice\s+Questions",
+    r"(?i)^[ \t]*Part\s+[I|A|B|1|2][-–—\s:]*(?:Multiple\s+Choice\s+Questions|MCQ\s+Answers?)",
+    r"(?i)^[ \t]*ANSWERS?\s+TO\s+(?:MULTIPLE\s+CHOICE\s+QUESTIONS|MCQS?)",
 ]
 
 WORKING_NOTE_SECTION_PATTERNS = [
@@ -43,7 +44,8 @@ DOCUMENT_METADATA_PATTERNS = [
     r"(?i)^[ \t]*REVISION\s+TEST\s+PAPERS?\s*$",
     r"(?i)^[ \t]*MOCK\s+TEST\s+PAPERS?\s*$",
     r"(?i)^[ \t]*MODEL\s+TEST\s+PAPERS?\s*$",
-    r"(?i)^[ \t]*(?:FINAL|INTERMEDIATE|FOUNDATION)\s+(?:EXAMINATION|EXAMS?)\s*$",
+    r"(?i)^[ \t]*(?:FINAL|INTERMEDIATE|FOUNDATION)\s+(?:EXAMINATION|EXAMS?|COURSE)\s*$",
+    r"(?i)^[ \t]*FINAL\s+COURSE\s*$",
     r"(?i)^[ \t]*(?:JANUARY|FEBRUARY|MARCH|APRIL|MAY|JUNE|JULY|AUGUST|SEPTEMBER|OCTOBER|NOVEMBER|DECEMBER)?\s*\d{4}\s+(?:EXAMINATION|EXAMS?)\s*$",
     r"(?i)^[ \t]*PAPER\s*[-–—:]\s*\d+[\s\-–—:]*.*$",
     r"(?i)^[ \t]*(?:FINANCIAL\s+REPORTING|ADVANCED\s+AUDITING|CORPORATE\s+AND\s+ECONOMIC\s+LAWS|DIRECT\s+TAX|INDIRECT\s+TAX|STRATEGIC\s+FINANCIAL\s+MANAGEMENT|AUDITING\s+AND\s+ETHICS|TAXATION|COST\s+AND\s+MANAGEMENT\s+ACCOUNTING)\s*$",
@@ -63,27 +65,29 @@ MAIN_ANSWER_SECTION_PATTERNS = [
 
 
 # Question Header Patterns
-# Matches: Question 1, Q1, Q.1, 1., 1(a), (a), (i)
+# Matches: Question 1, Q1, Q.1, 1., 1.1, 1(a), (a), (i)
 QUESTION_HEADER_PATTERNS = [
-    r"(?i)^[ \t]*Question\s+(?:No\.\s*)?(\d+)(?:[ \t]*\([^)]+\))*",          # Question 1, Question 1(a), Question 1(a)(i)
-    r"(?i)^[ \t]*Q\.?\s?(\d+)(?:[ \t]*\([^)]+\))*",                          # Q1, Q. 1, Q1(a)
-    r"^[ \t]*(\d+)[.)](?!\d)(?:[ \t]*\([^)]+\))*",                                 # 1. or 1) or 1.(a)
-    r"^[ \t]*\(([a-zA-Z])\)",                            # (a)
-    r"^[ \t]*\(([ivxIVX]+)\)",                           # (i), (ii), (iv)
-    r"^[ \t]*\d+\s*\(([a-z])\)",                         # 1(a)
-    r"^[ \t]*([a-z])\s*[.)]",                            # a. or a)
+    r"^[ \t]*([1-9])\.([1-9]|1[0-5])[ \t]*$",                                                                    # 1.1, 1.2, 2.1 (Case study decimal questions 1.1 to 9.15)
+    r"(?i)^[ \t]*Question\s+(?:No\.\s*)?(\d+)(?:[ \t]*\([^)]+\))*(?!\s+(?:to|-|–|—)\s+(?:Question|Q\.?\s*)?\d+)", # Question 1, Question 1(a), Question 1(a)(i)
+    r"(?i)^[ \t]*Q\.?\s?(\d+)(?:[ \t]*\([^)]+\))*(?!\s+(?:to|-|–|—)\s+(?:Q\.?\s*)?\d+)",                         # Q1, Q. 1, Q1(a)
+    r"^[ \t]*(\d{1,2})[.)](?!\d)(?:[ \t]*\([^)]+\))*(?!\s+(?:to|-|–|—)\s+(?:Q\.?\s*)?\d+)",                      # 1. or 1) or 1.(a) (max 99)
+    r"^[ \t]*\(([a-zA-Z])\)",                                                                                    # (a)
+    r"^[ \t]*\(([ivxIVX]+)\)(?!\s*e\.)",                                                                         # (i), (ii), (iv)
+    r"^[ \t]*\d{1,2}\s*\(([a-z])\)",                                                                             # 1(a)
+    r"^[ \t]*([a-z])\s*[.)](?!\s*e\.)(?![a-zA-Z])",                                                             # a. or a)
 ]
 
 # Answer Header Patterns
-# Matches: Answer to Question 1, Ans. 1, Solution 1, or just 1. in Answer section
+# Matches: Answer to Question 1, Ans. 1, Solution 1, 1.1, or just 1. in Answer section
 ANSWER_HEADER_PATTERNS = [
+    r"^[ \t]*([1-9])\.([1-9]|1[0-5])[ \t]*$",                                         # 1.1, 1.2, 2.1
     r"(?i)^\s*Answer\s+(?:to\s+)?(?:Question\s+)?(?:No\.\s*)?(\d+)(?:\(([a-z])\))?", # Answer to Question 1(a)
     r"(?i)^\s*Ans\.?\s*(\d+)(?:\(([a-z])\))?",                                       # Ans. 1(a)
     r"(?i)^\s*Solution\s*(\d+)(?:\(([a-z])\))?",                                     # Solution 1(a)
     r"(?i)^\s*(?:Question|Q\.?)\s*(?:No\.\s*)?(\d+)(?:\(([a-z])\))?",                # Question 1 or Q1
-    r"^\s*(\d+)[.)](?:\s*\(([a-z])\))?",                                             # 1. or 1.(a)
+    r"^\s*(\d{1,2})[.)](?!\d)(?:\s*\(([a-z])\))?",                                   # 1. or 1.(a)
     r"^\s*\(([a-zA-Z])\)",                                                           # (a)
-    r"^\s*\(([ivxIVX]+)\)",                                                          # (i), (ii), (iv)
+    r"^\s*\(([ivxIVX]+)\)(?!\s*e\.)",                                                # (i), (ii), (iv)
 ]
 
 
@@ -127,19 +131,19 @@ INSTRUCTION_PRIORITY = [
 # Rules are (Type, Keyword List)
 CLASSIFICATION_RULES = {
     "PRACTICAL": [
-        "CALCULATE", "COMPUTE", "PREPARE", "JOURNALIZE", "LEDGER", 
-        "BALANCE SHEET", "PROFIT AND LOSS", "RECONCILE"
+        "CALCULATE", "COMPUTE", "PREPARE", "JOURNALIZE", "JOURNALISE", "LEDGER", 
+        "BALANCE SHEET", "PROFIT AND LOSS", "RECONCILE", "TOTAL INCOME", "TAX LIABILITY",
+        "TAX PAYABLE", "CASH FLOW", "NET PROFIT", "CAPITAL GAINS", "COST OF CAPITAL",
+        "ARM'S LENGTH PRICE"
     ],
     "THEORY": [
         "EXPLAIN", "DISCUSS", "DEFINE", "STATE", "LIST", "DISTINGUISH", 
-        "DIFFERENTIATE", "COMPARE"
-    ],
-    "CASE_STUDY": [
-        "ABC LTD", "PQR LTD", "XYZ LTD", "M/S", "MR.", "MRS.", 
-        "FOLLOWING INFORMATION", "BASED ON THE ABOVE", "READ THE FOLLOWING"
+        "DIFFERENTIATE", "COMPARE", "DESCRIBE", "ENUMERATE", "COMMENT",
+        "EXAMINE WHETHER", "ADVISE", "WHAT ARE THE", "REPORTING REQUIREMENTS",
+        "CRITICALLY EXAMINE", "VALIDITY"
     ],
     "OBJECTIVE": [
-        "TRUE OR FALSE", "MULTIPLE CHOICE", "MCQ", "CHOOSE THE CORRECT"
+        "TRUE OR FALSE", "MULTIPLE CHOICE", "MCQ", "CHOOSE THE CORRECT", "CHOOSE THE MOST APPROPRIATE"
     ]
 }
 # Compiled Patterns (Individual to preserve anchors)
@@ -162,7 +166,7 @@ def get_default_parser_config():
         section_delimiters=COMPILED_SECTION_DELIMITERS,
         question_header_patterns=COMPILED_QUESTION_HEADER_PATTERNS,
         answer_header_patterns=COMPILED_ANSWER_HEADER_PATTERNS,
-        case_study_keywords=CLASSIFICATION_RULES["CASE_STUDY"],
+        case_study_keywords=["CASE SCENARIO", "CASE STUDY", "INTEGRATED CASE SCENARIO", "CASE SCENARIOS"],
         instruction_priority=INSTRUCTION_PRIORITY,
         marks_patterns=COMPILED_MARKS_PATTERNS,
         marks_exclusion_patterns=COMPILED_MARKS_EXCLUSION_PATTERNS,

@@ -19,16 +19,16 @@ class DocumentLayoutDetector:
                 pre_text = text[:delim.start()]
                 post_text = text[delim.end():]
                 
-                # Check for questions before delimiter
-                has_q_before = any(p.search(pre_text) for p in self.config.question_header_patterns)
+                # Check for at least 2 questions before delimiter to prevent premature Page 1 slicing
+                q_before_count = sum(len(list(p.finditer(pre_text))) for p in self.config.question_header_patterns)
                 # Check for answers after delimiter
                 has_a_after = any(p.search(post_text) for p in self.config.answer_header_patterns)
                 
-                if has_q_before and has_a_after:
+                if q_before_count >= 2 and has_a_after:
                     return LayoutResult(
                         layout=LayoutType.SECTION_WISE,
                         boundary_position=delim.start(),
-                        reason=f"Found section delimiter '{delim.group(0)}' with questions before and answers after."
+                        reason=f"Found section delimiter '{delim.group(0)}' with {q_before_count} questions before and answers after."
                     )
 
         # Step 2: Check for INTERLEAVED pattern

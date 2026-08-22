@@ -151,6 +151,7 @@ class ParsingContext:
     current_question: Optional[str] = None
     inside_mcq_sequence: bool = False
     inside_answer_sequence: bool = False
+    valid_question_paths: Set[Tuple[str, ...]] = field(default_factory=set)
 
 
 class PromotionReason(Enum):

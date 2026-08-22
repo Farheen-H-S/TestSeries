@@ -21,7 +21,7 @@ class HierarchyUtils:
         roman = None
         
         for p in path:
-            if p.isdigit():
+            if p.isdigit() and main is None:
                 main = p
             elif HierarchyUtils.ROMAN_REGEX.match(p):
                 roman = p
@@ -39,6 +39,12 @@ class HierarchyUtils:
         if not new_path:
             return
 
+        # Case study decimal paths (e.g. ['1', '1'], ['1', '2'])
+        if len(new_path) == 2 and new_path[0].isdigit() and new_path[1].isdigit():
+            stack.clear()
+            stack.extend(new_path)
+            return
+
         main, alpha, roman = HierarchyUtils.decompose_path(new_path)
 
         if main:
@@ -54,6 +60,13 @@ class HierarchyUtils:
                 stack.append(alpha)
                 if roman: stack.append(roman)
                 return
+
+            # Decimal Case Study parent (e.g. ['2', '3']) -> ['2', '3', 'a']
+            if len(stack) == 2 and stack[0].isdigit() and stack[1].isdigit():
+                stack.append(alpha)
+                if roman: stack.append(roman)
+                return
+
             while len(stack) > 1:
                 stack.pop()
             if stack[0].isdigit():

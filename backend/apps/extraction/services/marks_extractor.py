@@ -69,8 +69,17 @@ class MarksExtractor:
                         if indices:
                             line_end_idx = min(indices)
                             
+                        before_on_same_line = text[line_start_idx:start].strip()
                         after_on_same_line = text[end:line_end_idx].strip()
                         
+                        # If alone on line at start of a paragraph and not at the end of the question, it's a list bullet
+                        if not before_on_same_line and end < len(text) - 20:
+                            logger.debug(
+                                "Rejected marks candidate | candidate=%s | reason=list_bullet_at_start_of_line | start_offset=%d",
+                                m.group(0), start
+                            )
+                            continue
+
                         # If there are word characters after the match on the same line,
                         # only allow them if they consist entirely of transition words (OR, Compulsory, etc.)
                         if re.search(r'\w', after_on_same_line):

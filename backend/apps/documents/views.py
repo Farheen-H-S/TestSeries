@@ -27,16 +27,15 @@ class DocumentUploadView(generics.CreateAPIView):
         # permission_classes = [IsAuthenticated]
         # user = self.request.user
         
-        # Temporarily use the first available user as a development placeholder
+        # Temporarily use the first available user or fallback user for Document FK requirement
         from django.contrib.auth import get_user_model
-        from rest_framework.exceptions import ValidationError
         
         User = get_user_model()
         user = User.objects.first()
-
         if user is None:
-            raise ValidationError(
-                {"detail": "No user exists. Create a user before uploading documents."}
+            user, _ = User.objects.get_or_create(
+                username="system_user",
+                defaults={"email": "system@example.com"}
             )
         
         # Save document record with business logic fields
@@ -87,13 +86,27 @@ class DocumentListView(generics.ListAPIView):
     permission_classes = [AllowAny]
 
     def get_queryset(self):
-        # Base queryset ordered by newest first
-        queryset = Document.objects.all().order_by('-uploaded_at')
+        # Base queryset ordered by newest first with select_related for subjects
+        queryset = Document.objects.all().select_related('subject').order_by('-uploaded_at')
         
-        # Ready for future filtering:
-        # if self.request.user.is_authenticated:
-        #     queryset = queryset.filter(user=self.request.user)
+        # Filter query parameters
+        search = self.request.query_params.get('search')
+        subject_id = self.request.query_params.get('subject')
+        doc_type = self.request.query_params.get('document_type')
+        year = self.request.query_params.get('paper_year')
+        month = self.request.query_params.get('exam_month')
         
+        if search and search.strip():
+            queryset = queryset.filter(title__icontains=search.strip())
+        if subject_id:
+            queryset = queryset.filter(subject_id=subject_id)
+        if doc_type:
+            queryset = queryset.filter(document_type__iexact=doc_type.strip())
+        if year:
+            queryset = queryset.filter(paper_year=year)
+        if month:
+            queryset = queryset.filter(exam_month__iexact=month.strip())
+            
         return queryset
 
 

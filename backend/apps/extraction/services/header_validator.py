@@ -17,7 +17,8 @@ class HeaderValidator:
         match: re.Match,
         path: List[str],
         current_stack: List[str],
-        full_text: str
+        full_text: str,
+        valid_question_paths: Optional[set] = None
     ) -> ValidationResult:
         """
         Validates if a potential header is structurally sound and logically follows the current hierarchy.
@@ -29,15 +30,23 @@ class HeaderValidator:
         raw_header = match.group(0)
         start_idx = match.start()
 
-        # 1. Structural Validation (Start of Line)
+        # 1. Structural Validation (Start of Line & Not a Hyphen Continuation)
+        if self._is_hyphen_continuation(start_idx, full_text):
+            return ValidationResult(False, "continuation of hyphenated word or year from previous line")
+
         if not self._is_start_of_line(start_idx, full_text):
             # Only allow if it's a "strong" header (e.g. "Question 1")
             if not self.is_strong_header(raw_header):
                 return ValidationResult(False, "not start of line")
 
         # 2. Hierarchy Validation
-        return self._check_logical_transition(path, current_stack)
+        return self._check_logical_transition(path, current_stack, raw_header, valid_question_paths=valid_question_paths)
 
+    def _is_hyphen_continuation(self, idx: int, text: str) -> bool:
+        if idx == 0:
+            return False
+        pre = text[:idx].rstrip()
+        return pre.endswith(('-', '–', '—', '/', '\\'))
 
     def _is_start_of_line(self, idx: int, text: str) -> bool:
         if idx == 0:
@@ -86,7 +95,13 @@ class HeaderValidator:
             return "main"
         return None
 
-    def _check_logical_transition(self, new_path: List[str], current_stack: List[str]) -> ValidationResult:
+    def _check_logical_transition(
+        self,
+        new_path: List[str],
+        current_stack: List[str],
+        raw_header: str = "",
+        valid_question_paths: Optional[set] = None
+    ) -> ValidationResult:
         """
         Transition Grammar Validation.
         Determines valid Parent -> Child transitions using a structural allowed level table.
@@ -103,6 +118,11 @@ class HeaderValidator:
                 # Only allow starting with 'a' or 'A'
                 main, alpha, roman = HierarchyUtils.decompose_path(new_path)
                 if alpha == 'a':
+                    return ValidationResult(True)
+                return ValidationResult(False, "invalid starting numbering sequence")
+            if candidate_level == "roman":
+                # Allow starting with top-level uppercase Roman numerals (I., II., III.), reject bracketed "(i)" and lowercase "i."
+                if raw_header and re.match(r'^[IVXLCDM]+[.)]', raw_header.strip()):
                     return ValidationResult(True)
                 return ValidationResult(False, "invalid starting numbering sequence")
             return ValidationResult(False, "invalid starting numbering sequence")
@@ -123,6 +143,19 @@ class HeaderValidator:
             c_main, c_alpha, c_roman = HierarchyUtils.decompose_path(current_stack)
             if not c_main and not c_alpha:
                 return ValidationResult(False, "alpha label found without parent main number")
+
+        # Main level sequence check: prevent regression and unrealistic forward jumps
+        if candidate_level == "main":
+            c_main, _, _ = HierarchyUtils.decompose_path(current_stack)
+            n_main, _, _ = HierarchyUtils.decompose_path(new_path)
+            if c_main and n_main and c_main.isdigit() and n_main.isdigit():
+                c_num = int(c_main)
+                n_num = int(n_main)
+                is_expected_question = bool(valid_question_paths and any(p and p[0] == str(n_num) for p in valid_question_paths))
+                if n_num < c_num and (c_num - n_num) > 1 and not is_expected_question:
+                    return ValidationResult(False, f"out of order main question regression: {n_num} < {c_num}")
+                if n_num > c_num + 3 and not self.is_strong_header(raw_header) and not is_expected_question:
+                    return ValidationResult(False, f"unrealistic forward main question jump: {c_num} -> {n_num}")
 
         return ValidationResult(True)
 

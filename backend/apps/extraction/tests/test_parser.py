@@ -833,6 +833,72 @@ class ParserRegressionTests(unittest.TestCase):
         self.assertNotIn(["10", "b"], paths)
         self.assertIn(["11"], paths)
 
+    def test_promotion_main_question_transition(self):
+        # Test transition between main questions when valid_question_paths is provided
+        valid_question_paths = {("1",), ("1", "a"), ("2",), ("3",)}
+        text = textwrap.dedent("""
+            1.
+            Answer to 1.
+            (a)
+            Answer to 1(a).
+            2.
+            Answer to 2.
+            3.
+            Answer to 3.
+        """).strip()
+
+        parsed = self.a_parser.parse(text, self.offsets, valid_question_paths=valid_question_paths)
+        paths = [p.hierarchy_path for p in parsed]
+
+        self.assertIn(["1"], paths)
+        self.assertIn(["1", "a"], paths)
+        self.assertIn(["2"], paths)
+        self.assertIn(["3"], paths)
+
+    def test_mcq_sequence_with_structured_table(self):
+        # Test MCQ sequence detection when options are followed by [STRUCTURED_START]
+        text = textwrap.dedent("""
+            1.
+            Question text
+            (a) Option A
+            (b) Option B
+            (c) Option C
+            (d) Option D
+            [STRUCTURED_START]
+            <div class="table-container">| Col 1 | Col 2 |</div>
+            [STRUCTURED_END]
+        """).strip()
+
+        parsed = self.q_parser.parse(text, self.offsets)
+        paths = [p.hierarchy_path for p in parsed]
+        # (a), (b), (c), (d) should be detected as MCQ options and not parsed as sub-questions
+        self.assertIn(["1"], paths)
+        self.assertNotIn(["1", "a"], paths)
+        self.assertNotIn(["1", "b"], paths)
+
+    def test_decimal_number_not_matched_as_answer_header(self):
+        # Test that decimal numbers (e.g. 14.30, 82.22, 17.95) starting a line are not parsed as answer headers
+        text = textwrap.dedent("""
+            1.
+            Answer text for question 1.
+            14.30
+            82.22
+            17.95%
+            583.23 = 0.4650
+            2.
+            Answer text for question 2.
+        """).strip()
+
+        parsed = self.a_parser.parse(text, self.offsets)
+        paths = [p.hierarchy_path for p in parsed]
+
+        self.assertIn(["1"], paths)
+        self.assertIn(["2"], paths)
+        self.assertNotIn(["14"], paths)
+        self.assertNotIn(["82"], paths)
+        self.assertNotIn(["17"], paths)
+        self.assertNotIn(["583"], paths)
+
 
 if __name__ == "__main__":
     unittest.main()

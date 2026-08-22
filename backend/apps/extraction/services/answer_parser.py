@@ -44,6 +44,9 @@ class AnswerParser:
         Parses text and returns an AnswerParseResult that bundles the
         answers list with the diagnostics from this run.
         """
+        if valid_question_paths is None and context and context.valid_question_paths:
+            valid_question_paths = context.valid_question_paths
+
         # Pre-normalize the text for OCR errors before matching
         normalized_text = self.normalizer.pre_normalize_ocr(text)
 
@@ -196,7 +199,7 @@ class AnswerParser:
                 continue
                     
             # 5. Pure structural and hierarchy validation using HeaderValidator
-            result = self.validator.is_valid(match, path, hierarchy_stack, normalized_text)
+            result = self.validator.is_valid(match, path, hierarchy_stack, normalized_text, valid_question_paths=valid_question_paths)
             if result.is_valid:
                 # Context-aware list item rejection via weighted heuristics
                 next_match_start = all_potential_matches[idx+1].start() if idx + 1 < len(all_potential_matches) else len(normalized_text)
@@ -296,7 +299,7 @@ class AnswerParser:
         )
         parsed_answers.extend(mcq_table_answers)
         
-        # Deduplicate parsed answers by hierarchy path to avoid ambiguous matching conflicts
+        # Deduplicate / merge parsed answers by hierarchy path to avoid ambiguous matching conflicts while preserving multi-part content
         seen_answers = {}
         for ans in parsed_answers:
             path_key = tuple(ans.hierarchy_path)
@@ -306,20 +309,36 @@ class AnswerParser:
                 existing = seen_answers[path_key]
                 # Conflict resolution rules:
                 # 1. Prefer MCQ Table parser over descriptive regex parser
-                # 2. Otherwise, prefer the one with longer text length
-                # 3. If text lengths are equal, prefer the one starting earlier in the document
                 if ans.source is AnswerSource.MCQ_TABLE and existing.source is not AnswerSource.MCQ_TABLE:
                     seen_answers[path_key] = ans
                 elif existing.source is AnswerSource.MCQ_TABLE and ans.source is not AnswerSource.MCQ_TABLE:
                     pass  # Keep existing (mcq_table wins)
                 else:
-                    len_ans = len(ans.text) if ans.text else 0
-                    len_existing = len(existing.text) if existing.text else 0
-                    if len_ans > len_existing:
-                        seen_answers[path_key] = ans
-                    elif len_ans == len_existing:
-                        if ans.start_offset < existing.start_offset:
+                    # Both are descriptive/regex segments: merge text if at distinct offsets to preserve all answer sub-parts
+                    if abs(ans.start_offset - existing.start_offset) > 50:
+                        merged_text = f"{existing.text}\n\n{ans.text}".strip() if existing.text and ans.text else (existing.text or ans.text)
+                        merged_wn = (existing.working_notes or []) + (ans.working_notes or [])
+                        merged_ans = ParsedAnswer(
+                            hierarchy_path=existing.hierarchy_path,
+                            raw_header=existing.raw_header,
+                            text=merged_text,
+                            start_offset=min(existing.start_offset, ans.start_offset),
+                            end_offset=max(existing.end_offset, ans.end_offset),
+                            start_page=min(existing.start_page, ans.start_page),
+                            end_page=max(existing.end_page, ans.end_page),
+                            section_type=existing.section_type,
+                            working_notes=merged_wn if merged_wn else None,
+                            source=existing.source
+                        )
+                        seen_answers[path_key] = merged_ans
+                    else:
+                        len_ans = len(ans.text) if ans.text else 0
+                        len_existing = len(existing.text) if existing.text else 0
+                        if len_ans > len_existing:
                             seen_answers[path_key] = ans
+                        elif len_ans == len_existing:
+                            if ans.start_offset < existing.start_offset:
+                                seen_answers[path_key] = ans
 
         parsed_answers = list(seen_answers.values())
         parsed_answers.sort(key=lambda x: x.start_offset)
@@ -419,15 +438,17 @@ class AnswerParser:
     ) -> List[ParsedAnswer]:
         """
         Parses all structured tables within the MCQ_ANSWER sections and returns ParsedAnswer objects.
+        Supports both HTML structured tables and Markdown pipe tables.
         """
         import re
+        from bs4 import BeautifulSoup
         from .types import ParsedAnswer, AnswerSectionType, AnswerSource
 
         mcq_answers: List[ParsedAnswer] = []
         table_pattern = re.compile(r"\[STRUCTURED_START\](.*?)\[STRUCTURED_END\]", re.DOTALL)
         sep_pat = re.compile(r"^[|\s\-:]+$")
-        q_num_pat = re.compile(r"^\s*(\d+)\s*\.?\s*$")
-        opt_pat = re.compile(r"(?i)\bOption\b|\([a-eA-E]\)|\bAns\.?\b")
+        q_num_pat = re.compile(r"^\s*(?:MCQ\s*(?:No\.?)?\s*|Q\.?\s*(?:No\.?)?\s*)?(\d+)\s*\.?\s*$", re.I)
+        opt_pat = re.compile(r"(?i)\bOption\b|\([a-eA-E]\)|\b[a-eA-E]\b|\bAns\.?\b")
         data_table_header_pat = re.compile(
             r"(?i)\b(Particulars|Description|Details|Debit|Credit|Dr|Cr|Amount|Balance|Schedule|"
             r"Asset|Liability|Equity|Revenue|Expense|Shares|Cost|Carrying|Penalty|Fine|Offence|"
@@ -439,14 +460,110 @@ class AnswerParser:
 
         for match in table_pattern.finditer(normalized_text):
             table_start = match.start()
-            if self._get_section_type(table_start, sections) != AnswerSectionType.MCQ_ANSWER:
+            table_content = match.group(1).strip()
+            is_mcq_section = (self._get_section_type(table_start, sections) == AnswerSectionType.MCQ_ANSWER)
+
+            # Case 1: HTML structured table
+            if "<table" in table_content:
+                soup = BeautifulSoup(table_content, "html.parser")
+                rows = []
+                for tr in soup.find_all("tr"):
+                    cells = [td.get_text().strip() for td in tr.find_all(["td", "th"])]
+                    if cells:
+                        rows.append(cells)
+
+                if not rows:
+                    continue
+
+                # Check if this table has MCQ signals
+                has_mcq_sig = any(opt_pat.search(cell) for r in rows for cell in r)
+                has_q_no_sig = any(re.search(r"(?i)\bQ\.?\s*No\.?\b|\bMCQ\s*No\.?\b|\bQuestion\b", cell) for r in rows for cell in r)
+
+                if not is_mcq_section and not (has_mcq_sig and has_q_no_sig):
+                    continue
+
+                if rows and data_table_header_pat.search(" ".join(rows[0])) and not has_mcq_sig:
+                    continue
+
+                table_answers = []
+                explicit_opt_count = 0
+
+                # Check for multi-item embedded cells (e.g. ITL table where Q1..Q9 are listed in one cell)
+                for row in rows:
+                    for c_idx, cell in enumerate(row):
+                        q_nums = re.findall(r"\b(\d{1,2})\.", cell)
+                        if len(q_nums) >= 2:
+                            for opt_idx, opt_cell in enumerate(row):
+                                if opt_idx == c_idx: continue
+                                opt_matches = list(re.finditer(r"\(([a-eA-E])\)", opt_cell))
+                                if len(opt_matches) == len(q_nums):
+                                    start_offset = base_offset + table_start
+                                    start_page = HierarchyUtils.get_page_num_fast(start_offset, page_offsets, page_keys)
+                                    for qn, opt_m in zip(q_nums, opt_matches):
+                                        table_answers.append(ParsedAnswer(
+                                            hierarchy_path=[qn],
+                                            raw_header=f"\n{qn}.",
+                                            text=f"({opt_m.group(1)})",
+                                            start_offset=start_offset,
+                                            end_offset=start_offset + len(table_content),
+                                            start_page=start_page,
+                                            end_page=start_page,
+                                            section_type=AnswerSectionType.MCQ_ANSWER,
+                                            source=AnswerSource.MCQ_TABLE
+                                        ))
+                                        explicit_opt_count += 1
+                                    break
+
+                for row in rows:
+                    col_idx = 0
+                    while col_idx < len(row):
+                        cell_clean = row[col_idx].replace("*", "").strip()
+                        m_q = q_num_pat.match(cell_clean)
+                        if m_q:
+                            q_num = m_q.group(1)
+                            # Look for option content in subsequent cells in the same row
+                            opt_content = None
+                            for next_idx in range(col_idx + 1, min(col_idx + 4, len(row))):
+                                next_cell = row[next_idx].strip()
+                                m_opt = opt_pat.search(next_cell)
+                                if m_opt:
+                                    opt_content = next_cell
+                                    explicit_opt_count += 1
+                                    col_idx = next_idx + 1
+                                    break
+                            else:
+                                col_idx += 1
+
+                            if opt_content:
+                                start_offset = base_offset + table_start
+                                start_page = HierarchyUtils.get_page_num_fast(start_offset, page_offsets, page_keys)
+                                table_answers.append(ParsedAnswer(
+                                    hierarchy_path=[q_num],
+                                    raw_header=f"\n{q_num}.",
+                                    text=opt_content,
+                                    start_offset=start_offset,
+                                    end_offset=start_offset + len(table_content),
+                                    start_page=start_page,
+                                    end_page=start_page,
+                                    section_type=AnswerSectionType.MCQ_ANSWER,
+                                    source=AnswerSource.MCQ_TABLE
+                                ))
+                        else:
+                            col_idx += 1
+
+                if explicit_opt_count >= 1:
+                    mcq_answers.extend(table_answers)
                 continue
 
-            table_content = match.group(1).strip()
+            # Case 2: Markdown pipe-delimited table fallback
             table_lines = [l.strip() for l in table_content.split("\n") if l.strip() and not sep_pat.match(l.strip())]
             has_mcq_sig = any(opt_pat.search(cell) for line in table_lines for cell in line.split("|"))
+            has_q_no_sig = any(re.search(r"(?i)\bQ\.?\s*No\.?\b|\bQuestion\b", cell) for line in table_lines for cell in line.split("|"))
+
+            if not is_mcq_section and not (has_mcq_sig and has_q_no_sig):
+                continue
+
             if table_lines and data_table_header_pat.search(table_lines[0]) and not has_mcq_sig:
-                # Skip descriptive/financial solution data tables from MCQ answer key parsing
                 continue
 
             raw_rows = []
@@ -494,7 +611,6 @@ class AnswerParser:
                     if not opt_content:
                         for cell in cells:
                             clean_cell = re.sub(r'<br\s*/?>', '', cell).strip()
-                            # Strip asterisks here as well for consistency
                             clean_c = clean_cell.replace("*", "").strip()
                             if clean_cell and not q_num_pat.match(clean_c):
                                 opt_content = cell
@@ -544,14 +660,8 @@ class AnswerParser:
 
             save_aggregated()
 
-            # Require at least 1 explicit option cell match to recognize the block as an MCQ table.
-            # This is safe because:
-            # 1. The method only processes tables inside MCQ_ANSWER sections.
-            # 2. It requires at least one option prefix (e.g. "Option (a)", "(c)") in the cells.
-            # 3. Descriptive/financial tables (e.g. Balance Sheet) contain 0 option prefixes,
-            #    giving them explicit_opt_count = 0, so they are correctly ignored.
             if explicit_opt_count >= 1:
-                    mcq_answers.extend(table_answers)
+                mcq_answers.extend(table_answers)
 
         return mcq_answers
 
@@ -575,14 +685,19 @@ class AnswerParser:
 
         # 1. Question Structure Check (Authoritative when child information is present)
         if context.valid_question_paths is not None and context.known_children is not None:
-            parent_path = tuple(hierarchy_stack) if hierarchy_stack else None
-            if parent_path and parent_path in context.known_children:
-                children = context.known_children[parent_path]
-                if children:
-                    if potential_path in children:
-                        return PromotionEvaluation(True, PromotionReason.ACCEPT_QUESTION_STRUCTURE)
-                    else:
-                        return PromotionEvaluation(False, PromotionReason.REJECT_QUESTION_STRUCTURE)
+            parent_path = potential_path[:-1] if len(potential_path) > 1 else None
+            if parent_path is not None:
+                if parent_path in context.known_children:
+                    children = context.known_children[parent_path]
+                    if children:
+                        if potential_path in children:
+                            return PromotionEvaluation(True, PromotionReason.ACCEPT_QUESTION_STRUCTURE)
+                        else:
+                            return PromotionEvaluation(False, PromotionReason.REJECT_QUESTION_STRUCTURE)
+            else:
+                # Top-level main question (e.g. ('2',), ('6',))
+                if potential_path in context.valid_question_paths:
+                    return PromotionEvaluation(True, PromotionReason.ACCEPT_QUESTION_STRUCTURE)
 
         # 2. Sequence Rule (Only when entering a new depth)
         if c_alpha and s_alpha is None:

@@ -28,7 +28,7 @@ class Question(models.Model):
         blank=True
     )
     question_number = models.CharField(max_length=20)
-    sub_question_label = models.CharField(max_length=10, null=True, blank=True)
+    sub_question_label = models.CharField(max_length=50, null=True, blank=True)
     hierarchy_key = models.CharField(max_length=512, null=True, blank=True, db_index=True)
     question_content = models.TextField()  # Formatted HTML
     question_text = models.TextField()     # Plain text
