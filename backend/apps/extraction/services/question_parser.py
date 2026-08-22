@@ -149,6 +149,14 @@ class QuestionParser:
             else:
                 context.inside_structured_block = False
                 
+            # Check if a new Case Scenario or major section heading occurred in gap since previous validated match
+            prev_end = validated_matches[-1][0].end() if validated_matches else 0
+            gap_since_prev = normalized_text[prev_end:match.start()]
+            has_case_heading = bool(re.search(r"(?im)^[ \t]*(?:Case\s+(?:Scenario|Study)\b|(?:PART|SECTION|DIVISION)\s*[-–—:]?\s*[A-Z\d]+)", gap_since_prev))
+            if has_case_heading:
+                hierarchy_stack.clear()
+                context.inside_mcq_sequence = False
+                
             normalized_header = match.group(0)
             path = self.normalizer.normalize_header(normalized_header)
             
@@ -156,6 +164,11 @@ class QuestionParser:
             candidate_level = self.validator._get_candidate_level(path)
             if candidate_level == "main":
                 context.inside_mcq_sequence = False
+                
+            # If a new case scenario started and this candidate is a sub-item bullet point, ignore it as scenario narrative
+            if has_case_heading and candidate_level != "main":
+                i += 1
+                continue
                 
             # Decompose path to check levels
             main_num, alpha, roman = HierarchyUtils.decompose_path(path)
@@ -358,6 +371,8 @@ class QuestionParser:
         if not validated_matches or not parsed_questions:
             return
 
+        range_regex_str = r"(?i)(?:Questions?|MCQs?|MCQ\s+Nos?\.?|Q\.?)\s*(?:from\s+)?(\d+)\s+(?:to|-|–|—)\s+(?:Questions?|MCQs?|MCQ\s+Nos?\.?|Q\.?\s*)?(\d+)"
+
         current_context = None
         min_q_num = None
         max_q_num = None
@@ -368,14 +383,14 @@ class QuestionParser:
         if preamble_text:
             # If preamble contains a Case Scenario or explicit Question range, slice from that header
             ctx_start_match = re.search(
-                r"(?im)^[ \t]*(?:Case\s+(?:Scenario|Study)\b|(?:(?:Read|Based\s+on|The)\s+.*?\b)?(?:Questions?|MCQs?|MCQ\s+Nos?\.?)\s*(?:from\s+)?\d+\s+to\s+\d+)",
+                r"(?im)^[ \t]*(?:Case\s+(?:Scenario|Study)\b|(?:(?:Read|Based\s+on|The)\s+.*?\b)?(?:Questions?|MCQs?|MCQ\s+Nos?\.?|Q\.?)\s*(?:from\s+)?\d+\s+(?:to|-|–|—)\s+(?:Q\.?\s*)?\d+)",
                 preamble_text
             )
             raw_scenario = preamble_text[ctx_start_match.start():] if ctx_start_match else preamble_text
             cleaned = self._clean_document_metadata(raw_scenario)
             if cleaned:
                 # Check for explicit range or Case Scenario / Study in preamble
-                range_match = re.search(r"(?i)(?:Questions?|MCQs?|MCQ\s+Nos?\.?)\s*(?:from\s+)?(\d+)\s+to\s+(\d+)", preamble_text)
+                range_match = re.search(range_regex_str, preamble_text)
                 is_case_scenario = bool(re.search(r"(?i)\bCase\s+(?:Scenario|Study)\b", preamble_text))
                 
                 if range_match:
@@ -385,7 +400,7 @@ class QuestionParser:
                 elif is_case_scenario:
                     current_context = cleaned
                     min_q_num = 1
-                    inner_rng = re.search(r"(?i)(?:Questions?|MCQs?|MCQ\s+Nos?\.?)\s*(?:from\s+)?(\d+)\s+to\s+(\d+)", cleaned)
+                    inner_rng = re.search(range_regex_str, cleaned)
                     max_q_num = int(inner_rng.group(2)) if inner_rng else None
                 else:
                     # Preamble without explicit range belongs to the first question
@@ -403,7 +418,7 @@ class QuestionParser:
                 
                 # Check for shared context headers in gap_raw (explicit Case Scenarios or Question ranges only)
                 ctx_match = re.search(
-                    r"(?im)^[ \t]*(?:Case\s+(?:Scenario|Study)\b|(?:(?:Read|Based\s+on|The)\s+.*?\b)?(?:Questions?|MCQs?|MCQ\s+Nos?\.?)\s*(?:from\s+)?\d+\s+to\s+\d+)",
+                    r"(?im)^[ \t]*(?:Case\s+(?:Scenario|Study)\b|(?:(?:Read|Based\s+on|The)\s+.*?\b)?(?:Questions?|MCQs?|MCQ\s+Nos?\.?|Q\.?)\s*(?:from\s+)?\d+\s+(?:to|-|–|—)\s+(?:Q\.?\s*)?\d+)",
                     gap_raw
                 )
                 if ctx_match:
@@ -415,7 +430,7 @@ class QuestionParser:
                     raw_context = gap_raw[ctx_match.start():].strip()
                     cleaned_context = self._clean_document_metadata(raw_context)
                     if cleaned_context:
-                        range_match = re.search(r"(?i)(?:Questions?|MCQs?|MCQ\s+Nos?\.?)\s*(?:from\s+)?(\d+)\s+to\s+(\d+)", raw_context)
+                        range_match = re.search(range_regex_str, raw_context)
                         if range_match:
                             current_context = cleaned_context
                             min_q_num = int(range_match.group(1))
@@ -423,7 +438,7 @@ class QuestionParser:
                         elif re.search(r"(?i)\bCase\s+(?:Scenario|Study)\b", raw_context):
                             current_context = cleaned_context
                             min_q_num = main_num
-                            inner_rng = re.search(r"(?i)(?:Questions?|MCQs?|MCQ\s+Nos?\.?)\s*(?:from\s+)?(\d+)\s+to\s+(\d+)", cleaned_context)
+                            inner_rng = re.search(range_regex_str, cleaned_context)
                             max_q_num = int(inner_rng.group(2)) if inner_rng else None
                         else:
                             current_context = cleaned_context
@@ -547,7 +562,11 @@ class QuestionParser:
         parent_match = matches[current_idx - 1] if current_idx > 0 else None
         if parent_match:
             parent_text = text[parent_match.end():matches[current_idx].start()].lower()
-            mcq_keywords = ["option", "choose", "select", "correct", "incorrect", "which of the following", "multiple choice", "value of"]
+            mcq_keywords = [
+                "option", "choose", "select", "correct", "incorrect", "which of the following",
+                "multiple choice", "value of", "amount of", "what would be", "what is", "is mr.",
+                "is hdfc", "calculate", "compute"
+            ]
             if any(kw in parent_text for kw in mcq_keywords):
                 return True
                 
@@ -556,14 +575,15 @@ class QuestionParser:
         for offset in range(4):
             m_start = matches[current_idx + offset].end()
             m_end = matches[current_idx + offset + 1].start() if current_idx + offset + 1 < len(matches) else len(text)
-            option_texts.append(text[m_start:m_end].strip())
+            raw_opt = text[m_start:m_end].strip()
+            clean_opt = re.split(r'(?i)\n\s*(?:Case\s+(?:Scenario|Study)|PART|SECTION)\b', raw_opt)[0].split("[STRUCTURED_START]")[0].strip()
+            option_texts.append(clean_opt)
             
         verbs = r"(?i)\b(Explain|Discuss|Determine|State|Compute|Prepare|Journalise|Describe|Analyse|Evaluate|Identify|Compare|Distinguish)\b"
         for opt_text in option_texts:
-            clean_opt = opt_text.split("[STRUCTURED_START]")[0].strip()
-            if len(clean_opt) > 220:
+            if len(opt_text) > 220:
                 return False
-            if re.search(verbs, clean_opt):
+            if re.search(verbs, opt_text):
                 return False
                 
         return True

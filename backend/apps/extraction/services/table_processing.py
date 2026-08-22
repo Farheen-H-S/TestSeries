@@ -387,6 +387,23 @@ def is_narrative_text_box(grid: List[List[str]]) -> bool:
     """
     if not grid or not grid[0]:
         return True
+    
+    all_text = ' '.join(str(c or '').strip() for r in grid for c in r if str(c or '').strip())
+    if not all_text:
+        return True
+        
+    # Exclude title banner headers
+    if re.search(r'(?i)\b(?:REVISION\s+TEST\s+PAPERS?|FINAL\s+EXAMINATION|PAPER\s*[-–—:]?\s*\d+)\b', all_text):
+        return True
+        
+    # Check if table contains tabular financial/accounting headers, currencies, or column indicators
+    has_table_signals = bool(re.search(
+        r'(?i)\b(?:Particulars|Amount|Debit|Credit|Date|Account|Balance|Assets?|Liabilities|`|₹|Rs\.|\$|Shares?|Ratio|TDS|TCS|GST|Total|Quantity|Rate|Units?|Ledger)\b',
+        all_text
+    ))
+    if has_table_signals:
+        return False
+
     total_non_empty_cells = 0
     non_empty_rows = 0
     multi_cell_rows = 0
@@ -399,7 +416,7 @@ def is_narrative_text_box(grid: List[List[str]]) -> bool:
                 multi_cell_rows += 1
     if non_empty_rows == 0:
         return True
-    all_text = ' '.join(str(c or '').strip() for r in grid for c in r if str(c or '').strip())
+        
     is_mcq_key = bool(re.search(r'(?i)\bOption\b|\bAns\.?\b|\bChoice\b|\bKey\b', all_text))
     if multi_cell_rows == 0 and not is_mcq_key:
         return True
