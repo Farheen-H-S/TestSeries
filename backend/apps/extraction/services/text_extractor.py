@@ -239,10 +239,12 @@ def extract_text(doc: fitz.Document, document_id: Any = None) -> List[Dict[str, 
             
             try:
                 from django.conf import settings
-                media_root = getattr(settings, "MEDIA_ROOT", "media")
+                media_root = getattr(settings, "MEDIA_ROOT", None)
+                if not media_root:
+                    media_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "..", "media"))
             except Exception:
-                media_root = "media"
-            crops_dir = os.path.join(media_root, "formula_crops")
+                media_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "..", "media"))
+            crops_dir = os.path.join(str(media_root), "formula_crops")
             os.makedirs(crops_dir, exist_ok=True)
             crop_path = os.path.join(crops_dir, crop_filename)
             

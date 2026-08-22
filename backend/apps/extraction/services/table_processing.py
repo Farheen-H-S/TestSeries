@@ -870,7 +870,7 @@ class _HTMLRenderer:
                 ]
             }
             provenance_json = html.escape(json.dumps(provenance_data))
-            first_crop = regions[0].get("crop_path", "").replace("\\", "/") if regions else ""
+            first_crop = (regions[0].get("crop_path") or "").replace("\\", "/") if regions else ""
             if first_crop and not first_crop.startswith('/'):
                 first_crop = '/' + first_crop
             provenance_attr = f' data-table-provenance="{provenance_json}"'
@@ -1135,7 +1135,14 @@ class TableProcessor:
                         mat = fitz.Matrix(2.0, 2.0)
                         rect = fitz.Rect(t.bbox)
                         pix = page.get_pixmap(matrix=mat, clip=rect)
-                        crop_dir = os.path.abspath("media/table_crops")
+                        try:
+                            from django.conf import settings
+                            media_root = getattr(settings, "MEDIA_ROOT", None)
+                            if not media_root:
+                                media_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "..", "media"))
+                        except Exception:
+                            media_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "..", "media"))
+                        crop_dir = os.path.join(str(media_root), "table_crops")
                         os.makedirs(crop_dir, exist_ok=True)
                         doc_str = f"doc{document_id}" if document_id else "doc_extracted"
                         crop_filename = f"{doc_str}_p{page_num}_y{int(t.bbox[1])}.png"

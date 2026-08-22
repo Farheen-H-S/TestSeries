@@ -36,8 +36,14 @@ def _html_to_pdf(html_str: str) -> bytes:
         if not os.path.exists(abs_p):
             logger.warning("Table image crop file does not exist on disk: %s", abs_p)
         abs_p_clean = abs_p.replace('\\', '/')
-        return f'src="{abs_p_clean}"'
     html_str = re.sub(r'src=["\']/?(media/[^"\']+)["\']', _resolve_img_path, html_str)
+
+    # Clean unrenderable rupee glyphs or backticks for xhtml2pdf to prevent black square rendering
+    html_str = re.sub(r'[₹`]\s*(\d)', r'Rs. \1', html_str)
+    html_str = re.sub(r'[₹`]', 'Rs. ', html_str)
+    html_str = html_str.replace('\u20b9', 'Rs. ')
+    html_str = html_str.replace('&#8377;', 'Rs. ')
+    html_str = html_str.replace('&amp;#8377;', 'Rs. ')
 
     buf = io.BytesIO()
     result = pisa.CreatePDF(html_str, dest=buf)

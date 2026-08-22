@@ -15,8 +15,8 @@ const QUESTION_TYPES = [
   { value: '',           label: 'Mixed (no filter)' },
   { value: 'THEORY',     label: 'Theory' },
   { value: 'PRACTICAL',  label: 'Practical' },
-  { value: 'CASE_STUDY', label: 'Case Study' },
   { value: 'MCQ',        label: 'MCQ' },
+  { value: 'DESCRIPTIVE', label: 'Descriptive' },
 ];
 
 const EXAM_MONTHS = [

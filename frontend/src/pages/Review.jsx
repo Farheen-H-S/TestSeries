@@ -826,11 +826,10 @@ const Review = () => {
                                 onChange={handleFormChange}
                                 className="select-field input-field"
                               >
-                                <option value="DESCRIPTIVE">DESCRIPTIVE</option>
-                                <option value="MCQ">MCQ</option>
-                                <option value="CASE_STUDY">CASE_STUDY</option>
-                                <option value="PRACTICAL">PRACTICAL</option>
                                 <option value="THEORY">THEORY</option>
+                                <option value="PRACTICAL">PRACTICAL</option>
+                                <option value="MCQ">MCQ</option>
+                                <option value="DESCRIPTIVE">DESCRIPTIVE</option>
                               </select>
                             </div>
                           </div>

@@ -142,9 +142,6 @@ CLASSIFICATION_RULES = {
         "EXAMINE WHETHER", "ADVISE", "WHAT ARE THE", "REPORTING REQUIREMENTS",
         "CRITICALLY EXAMINE", "VALIDITY"
     ],
-    "CASE_STUDY": [
-        "CASE SCENARIO", "CASE STUDY", "INTEGRATED CASE SCENARIO", "CASE SCENARIOS"
-    ],
     "OBJECTIVE": [
         "TRUE OR FALSE", "MULTIPLE CHOICE", "MCQ", "CHOOSE THE CORRECT", "CHOOSE THE MOST APPROPRIATE"
     ]
@@ -169,7 +166,7 @@ def get_default_parser_config():
         section_delimiters=COMPILED_SECTION_DELIMITERS,
         question_header_patterns=COMPILED_QUESTION_HEADER_PATTERNS,
         answer_header_patterns=COMPILED_ANSWER_HEADER_PATTERNS,
-        case_study_keywords=CLASSIFICATION_RULES["CASE_STUDY"],
+        case_study_keywords=["CASE SCENARIO", "CASE STUDY", "INTEGRATED CASE SCENARIO", "CASE SCENARIOS"],
         instruction_priority=INSTRUCTION_PRIORITY,
         marks_patterns=COMPILED_MARKS_PATTERNS,
         marks_exclusion_patterns=COMPILED_MARKS_EXCLUSION_PATTERNS,

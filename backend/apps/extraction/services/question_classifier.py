@@ -16,7 +16,7 @@ class QuestionClassifier:
     - MCQ (Multiple Choice Questions with options (a), (b), (c), (d) or MCQ answer key)
     - PRACTICAL (Computational, numerical statements, tax/portfolio/income calculations)
     - THEORY (Legal, auditing, accounting standard conceptual analysis, discussions, advice)
-    - CASE_STUDY (Integrated multi-question case scenario background)
+    - DESCRIPTIVE (General descriptive questions)
     """
 
     def __init__(self, rules_dict: Optional[Dict[str, List[str]]] = None):
@@ -25,13 +25,12 @@ class QuestionClassifier:
         self.rules: List[ClassificationRule] = []
 
         priority_map = {
-            "CASE_STUDY": 100,
             "PRACTICAL": 80,
             "THEORY": 60,
             "OBJECTIVE": 40
         }
 
-        for type_name, keywords in source_rules.items():
+        for idx, (type_name, keywords) in enumerate(source_rules.items()):
             patterns = []
             for kw in keywords:
                 kw_upper = kw.upper()
@@ -40,17 +39,18 @@ class QuestionClassifier:
                 pattern_str = f"{start_boundary}{re.escape(kw_upper)}{end_boundary}"
                 patterns.append(re.compile(pattern_str))
 
+            rule_priority = (1000 - idx) if self.custom_rules else priority_map.get(type_name, 0)
             self.rules.append(ClassificationRule(
                 type_name=type_name,
                 patterns=patterns,
-                priority=priority_map.get(type_name, 0)
+                priority=rule_priority
             ))
 
         self.rules.sort(key=lambda x: x.priority, reverse=True)
 
     def classify(self, text: str, shared_context: Optional[str] = None, answer_text: Optional[str] = None) -> str:
         """
-        Classifies question into MCQ, PRACTICAL, THEORY, or CASE_STUDY.
+        Classifies question into MCQ, PRACTICAL, or THEORY.
         """
         if not text:
             return "UNIDENTIFIED"
@@ -81,12 +81,7 @@ class QuestionClassifier:
         if has_mcq_4_options or has_inline_mcq or has_mcq_ans or (has_mcq_heading and ('(a)' in raw or '(A)' in raw)):
             return "MCQ"
 
-        # 2. Case Study Scenario (Long narrative context without a direct single calculation)
-        if ('CASE SCENARIO' in upper or 'CASE STUDY' in upper or 'INTEGRATED CASE' in upper) and len(raw) > 2000:
-            if not any(k in upper for k in ['COMPUTE', 'CALCULATE', 'PREPARE', 'JOURNALIZE']):
-                return "CASE_STUDY"
-
-        # 3. Practical / Computation Patterns
+        # 2. Practical / Computation Patterns
         practical_pats = [
             r'\b(?:COMPUTE|CALCULATE)\b',
             r'\bPREPARE\s+(?:THE\s+)?(?:STATEMENT|BALANCE\s+SHEET|LEDGER|PROFIT\s+AND\s+LOSS|CASH\s+FLOW|ACCOUNTS?)\b',
