@@ -887,7 +887,7 @@ class _HTMLRenderer:
                     img_src = cp.replace("\\", "/").lstrip('/')
                     img_blocks.append(
                         f'  <div class="table-visual-region" style="text-align:center; margin: 0.5em 0;">'
-                        f'<img src="/{img_src}" width="500" />'
+                        f'<img src="/{img_src}" style="max-width: 100%; height: auto; display: block; margin: 0.5em auto;" />'
                         f'</div>'
                     )
             if img_blocks:
@@ -1117,11 +1117,48 @@ class TableProcessor:
         raw_processed_tables = []
         for page in doc:
             page_num = page.number + 1
-            page_tables = page.find_tables().tables
-            for t in page_tables:
+            rect = getattr(page, 'rect', None)
+            page_w = 595.0
+            page_h = 842.0
+            page_x0 = 0.0
+            if rect and hasattr(rect, 'width'):
+                try:
+                    page_w = float(rect.width)
+                    page_h = float(rect.height)
+                    page_x0 = float(rect.x0)
+                except (TypeError, ValueError):
+                    page_w = 595.0
+                    page_h = 842.0
+                    page_x0 = 0.0
+
+            found_tables = page.find_tables().tables if hasattr(page, 'find_tables') else []
+            valid_tables = [t for t in found_tables if not is_narrative_text_box(t.extract())]
+            
+            # --- SAME-PAGE DIAGRAM / TABLE REGION GROUPING ---
+            # Group nearby visual tables on the same page (gap <= 60pt) so diagrams with multiple boxes
+            # (such as flowcharts or multi-part structures) are captured together in a single full-width visual crop.
+            table_crop_map = {}
+            for i, t in enumerate(valid_tables):
+                t_y0 = float(t.bbox[1])
+                t_y1 = float(t.bbox[3])
+                group_y0 = t_y0
+                group_y1 = t_y1
+                
+                # Check other tables on this page
+                for j, other_t in enumerate(valid_tables):
+                    if i == j:
+                        continue
+                    other_y0 = float(other_t.bbox[1])
+                    other_y1 = float(other_t.bbox[3])
+                    if (other_y0 <= group_y1 + 60.0 and other_y1 >= group_y0 - 60.0):
+                        group_y0 = min(group_y0, other_y0)
+                        group_y1 = max(group_y1, other_y1)
+                        
+                crop_rect = (page_x0, max(0.0, group_y0 - 4.0), page_w, min(page_h, group_y1 + 4.0))
+                table_crop_map[id(t)] = crop_rect
+
+            for t in valid_tables:
                 raw_grid = t.extract()
-                if is_narrative_text_box(raw_grid):
-                    continue
                 pt = self.process(raw_grid, bbox=t.bbox, page_number=page_num)
                 
                 # Store every table as visual object except genuine MCQ answer key tables
@@ -1129,12 +1166,13 @@ class TableProcessor:
                 is_complex = not is_mcq_table
                 
                 crop_path_rel = None
-                if t.bbox and hasattr(page, 'get_pixmap'):
+                crop_rect = table_crop_map.get(id(t))
+                if crop_rect and hasattr(page, 'get_pixmap'):
                     try:
                         import fitz, os
-                        mat = fitz.Matrix(2.0, 2.0)
-                        rect = fitz.Rect(t.bbox)
-                        pix = page.get_pixmap(matrix=mat, clip=rect)
+                        mat = fitz.Matrix(200/72, 200/72)
+                        rect_fitz = fitz.Rect(crop_rect)
+                        pix = page.get_pixmap(matrix=mat, clip=rect_fitz)
                         try:
                             from django.conf import settings
                             media_root = getattr(settings, "MEDIA_ROOT", None)
@@ -1155,7 +1193,7 @@ class TableProcessor:
 
                 region_info = {
                     "page_number": page_num,
-                    "bbox": [round(float(c), 1) for c in t.bbox] if t.bbox else None,
+                    "bbox": [round(float(c), 1) for c in (crop_rect if crop_rect else t.bbox)],
                     "crop_path": crop_path_rel
                 }
                 
