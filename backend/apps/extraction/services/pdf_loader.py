@@ -1,5 +1,5 @@
 import os
-import fitz
+import pymupdf as fitz
 from .exceptions import PDFLoadError
 
 def load_pdf(file_path: str) -> fitz.Document:

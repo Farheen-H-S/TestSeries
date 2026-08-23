@@ -1,5 +1,5 @@
 import os
-import fitz
+import pymupdf as fitz
 import re
 from collections import Counter
 from typing import List, Dict, Any, Set, Tuple

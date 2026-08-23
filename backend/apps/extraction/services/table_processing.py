@@ -1168,7 +1168,8 @@ class TableProcessor:
                 crop_path_rel = None
                 if hasattr(page, 'get_pixmap'):
                     try:
-                        import fitz, os
+                        import pymupdf as fitz
+                        import os
                         mat = fitz.Matrix(200/72, 200/72)
                         rect_fitz = fitz.Rect(crop_rect)
                         pix = page.get_pixmap(matrix=mat, clip=rect_fitz)

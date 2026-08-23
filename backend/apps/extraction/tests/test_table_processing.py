@@ -1,4 +1,4 @@
-import fitz
+import pymupdf as fitz
 from django.test import TestCase
 from unittest.mock import MagicMock
 from ..services.table_processing import (
