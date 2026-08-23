@@ -478,8 +478,9 @@ class AnswerParser:
                 # Check if this table has MCQ signals
                 has_mcq_sig = any(opt_pat.search(cell) for r in rows for cell in r)
                 has_q_no_sig = any(re.search(r"(?i)\bQ\.?\s*No\.?\b|\bMCQ\s*No\.?\b|\bQuestion\b", cell) for r in rows for cell in r)
+                has_q_num_cell = any(q_num_pat.match(c.replace('*', '').strip()) for r in rows for c in r if c)
 
-                if not is_mcq_section and not (has_mcq_sig and has_q_no_sig):
+                if not is_mcq_section and not (has_mcq_sig and (has_q_no_sig or has_q_num_cell)):
                     continue
 
                 if rows and data_table_header_pat.search(" ".join(rows[0])) and not has_mcq_sig:
@@ -559,8 +560,9 @@ class AnswerParser:
             table_lines = [l.strip() for l in table_content.split("\n") if l.strip() and not sep_pat.match(l.strip())]
             has_mcq_sig = any(opt_pat.search(cell) for line in table_lines for cell in line.split("|"))
             has_q_no_sig = any(re.search(r"(?i)\bQ\.?\s*No\.?\b|\bQuestion\b", cell) for line in table_lines for cell in line.split("|"))
+            has_q_num_cell_md = any(q_num_pat.match(cell.replace('*', '').strip()) for line in table_lines for cell in line.split("|"))
 
-            if not is_mcq_section and not (has_mcq_sig and has_q_no_sig):
+            if not is_mcq_section and not (has_mcq_sig and (has_q_no_sig or has_q_num_cell_md)):
                 continue
 
             if table_lines and data_table_header_pat.search(table_lines[0]) and not has_mcq_sig:

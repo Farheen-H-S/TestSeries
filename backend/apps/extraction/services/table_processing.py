@@ -1018,7 +1018,7 @@ class _HTMLRenderer:
 
 def is_mcq_answer_key_table(raw_grid: List[List[Any]]) -> bool:
     """
-    Identifies true MCQ answer key mapping tables (e.g. Q. No | Most Appropriate Answer).
+    Identifies true MCQ answer key mapping tables (e.g. Q. No | Most Appropriate Answer / Option (a) ...).
     Financial statement tables or itemized computation adjustments are never MCQ answer keys.
     """
     if not raw_grid or len(raw_grid) < 2:
@@ -1034,14 +1034,17 @@ def is_mcq_answer_key_table(raw_grid: List[List[Any]]) -> bool:
     if re.search(r'(?i)\b(?:MCQ\s*No\.?|Most\s+Appropriate\s+Answer|Answer\s+Key)\b', header_text):
         return True
         
-    # Check if rows are pairs of (Q_num, Option_letter)
+    # Check if rows are pairs of (Q_num, Option_letter / Option text)
     mcq_pairs = 0
     total_non_empty = 0
-    for row in raw_grid[1:]:
+    for row in raw_grid:
         non_empty = [str(c).strip() for c in row if c and str(c).strip()]
-        if len(non_empty) in [2, 4]:
-            if re.match(r'^\d+\.?$', non_empty[0]) and re.match(r'^\(?[a-eA-E]\)?\.?$', non_empty[1]):
-                mcq_pairs += 1
+        if len(non_empty) >= 2:
+            first = non_empty[0]
+            second = non_empty[1]
+            if re.match(r'^(?:Q\.?\s*)?\d+\.?$', first):
+                if re.match(r'^(?:\(?\bOption\b\s*)?\(?[a-eA-E]\)?', second, re.IGNORECASE):
+                    mcq_pairs += 1
         if non_empty:
             total_non_empty += 1
             
