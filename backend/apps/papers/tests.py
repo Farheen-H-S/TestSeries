@@ -149,4 +149,68 @@ class QuestionAPITests(APITestCase):
         ans_bytes = render_answer_sheet([group], "Test Paper", show_source=True, show_chapter=True)
         self.assertTrue(len(ans_bytes) > 0)
 
+    def test_prerender_html_content_preserves_images_and_formulas(self):
+        from apps.papers.services.question_selector import _prerender_html_content
+
+        input_html = (
+            '<p>Calculate the beta:</p>\n'
+            '[STRUCTURED_START]\n'
+            '<div class="formula-container" data-is-complex="true" data-crop-path="/media/formula_crops/test.png">\n'
+            '<div class="formula-visual-region" style="text-align:center; margin: 0.5em 0;">\n'
+            '<img src="/media/formula_crops/test.png" style="max-width: 100%; width: 500px; height: auto;" />\n'
+            '</div></div>\n'
+            '[STRUCTURED_END]\n'
+            '<p>End of problem.</p>'
+        )
+
+        prerendered = _prerender_html_content(input_html)
+        self.assertIn('<img src="/media/formula_crops/test.png"', prerendered)
+        self.assertIn('formula-container', prerendered)
+        self.assertNotIn('[STRUCTURED_START]', prerendered)
+        self.assertNotIn('[STRUCTURED_END]', prerendered)
+
+    def test_pdf_renderer_embeds_images_properly(self):
+        import os
+        from django.conf import settings
+        from apps.papers.services.question_selector import QuestionGroup
+        from apps.papers.services.pdf_renderer import render_question_paper, render_answer_sheet
+
+        # Create dummy image in media directory
+        crops_dir = os.path.join(str(settings.MEDIA_ROOT), "table_crops")
+        os.makedirs(crops_dir, exist_ok=True)
+        test_img_path = os.path.join(crops_dir, "unit_test_crop.png")
+        
+        # 1x1 PNG bytes
+        tiny_png = (
+            b'\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00\x01'
+            b'\x08\x06\x00\x00\x00\x1f\x15c4\x00\x00\x00\rIDATx\x9cc`\x00\x00\x00'
+            b'\x02\x00\x01H\xaf\xa4q\x00\x00\x00\x00IEND\xaeB`\x82'
+        )
+        with open(test_img_path, 'wb') as f:
+            f.write(tiny_png)
+
+        try:
+            group = QuestionGroup(
+                root_question_id=self.question.pk,
+                question_html='<p>Question with visual table:</p><div class="table-container"><img src="/media/table_crops/unit_test_crop.png" width="500" /></div>',
+                answer_html='<p>Answer with formula:</p><div class="formula-container"><img src="/media/table_crops/unit_test_crop.png" width="500" /></div>',
+                sub_questions=[],
+                total_marks=10,
+                shared_context_html=None,
+                subject_name=self.subject_a.name,
+                exam_level=self.subject_a.exam_level,
+                module="RTP",
+                document_title=self.document.title
+            )
+
+            qp_bytes = render_question_paper([group], "Test QP Image Paper")
+            self.assertTrue(len(qp_bytes) > 1000)
+
+            ans_bytes = render_answer_sheet([group], "Test QP Image Paper")
+            self.assertTrue(len(ans_bytes) > 1000)
+        finally:
+            if os.path.exists(test_img_path):
+                os.remove(test_img_path)
+
+
 

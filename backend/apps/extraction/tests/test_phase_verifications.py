@@ -205,3 +205,32 @@ class Phase4VerificationTests(TestCase):
         q_paths = [q.hierarchy_path for q in qs]
         self.assertIn(["1", "1"], q_paths)
         self.assertIn(["1", "2"], q_paths)
+
+    def test_subject_metadata_filtering_various_casings_and_formats(self):
+        """Verify that subject headers in all casings, formats, and paper prefixes are filtered out."""
+        from apps.extraction.services.html_formatter import clean_metadata_text
+
+        raw_text = (
+            "PAPER – 2 : ADVANCED FINANCIAL MANAGEMENT\n"
+            "FINAL EXAMINATION\n"
+            "MAY 2026\n"
+            "An investor holds a portfolio of 4 securities.\n"
+            "Calculate the portfolio variance and Sharpe ratio."
+        )
+
+        cleaned = clean_metadata_text(raw_text, subject_name="Advanced Financial Management")
+        self.assertNotIn("ADVANCED FINANCIAL MANAGEMENT", cleaned)
+        self.assertNotIn("FINAL EXAMINATION", cleaned)
+        self.assertNotIn("MAY 2026", cleaned)
+        self.assertIn("An investor holds a portfolio of 4 securities.", cleaned)
+        self.assertIn("Calculate the portfolio variance and Sharpe ratio.", cleaned)
+
+        # Direct Tax variations with & vs and
+        dt_text = (
+            "Paper - 4 : Direct Tax Laws and International Taxation\n"
+            "Compute the total income of XYZ Ltd."
+        )
+        cleaned_dt = clean_metadata_text(dt_text, subject_name="Direct Tax Laws & International Taxation")
+        self.assertNotIn("Direct Tax Laws", cleaned_dt)
+        self.assertIn("Compute the total income of XYZ Ltd.", cleaned_dt)
+

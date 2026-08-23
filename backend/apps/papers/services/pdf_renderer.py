@@ -30,13 +30,40 @@ def _html_to_pdf(html_str: str) -> bytes:
     Raises RuntimeError if conversion produces errors.
     """
     import os, re
+    from django.conf import settings
+
+    media_root = str(getattr(settings, 'MEDIA_ROOT', os.path.abspath('media')))
+
     def _resolve_img_path(m):
-        rel = m.group(1).lstrip('/')
-        abs_p = os.path.abspath(rel)
+        raw_src = m.group(1).strip()
+        if raw_src.startswith(('data:', 'http://', 'https://')):
+            return f'src="{raw_src}"'
+
+        norm = raw_src.replace('\\', '/').lstrip('/')
+        if norm.startswith('media/'):
+            subpath = norm[6:]
+            abs_p = os.path.join(media_root, subpath)
+        elif norm.startswith(('table_crops/', 'formula_crops/')):
+            abs_p = os.path.join(media_root, norm)
+        elif os.path.isabs(raw_src):
+            abs_p = raw_src
+        else:
+            abs_p = os.path.join(media_root, norm)
+
+        abs_p = os.path.abspath(abs_p)
         if not os.path.exists(abs_p):
-            logger.warning("Table image crop file does not exist on disk: %s", abs_p)
+            base_dir = getattr(settings, 'BASE_DIR', None)
+            alt_p = os.path.abspath(os.path.join(str(base_dir), norm)) if base_dir else None
+            if alt_p and os.path.exists(alt_p):
+                abs_p = alt_p
+            else:
+                logger.warning("Image crop file does not exist on disk: %s", abs_p)
+
         abs_p_clean = abs_p.replace('\\', '/')
-    html_str = re.sub(r'src=["\']/?(media/[^"\']+)["\']', _resolve_img_path, html_str)
+        return f'src="{abs_p_clean}"'
+
+    # Match all src attributes in HTML and resolve to absolute disk paths
+    html_str = re.sub(r'src=["\']([^"\']+)["\']', _resolve_img_path, html_str)
 
     # Clean unrenderable rupee glyphs or backticks for xhtml2pdf to prevent black square rendering
     html_str = re.sub(r'[₹`]\s*(\d)', r'Rs. \1', html_str)
@@ -252,10 +279,18 @@ def _render_question_paper_html(
     font-weight: bold;
     border-top: 2px solid #555;
   }}
-  /* Images */
+  /* Images and visual crops */
   img {{
     max-width: 100%;
     height: auto;
+  }}
+  .table-container, .formula-container {{
+    margin: 0.6em 0;
+    page-break-inside: avoid;
+  }}
+  .table-visual-region, .formula-visual-region {{
+    text-align: center;
+    margin: 0.5em 0;
   }}
   p {{ margin: 0.3em 0; }}
 </style>
@@ -407,7 +442,16 @@ def _render_answer_sheet_html(
   tfoot {{ display: table-footer-group; }}
   tr.section-row td {{ font-weight: bold; background-color: #f9f9f9; }}
   tr.total-row td {{ font-weight: bold; border-top: 1.5pt solid #444; }}
+  /* Images and visual crops */
   img {{ max-width: 100%; height: auto; }}
+  .table-container, .formula-container {{
+    margin: 0.6em 0;
+    page-break-inside: avoid;
+  }}
+  .table-visual-region, .formula-visual-region {{
+    text-align: center;
+    margin: 0.5em 0;
+  }}
   p {{ margin: 0.25em 0; }}
 </style>
 </head>

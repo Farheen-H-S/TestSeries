@@ -9,6 +9,43 @@ def escape_html(text: str) -> str:
     """
     return html.escape(text)
 
+def is_subject_metadata(line: str, subject_name: Optional[str] = None) -> bool:
+    """
+    Check if a line of text corresponds to a subject name header,
+    handling case-insensitivity, & vs and, optional 'Paper - X:' prefix, acronyms, and punctuation.
+    """
+    stripped = line.strip()
+    if not stripped:
+        return False
+
+    from .extraction_patterns import KNOWN_SUBJECT_PATTERNS
+
+    if subject_name:
+        # Build flexible regex for the provided subject name
+        escaped = re.escape(subject_name.strip())
+        escaped = re.sub(r'\\&|\\band\\b', r'(?:&|and)', escaped, flags=re.IGNORECASE)
+        escaped = re.sub(r'\\\s+', r'\\s+', escaped)
+        pat = (
+            r"(?i)^[ \t]*(?:PAPER\s*[-–—:]*\s*\d+[\s\-–—:]*)?"
+            r"(?:" + escaped + r")"
+            r"(?:\s*\([A-Za-z0-9]+\))?[\s.:\-–—]*$"
+        )
+        if re.match(pat, stripped):
+            return True
+
+    # Check against known syllabus subject patterns
+    if KNOWN_SUBJECT_PATTERNS:
+        known_pat = (
+            r"(?i)^[ \t]*(?:PAPER\s*[-–—:]*\s*\d+[\s\-–—:]*)?"
+            r"(?:" + "|".join(KNOWN_SUBJECT_PATTERNS) + r")"
+            r"(?:\s*\([A-Za-z0-9]+\))?[\s.:\-–—]*$"
+        )
+        if re.match(known_pat, stripped):
+            return True
+
+    return False
+
+
 def clean_metadata_text(text: str, subject_name: Optional[str] = None, prepared_chapters: Optional[list] = None) -> str:
     """
     Strips metadata header lines (e.g. Part II-Questions and Answers, QUESTIONS,
@@ -30,7 +67,7 @@ def clean_metadata_text(text: str, subject_name: Optional[str] = None, prepared_
             if re.match(pat, stripped):
                 is_meta = True
                 break
-        if not is_meta and subject_name and re.match(r"(?i)^[ \t]*" + re.escape(subject_name) + r"\s*$", stripped):
+        if not is_meta and is_subject_metadata(stripped, subject_name=subject_name):
             is_meta = True
 
         if not is_meta and prepared_chapters:
@@ -68,6 +105,8 @@ def preserve_paragraphs(text: str) -> str:
             if re.match(pat, plain_p):
                 is_meta = True
                 break
+        if not is_meta and is_subject_metadata(plain_p):
+            is_meta = True
         if is_meta:
             continue
 

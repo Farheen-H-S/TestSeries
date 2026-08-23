@@ -343,10 +343,11 @@ class QuestionParser:
 
     def _clean_document_metadata(self, text: str) -> str:
         """
-        Strips document-level metadata (e.g. Revision Test Paper, Time Allowed: 3 Hours, Roll No)
+        Strips document-level metadata (e.g. Revision Test Paper, Time Allowed: 3 Hours, Roll No, Subject names)
         from preamble text to isolate true shared question context.
         """
         from .extraction_patterns import DOCUMENT_METADATA_PATTERNS
+        from .html_formatter import is_subject_metadata
         lines = text.split("\n")
         cleaned_lines = []
         for line in lines:
@@ -358,6 +359,8 @@ class QuestionParser:
                 if re.match(pat, stripped):
                     is_meta = True
                     break
+            if not is_meta and is_subject_metadata(stripped):
+                is_meta = True
             if not is_meta:
                 cleaned_lines.append(line)
         return "\n".join(cleaned_lines).strip()

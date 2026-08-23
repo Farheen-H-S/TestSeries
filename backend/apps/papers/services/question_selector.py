@@ -53,7 +53,11 @@ def _prerender_html_content(content: str) -> str:
 
     if '[STRUCTURED_START]' in result:
         def _render_table_block(m):
-            inner = m.group(1)
+            inner = m.group(1).strip()
+            # If inner is already rendered HTML (e.g. formula-container, table-container with img, or table), preserve it
+            if inner.startswith('<div') or '<img' in inner or '<table' in inner:
+                return inner
+
             # Strip HTML tags that preserve_paragraphs may have wrapped around the markdown
             inner_clean = re.sub(r'<[^>]+>', '', inner)
             # Unescape HTML entities so the markdown parser sees clean text
