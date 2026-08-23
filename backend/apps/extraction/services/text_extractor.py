@@ -82,8 +82,8 @@ def find_standalone_equation_regions(page: fitz.Page, table_bboxes: List[Any]) -
             page_h = 842.0
             page_x0 = 0.0
     
-    top_margin_limit = page_h * 0.12
-    bottom_margin_limit = page_h * 0.88
+    top_margin_limit = max(145.0, page_h * 0.16)
+    bottom_margin_limit = min(page_h - 145.0, page_h * 0.84)
     
     # 1. Detect from true fraction bar drawings
     drawings = []
@@ -217,6 +217,24 @@ def find_standalone_equation_regions(page: fitz.Page, table_bboxes: List[Any]) -
             
     for c in clusters:
         if c['count'] >= 3:
+            # Check if this cluster contains running header/footer banner text
+            is_header_meta = False
+            if hasattr(page, 'get_text'):
+                try:
+                    for b in page.get_text('dict')['blocks']:
+                        if 'lines' in b:
+                            for l in b['lines']:
+                                for s in l['spans']:
+                                    sy0, sy1 = s['bbox'][1], s['bbox'][3]
+                                    if (c['min_y'] - 15 <= sy0 <= c['max_y'] + 15) or (c['min_y'] - 15 <= sy1 <= c['max_y'] + 15):
+                                        if re.search(r'(?i)\b(?:REVISION\s+TEST\s+PAPERS?|MOCK\s+TEST|FINAL\s+EXAMINATION|INTERMEDIATE\s+EXAMINATION|FOUNDATION|EXAMINATION|MAY\s+20\d\d|NOV\s+20\d\d|SEPT\s+20\d\d|JAN\s+20\d\d)\b', s.get('text', '')):
+                                            is_header_meta = True
+                                            break
+                except Exception:
+                    pass
+            if is_header_meta:
+                continue
+
             d_min_y = c['min_y']
             d_max_y = c['max_y']
             if hasattr(page, 'get_text'):

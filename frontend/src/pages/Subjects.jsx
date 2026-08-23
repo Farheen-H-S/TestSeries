@@ -210,6 +210,15 @@ const Subjects = () => {
       // Refresh list
       const list = await subjectService.getSubjectChapters(activeSubject.subject_id);
       setChapters(list);
+
+      // Immediately update subject card count in state
+      setSubjects((prev) =>
+        prev.map((sub) =>
+          sub.subject_id === activeSubject.subject_id
+            ? { ...sub, chapters_count: list.length }
+            : sub
+        )
+      );
     } catch (err) {
       console.error('Error adding chapter:', err);
       if (err.response && err.response.status === 400) {
@@ -265,7 +274,7 @@ const Subjects = () => {
       setSubjects((prev) =>
         prev.map((sub) =>
           sub.subject_id === activeSubject.subject_id
-            ? { ...sub, chapters_count: sub.chapters_count - 1 }
+            ? { ...sub, chapters_count: list.length }
             : sub
         )
       );
@@ -508,7 +517,7 @@ const Subjects = () => {
                 <h3>Manage Chapters</h3>
                 <span className="chapters-subtitle">{activeSubject.name} - {activeSubject.exam_level}</span>
               </div>
-              <button className="close-modal-btn" onClick={() => setActiveSubject(null)}>
+              <button className="close-modal-btn" onClick={() => { setActiveSubject(null); fetchSubjects(); }}>
                 &times;
               </button>
             </div>
