@@ -1134,40 +1134,39 @@ class TableProcessor:
             found_tables = page.find_tables().tables if hasattr(page, 'find_tables') else []
             valid_tables = [t for t in found_tables if not is_narrative_text_box(t.extract())]
             
+            # Sort tables by vertical position y0
+            valid_tables.sort(key=lambda t: t.bbox[1] if t.bbox else 0)
+            
             # --- SAME-PAGE DIAGRAM / TABLE REGION GROUPING ---
             # Group nearby visual tables on the same page (gap <= 60pt) so diagrams with multiple boxes
             # (such as flowcharts or multi-part structures) are captured together in a single full-width visual crop.
-            table_crop_map = {}
-            for i, t in enumerate(valid_tables):
-                t_y0 = float(t.bbox[1])
-                t_y1 = float(t.bbox[3])
-                group_y0 = t_y0
-                group_y1 = t_y1
-                
-                # Check other tables on this page
-                for j, other_t in enumerate(valid_tables):
-                    if i == j:
-                        continue
-                    other_y0 = float(other_t.bbox[1])
-                    other_y1 = float(other_t.bbox[3])
-                    if (other_y0 <= group_y1 + 60.0 and other_y1 >= group_y0 - 60.0):
-                        group_y0 = min(group_y0, other_y0)
-                        group_y1 = max(group_y1, other_y1)
-                        
-                crop_rect = (page_x0, max(0.0, group_y0 - 4.0), page_w, min(page_h, group_y1 + 4.0))
-                table_crop_map[id(t)] = crop_rect
-
+            groups = []
             for t in valid_tables:
-                raw_grid = t.extract()
-                pt = self.process(raw_grid, bbox=t.bbox, page_number=page_num)
+                if not groups:
+                    groups.append([t])
+                else:
+                    last_group = groups[-1]
+                    last_t_y1 = max(float(x.bbox[3]) for x in last_group)
+                    cur_t_y0 = float(t.bbox[1])
+                    if cur_t_y0 <= last_t_y1 + 60.0:
+                        last_group.append(t)
+                    else:
+                        groups.append([t])
+
+            for grp in groups:
+                leader_t = grp[0]
+                group_y0 = min(float(t.bbox[1]) for t in grp)
+                group_y1 = max(float(t.bbox[3]) for t in grp)
+                crop_rect = (page_x0, max(0.0, group_y0 - 4.0), page_w, min(page_h, group_y1 + 4.0))
                 
-                # Store every table as visual object except genuine MCQ answer key tables
+                # Process leader table
+                raw_grid = leader_t.extract()
+                pt_leader = self.process(raw_grid, bbox=leader_t.bbox, page_number=page_num)
                 is_mcq_table = is_mcq_answer_key_table(raw_grid)
                 is_complex = not is_mcq_table
                 
                 crop_path_rel = None
-                crop_rect = table_crop_map.get(id(t))
-                if crop_rect and hasattr(page, 'get_pixmap'):
+                if hasattr(page, 'get_pixmap'):
                     try:
                         import fitz, os
                         mat = fitz.Matrix(200/72, 200/72)
@@ -1183,7 +1182,7 @@ class TableProcessor:
                         crop_dir = os.path.join(str(media_root), "table_crops")
                         os.makedirs(crop_dir, exist_ok=True)
                         doc_str = f"doc{document_id}" if document_id else "doc_extracted"
-                        crop_filename = f"{doc_str}_p{page_num}_y{int(t.bbox[1])}.png"
+                        crop_filename = f"{doc_str}_p{page_num}_y{int(leader_t.bbox[1])}.png"
                         crop_path_abs = os.path.abspath(os.path.join(crop_dir, crop_filename))
                         pix.save(crop_path_abs)
                         # Store relative media path (/media/table_crops/...) for browser security compatibility
@@ -1193,16 +1192,24 @@ class TableProcessor:
 
                 region_info = {
                     "page_number": page_num,
-                    "bbox": [round(float(c), 1) for c in (crop_rect if crop_rect else t.bbox)],
+                    "bbox": [round(float(c), 1) for c in crop_rect],
                     "crop_path": crop_path_rel
                 }
                 
-                pt.table.properties["regions"] = [region_info]
-                pt.table.properties["is_complex"] = is_complex
+                pt_leader.table.properties["regions"] = [region_info]
+                pt_leader.table.properties["is_complex"] = is_complex
                 if crop_path_rel:
-                    pt.table.properties["crop_path"] = crop_path_rel
+                    pt_leader.table.properties["crop_path"] = crop_path_rel
 
-                raw_processed_tables.append(pt)
+                raw_processed_tables.append(pt_leader)
+                
+                # Mark child tables as merged into leader so they don't produce duplicate image crops
+                for child_t in grp[1:]:
+                    raw_grid_c = child_t.extract()
+                    pt_child = self.process(raw_grid_c, bbox=child_t.bbox, page_number=page_num)
+                    pt_child.table.properties["merged_into"] = id(leader_t)
+                    pt_child.table.properties["regions"] = []
+                    raw_processed_tables.append(pt_child)
                 
         # Merge cross-page tables
         self.merge_cross_page_tables(raw_processed_tables, doc)

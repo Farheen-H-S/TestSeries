@@ -184,6 +184,60 @@ def find_standalone_equation_regions(page: fitz.Page, table_bboxes: List[Any]) -
                 min(page_h, bbox[3] + 4)
             ))
 
+    # 3. Detect Diagram / Flowchart / Schema clusters from vector drawings
+    # If 3 or more drawings are clustered together within body area (e.g. flowcharts, organizational charts, accounting schema diagrams)
+    diag_drawings = [
+        d for d in drawings 
+        if (d['rect'].height > 2 or d['rect'].width > 5) 
+        and (top_margin_limit <= d['rect'].y0 and d['rect'].y1 <= bottom_margin_limit)
+        and not is_near_table(d['rect'], table_bboxes, margin=8)
+    ]
+    
+    clusters = []
+    for d in diag_drawings:
+        r = d['rect']
+        merged_c = False
+        for c in clusters:
+            if not (r.y0 > c['max_y'] + 35 or r.y1 < c['min_y'] - 35):
+                c['min_x'] = min(c['min_x'], r.x0)
+                c['max_x'] = max(c['max_x'], r.x1)
+                c['min_y'] = min(c['min_y'], r.y0)
+                c['max_y'] = max(c['max_y'], r.y1)
+                c['count'] += 1
+                merged_c = True
+                break
+        if not merged_c:
+            clusters.append({
+                'min_x': r.x0,
+                'max_x': r.x1,
+                'min_y': r.y0,
+                'max_y': r.y1,
+                'count': 1
+            })
+            
+    for c in clusters:
+        if c['count'] >= 3:
+            d_min_y = c['min_y']
+            d_max_y = c['max_y']
+            if hasattr(page, 'get_text'):
+                try:
+                    for b in page.get_text('dict')['blocks']:
+                        if 'lines' in b:
+                            for l in b['lines']:
+                                for s in l['spans']:
+                                    sx0, sy0, sx1, sy1 = s['bbox']
+                                    if (c['min_x'] - 10 <= sx0 and sx1 <= c['max_x'] + 10) and (c['min_y'] - 4 <= sy0 <= c['max_y'] + 4):
+                                        d_min_y = min(d_min_y, sy0)
+                                        d_max_y = max(d_max_y, sy1)
+                except Exception:
+                    pass
+            raw_regions.append((
+                page_x0,
+                max(0, d_min_y - 3),
+                page_w,
+                min(page_h, d_max_y + 3)
+            ))
+
     if not raw_regions:
         return []
         
@@ -239,18 +293,34 @@ def extract_text(doc: fitz.Document, document_id: Any = None) -> List[Dict[str, 
         blocks = page.get_text("blocks")
         items = []
         valid_page_tables = [t for t in page_tables if (page_num, round(t.bbox[0], 1), round(t.bbox[1], 1)) in table_lookup]
-        table_bboxes = [t.bbox for t in valid_page_tables]
+        table_bboxes = []
         
-        # Add tables
+        # Add tables and extract effective visual region bboxes
         for t in valid_page_tables:
             key = (page_num, round(t.bbox[0], 1), round(t.bbox[1], 1))
             md_content = table_lookup.get(key, "")
-            items.append({
-                "type": "table",
-                "y0": t.bbox[1],
-                "x0": t.bbox[0],
-                "content": md_content
-            })
+            if md_content:
+                items.append({
+                    "type": "table",
+                    "y0": t.bbox[1],
+                    "x0": t.bbox[0],
+                    "content": md_content
+                })
+                # Extract merged visual region bbox to ensure full vertical diagram area is covered
+                m_prov = re.search(r'data-table-provenance="([^"]+)"', md_content)
+                added_prov = False
+                if m_prov:
+                    try:
+                        import json, html as html_lib
+                        prov_dict = json.loads(html_lib.unescape(m_prov.group(1)))
+                        for r_item in prov_dict.get("regions", []):
+                            if r_item.get("bbox") and len(r_item["bbox"]) == 4:
+                                table_bboxes.append(tuple(r_item["bbox"]))
+                                added_prov = True
+                    except Exception:
+                        pass
+                if not added_prov:
+                    table_bboxes.append(t.bbox)
 
         # Add standalone formula / equation visual crops
         formula_regions = find_standalone_equation_regions(page, table_bboxes)

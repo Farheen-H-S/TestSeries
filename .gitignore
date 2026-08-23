@@ -6,3 +6,4 @@ backend/db.sqlite3
 backend/temp/
 .pytest_cache
 backend/media/
+dump.rdb
