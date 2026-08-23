@@ -250,7 +250,7 @@ const Upload = () => {
           <div className="empty-subjects-warning">
             <p>No subjects available in the database. You must create at least one subject in the syllabus first before you can upload papers.</p>
             <Button variant="primary" onClick={() => navigate('/subjects')}>
-              Go to Syllabus Management
+              Go to Subject Management
             </Button>
           </div>
         </div>

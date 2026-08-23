@@ -305,7 +305,7 @@ const Review = () => {
   }, [reviewableQuestions, searchQuery, statusFilter, marksFilter, sortBy]);
 
   // Navigation handlers
-  const handleBackToDocuments = () => {
+  const handleBackToHome = () => {
     if (isFormDirty) {
       if (window.confirm("You have unsaved changes. Are you sure you want to leave?")) {
         setEditingQuestionId(null);
@@ -513,8 +513,8 @@ const Review = () => {
         <h2 className="error-state-title">Unable to load this document.</h2>
         <p className="error-state-desc">The request failed. Please check your connection or retry loading.</p>
         <div className="error-actions">
-          <Button variant="outline" onClick={handleBackToDocuments}>
-            Back to Documents
+          <Button variant="outline" onClick={handleBackToHome}>
+            Back to Home
           </Button>
           <Button variant="primary" onClick={fetchData}>
             Retry
@@ -530,8 +530,8 @@ const Review = () => {
       <div className="error-state-card">
         <h2 className="error-state-title">Unable to locate document metadata.</h2>
         <p className="error-state-desc">The requested document might have been removed or does not exist.</p>
-        <Button variant="primary" onClick={handleBackToDocuments}>
-          Back to Documents
+        <Button variant="primary" onClick={handleBackToHome}>
+          Back to Home
         </Button>
       </div>
     );
@@ -570,8 +570,8 @@ const Review = () => {
           {/* Top Header */}
           <div className="review-header">
             <h2 className="review-header-title">Review Extracted Paper</h2>
-            <Button variant="outline" onClick={handleBackToDocuments}>
-              Back to Documents
+            <Button variant="outline" onClick={handleBackToHome}>
+              Back to Home
             </Button>
           </div>
 
@@ -725,8 +725,8 @@ const Review = () => {
               <EmptyState
                 title="No questions extracted"
                 message="No questions were extracted from this document."
-                actionText="Back to Documents"
-                onAction={handleBackToDocuments}
+                actionText="Back to Home"
+                onAction={handleBackToHome}
               />
             ) : processedQuestions.length === 0 ? (
               <EmptyState

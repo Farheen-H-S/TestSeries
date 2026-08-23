@@ -176,6 +176,9 @@ const Home = () => {
       });
   };
 
+  const hasSubjects = subjects.length > 0;
+  const hasDocuments = documents.length > 0;
+
   return (
     <div className="home-container container">
       {/* Hero Section */}
@@ -185,11 +188,30 @@ const Home = () => {
           Upload previous year papers, build your question bank, and generate practice papers.
         </p>
         <div className="home-hero-actions">
-          <Button variant="secondary" onClick={() => navigate('/subjects')} className="home-hero-btn">
-            Manage Subjects & Chapters
+          <Button
+            variant={!hasSubjects ? 'primary' : 'outline'}
+            onClick={() => navigate('/subjects')}
+            className="home-hero-btn"
+          >
+            Manage Subjects
           </Button>
-          <Button variant="outline" onClick={handleUploadClick} className="home-hero-btn">
+          <Button
+            variant={hasSubjects && !hasDocuments ? 'primary' : 'outline'}
+            disabled={!hasSubjects}
+            tooltip={!hasSubjects ? 'Add at least one subject first before uploading papers' : undefined}
+            onClick={handleUploadClick}
+            className="home-hero-btn"
+          >
             Upload Paper
+          </Button>
+          <Button
+            variant={hasSubjects && hasDocuments ? 'primary' : 'outline'}
+            disabled={!hasDocuments}
+            tooltip={!hasDocuments ? 'Upload and extract at least one paper before generating practice tests' : undefined}
+            onClick={() => navigate('/generate')}
+            className="home-hero-btn"
+          >
+            Generate Practice Paper
           </Button>
         </div>
       </section>
