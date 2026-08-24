@@ -339,7 +339,7 @@ def extract_text(doc: fitz.Document, document_id: Any = None) -> List[Dict[str, 
         blocks = page.get_text("blocks")
         items = []
         valid_page_tables = [t for t in page_tables if (page_num, round(t.bbox[0], 1), round(t.bbox[1], 1)) in table_lookup]
-        table_bboxes = []
+        table_bboxes = [t.bbox for t in page_tables]
         
         # Add tables and extract effective visual region bboxes
         for t in valid_page_tables:
@@ -431,18 +431,7 @@ def extract_text(doc: fitz.Document, document_id: Any = None) -> List[Dict[str, 
                     inside_visual = True
                     break
 
-            if inside_visual:
-                # If block starts in left margin and contains a question/answer header, preserve the header text!
-                m_hdr = re.match(r'^\s*(\d+\.|\([a-z]\)|\([ivx\d]+\))\s*', text_val, re.IGNORECASE)
-                if m_hdr and bx0 < page_left_margin_threshold:
-                    hdr_text = m_hdr.group(1)
-                    items.append({
-                        "type": "text",
-                        "y0": by0,
-                        "x0": bx0,
-                        "content": hdr_text
-                    })
-            else:
+            if not inside_visual:
                 items.append({
                     "type": "text",
                     "y0": by0,

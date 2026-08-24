@@ -1220,9 +1220,17 @@ class TableProcessor:
 
             for grp in groups:
                 leader_t = grp[0]
+                group_x0 = min(float(t.bbox[0]) for t in grp)
+                group_x1 = max(float(t.bbox[2]) for t in grp)
                 group_y0 = min(float(t.bbox[1]) for t in grp)
                 group_y1 = max(float(t.bbox[3]) for t in grp)
-                crop_rect = (page_x0, max(0.0, group_y0 - 4.0), page_w, min(page_h, group_y1 + 4.0))
+                
+                # Expand slightly to capture borders/padding without overflowing into neighboring margin headers
+                crop_x0 = max(page_x0, group_x0 - 8.0)
+                crop_x1 = min(page_w, group_x1 + 8.0)
+                crop_y0 = max(0.0, group_y0 - 2.0)
+                crop_y1 = min(page_h, group_y1 + 2.0)
+                crop_rect = (crop_x0, crop_y0, crop_x1, crop_y1)
                 
                 # Process leader table
                 raw_grid = leader_t.extract()
