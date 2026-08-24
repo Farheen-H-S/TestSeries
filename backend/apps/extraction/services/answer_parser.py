@@ -135,33 +135,9 @@ class AnswerParser:
             known_children=known_children
         )
 
-        # Identify tight margin number artifacts (e.g. "5.\n6.\n7." or "8.\n9.\n10." extracted without body text)
-        is_margin_stack = [False] * len(all_potential_matches)
-        for i in range(len(all_potential_matches) - 1):
-            m1 = all_potential_matches[i]
-            m2 = all_potential_matches[i+1]
-            raw1 = text[m1.start():m1.end()].strip()
-            raw2 = text[m2.start():m2.end()].strip()
-            gap = text[m1.end():m2.start()].strip()
-            if len(gap) == 0 and re.match(r'^\d+\.?$', raw1) and re.match(r'^\d+\.?$', raw2):
-                is_margin_stack[i] = True
-                post_m2 = text[m2.end():m2.end()+80].strip()
-                if re.match(r'^(?:(?:FINAL EXAMINATION|FINANCIAL REPORTING|\d+)\s*)*\[STRUCTURED_START\]', post_m2):
-                    is_margin_stack[i+1] = True
-
         for idx, match in enumerate(all_potential_matches):
             raw_header = text[match.start():match.end()]
             normalized_header = match.group(0)
-
-            # 0. Skip dense margin stack artifacts
-            if is_margin_stack[idx] and not self.validator.is_strong_header(raw_header):
-                logger.info("Answer candidate rejected | candidate=%r | reason=margin stack artifact | start_offset=%d", raw_header, match.start())
-                diagnostics.rejected_headers.append({
-                    "header": raw_header,
-                    "reason": "margin stack artifact"
-                })
-                prev_match_end = match.end()
-                continue
 
             # 1. Check if Working Notes section marker appears in gap between previous match end and current match start
             gap_text = normalized_text[prev_match_end:match.start()]

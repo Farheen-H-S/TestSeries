@@ -32,7 +32,7 @@ WORKING_NOTE_SECTION_PATTERNS = [
 
 WORKING_NOTE_HEADER_PATTERNS = [
     r"(?i)^[ \t]*(?:Working\s+Note|W\.?N\.?)\s*(\d+)(?:\s*[:\-–—\.]?\s*(.*?))?$",
-    r"(?i)^[ \t]*(?:\d+\.\s*)?(?:Computation|Calculation|Analysis|Apportionment|Shareholding|Non-Controlling\s+Interest|Retained\s+Earnings\s+for\s+CBS|Net\s+Inventory\s+for\s+CBS|Trade\s+Receivables\s+for\s+CBS|Inventory\s+to\s+be\s+shown\s+in\s+CBS)\b",
+    r"(?i)^[ \t]*(?:\d+\.\s*)?(?:Computation\s+of\s+Goodwill|Retained\s+Earnings\s+for\s+CBS|Net\s+Inventory\s+for\s+CBS|Trade\s+Receivables\s+for\s+CBS|Inventory\s+to\s+be\s+shown\s+in\s+CBS|Analysis\s+of\s+Retained\s+Earnings|Apportionment\s+of\s+profit|Non-Controlling\s+Interest\s+as\s+per\s+fair\s+value)\b",
 ]
 
 KNOWN_SUBJECT_PATTERNS = [
