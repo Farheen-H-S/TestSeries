@@ -1016,6 +1016,35 @@ class _HTMLRenderer:
 
 
 
+MCQ_OPTION_PATTERN = re.compile(
+    r'(?i)(?:'
+    r'\bOption\b\s*[:\-]?(?:\s*\(?[a-eA-E]\)?)?'
+    r'|'
+    r'\bAns(?:wer)?\.?\s*[:\-]?(?:\s*\(?[a-eA-E]\)?)?'
+    r'|'
+    r'\([a-eA-E]\)'
+    r'|'
+    r'^\s*\(?[a-eA-E]\)[\.\:\-]'
+    r')'
+)
+
+MCQ_COMBINED_PATTERN = re.compile(
+    r'^\s*(?:Q\.?\s*(?:No\.?)?\s*|MCQ\s*(?:No\.?)?\s*)?([1-9]\d?)\.?\s+'
+    r'(?:'
+    r'\bOption\b(?:\s*[:\-]|\s*\(?[a-eA-E]\)?)'
+    r'|'
+    r'\bAns(?:wer)?\.?\s*[:\-]?(?:\s*\(?[a-eA-E]\)?)'
+    r'|'
+    r'\([a-eA-E]\)'
+    r')',
+    re.IGNORECASE
+)
+
+MCQ_QNUM_CELL_PATTERN = re.compile(
+    r'^\s*(?:Q\.?\s*(?:No\.?)?\s*|MCQ\s*(?:No\.?)?\s*)?([1-9]\d?)\.?\s*$',
+    re.IGNORECASE
+)
+
 def is_mcq_answer_key_table(raw_grid: List[List[Any]]) -> bool:
     """
     Identifies true MCQ answer key mapping tables (e.g. Q. No | Most Appropriate Answer / Option (a) ...).
@@ -1031,10 +1060,10 @@ def is_mcq_answer_key_table(raw_grid: List[List[Any]]) -> bool:
         return False
         
     header_text = ' '.join(str(c or '') for c in raw_grid[:2] for c in (c if isinstance(c, list) else [c]))
-    if re.search(r'(?i)\b(?:MCQ\s*No\.?|Most\s+Appropriate\s+Answer|Answer\s+Key|Answer\s+to\s+Multiple\s+Choice\s+Questions?)\b', header_text):
+    has_mcq_header = bool(re.search(r'(?i)\b(?:MCQ\s*No\.?|Most\s+Appropriate\s+Answer|Answer\s+Key|Answer\s+to\s+Multiple\s+Choice\s+Questions?)\b', header_text))
+    if has_mcq_header:
         return True
         
-    # Check if rows contain question numbers followed by option letters / option text
     mcq_pairs = 0
     q_num_rows = 0
     for row in raw_grid:
@@ -1042,35 +1071,31 @@ def is_mcq_answer_key_table(raw_grid: List[List[Any]]) -> bool:
         if not non_empty:
             continue
         
-        # Check if any cell in the row has combined question + option: e.g. "1. Option (a)"
-        has_combined = any(
-            re.search(r'^\s*(?:Q\.?\s*(?:No\.?)?\s*|MCQ\s*(?:No\.?)?\s*)?\d+\.?\s+(?:(?:\(?\bOption\b\s*[:\-]?)?\s*\(?[a-eA-E]\)?|Option\b)', cell, re.IGNORECASE)
-            for cell in non_empty
-        )
-        if has_combined:
+        # Combined question + option in a single cell
+        if any(MCQ_COMBINED_PATTERN.search(cell) for cell in non_empty):
             q_num_rows += 1
             mcq_pairs += 1
             continue
 
-        # Check if row has a question number cell
+        # Separate question number cell + option cell
         q_idx = -1
         for idx, cell in enumerate(non_empty):
-            if re.match(r'^\s*(?:Q\.?\s*(?:No\.?)?\s*|MCQ\s*(?:No\.?)?\s*)?\d+\.?\s*$', cell, re.IGNORECASE):
+            if MCQ_QNUM_CELL_PATTERN.match(cell):
                 q_idx = idx
                 break
         
         if q_idx != -1:
             q_num_rows += 1
-            # Check if any subsequent cell has option pattern
             has_opt = False
             for cell in non_empty[q_idx + 1:]:
-                if re.search(r'(?i)\bOption\b|\([a-eA-E]\)|\b[a-eA-E]\b|\bAns\.?\b', cell):
+                if MCQ_OPTION_PATTERN.search(cell):
                     has_opt = True
                     break
             if has_opt:
                 mcq_pairs += 1
 
-    return q_num_rows > 0 and (mcq_pairs >= q_num_rows * 0.5)
+    min_pairs_required = 1 if has_mcq_header else 2
+    return q_num_rows > 0 and mcq_pairs >= min_pairs_required and (mcq_pairs >= q_num_rows * 0.5)
 
 
 class TableProcessor:
