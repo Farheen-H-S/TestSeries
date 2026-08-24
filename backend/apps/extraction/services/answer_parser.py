@@ -83,18 +83,28 @@ class AnswerParser:
         all_potential_matches = sorted([m for m, _ in resolved_matches], key=lambda x: x.start())
         diagnostics = ParsingDiagnostics(total_matches=len(all_potential_matches))
 
-        if not all_potential_matches:
-            return AnswerParseResult(answers=[], diagnostics=diagnostics)
-
         # Precompute page keys for true O(log n) lookup
         page_keys = [x[0] for x in page_offsets] if page_offsets else []
+        sections = self._classify_sections(normalized_text)
+
+        if not all_potential_matches:
+            if "[STRUCTURED_START]" in normalized_text:
+                mcq_table_answers = self._parse_mcq_tables(
+                    normalized_text,
+                    text,
+                    sections,
+                    page_offsets,
+                    base_offset,
+                    page_keys,
+                )
+                if mcq_table_answers:
+                    diagnostics.validated_count = len(mcq_table_answers)
+                    return AnswerParseResult(answers=mcq_table_answers, diagnostics=diagnostics)
+            return AnswerParseResult(answers=[], diagnostics=diagnostics)
 
         parsed_answers = []
         hierarchy_stack: List[str] = []
         validated_matches = []
-        
-        # Classify sections
-        sections = self._classify_sections(normalized_text)
 
         logger.info(
             "Answer parsing stage 1 | potential_matches=%d",
@@ -515,13 +525,16 @@ class AnswerParser:
                                         explicit_opt_count += 1
                                     break
 
+                current_answer: Optional[ParsedAnswer] = None
                 for row in rows:
                     col_idx = 0
+                    found_q_in_row = False
                     while col_idx < len(row):
                         cell_clean = row[col_idx].replace("*", "").strip()
                         m_q = q_num_pat.match(cell_clean)
                         if m_q:
                             q_num = m_q.group(1)
+                            found_q_in_row = True
                             # Look for option content in subsequent cells in the same row
                             opt_content = None
                             for next_idx in range(col_idx + 1, min(col_idx + 4, len(row))):
@@ -533,12 +546,19 @@ class AnswerParser:
                                     col_idx = next_idx + 1
                                     break
                             else:
-                                col_idx += 1
+                                for next_idx in range(col_idx + 1, len(row)):
+                                    next_cell = row[next_idx].strip()
+                                    if next_cell and not q_num_pat.match(next_cell.replace("*", "").strip()):
+                                        opt_content = next_cell
+                                        col_idx = next_idx + 1
+                                        break
+                                else:
+                                    col_idx += 1
 
                             if opt_content:
                                 start_offset = base_offset + table_start
                                 start_page = HierarchyUtils.get_page_num_fast(start_offset, page_offsets, page_keys)
-                                table_answers.append(ParsedAnswer(
+                                current_answer = ParsedAnswer(
                                     hierarchy_path=[q_num],
                                     raw_header=f"\n{q_num}.",
                                     text=opt_content,
@@ -548,9 +568,15 @@ class AnswerParser:
                                     end_page=start_page,
                                     section_type=AnswerSectionType.MCQ_ANSWER,
                                     source=AnswerSource.MCQ_TABLE
-                                ))
+                                )
+                                table_answers.append(current_answer)
                         else:
                             col_idx += 1
+
+                    if not found_q_in_row and current_answer is not None:
+                        continuation_text = " ".join([c for c in row if c and c.strip()])
+                        if continuation_text:
+                            current_answer.text = f"{current_answer.text} {continuation_text}".strip()
 
                 if explicit_opt_count >= 1:
                     mcq_answers.extend(table_answers)

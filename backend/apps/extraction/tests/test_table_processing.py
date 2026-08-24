@@ -227,4 +227,21 @@ class TableProcessingTests(TestCase):
         html_val = list(lookup.values())[0]
         self.assertIn('data-crop-path="/media/table_crops/doc99_p1_y20.png"', html_val)
 
+    def test_is_mcq_answer_key_table_with_duplicate_columns_and_wrap(self):
+        from ..services.table_processing import is_mcq_answer_key_table
+        
+        # Grid resembling PyMuPDF extraction on Page 13 of Jan 2026 FR RTP
+        p13_grid = [
+            ['', '6.', '', '', 'Option (d) : ` 1,10,000', ''],
+            ['7.', '7.', None, '', 'Option (a) : The modification in the contract will be accounted', ''],
+            [None, None, None, None, 'for prospectively by allocating remaining revenue equally for', None],
+            [None, None, None, None, '5 years', None],
+            ['', '8.', '', '', 'Option (a) : ` 11,50,000', ''],
+            ['', '9.', '', '', 'Option (c) : ` 2,30,000', ''],
+            ['10.', '10.', None, '', 'Option (d) : Transactions between both A Ltd. and L Ltd. and', ''],
+            [None, None, None, None, 'A Ltd. and K Ltd. are disclosable.', None]
+        ]
+        self.assertTrue(is_mcq_answer_key_table(p13_grid))
+
+
 

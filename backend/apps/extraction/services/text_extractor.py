@@ -129,6 +129,34 @@ def find_standalone_equation_regions(page: fitz.Page, table_bboxes: List[Any]) -
                 if is_footnote:
                     continue
 
+                # Ensure drawing is a true mathematical fraction line, not an underline under normal prose text
+                above_spans = []
+                below_spans = []
+                for b in page.get_text('dict')['blocks']:
+                    if 'lines' in b:
+                        for l in b['lines']:
+                            for s in l['spans']:
+                                sb = s['bbox']
+                                if rect.y0 - 16 <= sb[3] <= rect.y0 + 2:
+                                    above_spans.append(s['text'].strip())
+                                if rect.y1 - 2 <= sb[1] <= rect.y1 + 16:
+                                    below_spans.append(s['text'].strip())
+                
+                above_str = ' '.join([t for t in above_spans if t])
+                below_str = ' '.join([t for t in below_spans if t])
+                
+                if not above_str or not below_str:
+                    continue
+                
+                has_math_sig = any(c in (above_str + ' ' + below_str) for c in ['=', '+', '-', '×', '/', '÷', '±', '∑', '√', '^', '%', 'σ', 'β', 'μ', 'ρ', 'λ', 'θ', 'XABC', 'Cov', 'Po', 'EPS', 'Ke', 'DPS', 'WACC', 'Rf', 'Rm', 'NPV', 'IRR'])
+                has_digits = bool(re.search(r'\d', above_str) and re.search(r'\d', below_str))
+                is_short_fraction = (len(above_str.split()) <= 4 and len(below_str.split()) <= 4)
+                
+                if not (has_math_sig or has_digits or is_short_fraction):
+                    continue
+                if len(above_str.split()) > 6 and not has_math_sig:
+                    continue
+
                 # Find all text spans on this page within y0 - 15 to y1 + 15
                 line_spans = []
                 for b in page.get_text('dict')['blocks']:

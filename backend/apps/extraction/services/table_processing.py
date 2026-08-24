@@ -1031,24 +1031,46 @@ def is_mcq_answer_key_table(raw_grid: List[List[Any]]) -> bool:
         return False
         
     header_text = ' '.join(str(c or '') for c in raw_grid[:2] for c in (c if isinstance(c, list) else [c]))
-    if re.search(r'(?i)\b(?:MCQ\s*No\.?|Most\s+Appropriate\s+Answer|Answer\s+Key)\b', header_text):
+    if re.search(r'(?i)\b(?:MCQ\s*No\.?|Most\s+Appropriate\s+Answer|Answer\s+Key|Answer\s+to\s+Multiple\s+Choice\s+Questions?)\b', header_text):
         return True
         
-    # Check if rows are pairs of (Q_num, Option_letter / Option text)
+    # Check if rows contain question numbers followed by option letters / option text
     mcq_pairs = 0
-    total_non_empty = 0
+    q_num_rows = 0
     for row in raw_grid:
         non_empty = [str(c).strip() for c in row if c and str(c).strip()]
-        if len(non_empty) >= 2:
-            first = non_empty[0]
-            second = non_empty[1]
-            if re.match(r'^(?:Q\.?\s*)?\d+\.?$', first):
-                if re.match(r'^(?:\(?\bOption\b\s*)?\(?[a-eA-E]\)?', second, re.IGNORECASE):
-                    mcq_pairs += 1
-        if non_empty:
-            total_non_empty += 1
-            
-    return total_non_empty > 0 and (mcq_pairs >= total_non_empty * 0.5)
+        if not non_empty:
+            continue
+        
+        # Check if any cell in the row has combined question + option: e.g. "1. Option (a)"
+        has_combined = any(
+            re.search(r'^\s*(?:Q\.?\s*(?:No\.?)?\s*|MCQ\s*(?:No\.?)?\s*)?\d+\.?\s+(?:(?:\(?\bOption\b\s*[:\-]?)?\s*\(?[a-eA-E]\)?|Option\b)', cell, re.IGNORECASE)
+            for cell in non_empty
+        )
+        if has_combined:
+            q_num_rows += 1
+            mcq_pairs += 1
+            continue
+
+        # Check if row has a question number cell
+        q_idx = -1
+        for idx, cell in enumerate(non_empty):
+            if re.match(r'^\s*(?:Q\.?\s*(?:No\.?)?\s*|MCQ\s*(?:No\.?)?\s*)?\d+\.?\s*$', cell, re.IGNORECASE):
+                q_idx = idx
+                break
+        
+        if q_idx != -1:
+            q_num_rows += 1
+            # Check if any subsequent cell has option pattern
+            has_opt = False
+            for cell in non_empty[q_idx + 1:]:
+                if re.search(r'(?i)\bOption\b|\([a-eA-E]\)|\b[a-eA-E]\b|\bAns\.?\b', cell):
+                    has_opt = True
+                    break
+            if has_opt:
+                mcq_pairs += 1
+
+    return q_num_rows > 0 and (mcq_pairs >= q_num_rows * 0.5)
 
 
 class TableProcessor:

@@ -900,8 +900,34 @@ class ParserRegressionTests(unittest.TestCase):
         self.assertNotIn(["583"], paths)
 
 
+    def test_mcq_html_table_with_multiline_continuation_rows(self):
+        table_html = (
+            '<div class="table-container"><table class="structured-table">'
+            '<thead><tr><th>6.</th><th>Option (d) : ₹ 1,10,000</th></tr></thead>'
+            '<tbody>'
+            '<tr><td>7.</td><td>Option (a) : The modification in the contract will be accounted</td></tr>'
+            '<tr><td></td><td>for prospectively by allocating remaining revenue equally for</td></tr>'
+            '<tr><td></td><td>5 years</td></tr>'
+            '<tr><td>8.</td><td>Option (a) : ₹ 11,50,000</td></tr>'
+            '</tbody></table></div>'
+        )
+        text = f"SUGGESTED ANSWERS\nAnswer to Multiple Choice Questions\n[STRUCTURED_START]\n{table_html}\n[STRUCTURED_END]"
+        parsed = self.a_parser.parse(text, self.offsets)
+        ans_by_path = {".".join(a.hierarchy_path): a.text for a in parsed}
+        self.assertIn("6", ans_by_path)
+        self.assertIn("7", ans_by_path)
+        self.assertIn("8", ans_by_path)
+        self.assertEqual(ans_by_path["6"], "Option (d) : ₹ 1,10,000")
+        self.assertEqual(
+            ans_by_path["7"],
+            "Option (a) : The modification in the contract will be accounted for prospectively by allocating remaining revenue equally for 5 years"
+        )
+        self.assertEqual(ans_by_path["8"], "Option (a) : ₹ 11,50,000")
+
+
 if __name__ == "__main__":
     unittest.main()
+
 
 
 
