@@ -352,7 +352,6 @@ def extract_text(doc: fitz.Document, document_id: Any = None) -> List[Dict[str, 
                     "x0": t.bbox[0],
                     "content": md_content
                 })
-                # Extract merged visual region bbox to ensure full vertical diagram area is covered
                 m_prov = re.search(r'data-table-provenance="([^"]+)"', md_content)
                 added_prov = False
                 if m_prov:
@@ -360,7 +359,7 @@ def extract_text(doc: fitz.Document, document_id: Any = None) -> List[Dict[str, 
                         import json, html as html_lib
                         prov_dict = json.loads(html_lib.unescape(m_prov.group(1)))
                         for r_item in prov_dict.get("regions", []):
-                            if r_item.get("bbox") and len(r_item["bbox"]) == 4:
+                            if r_item.get("page_number") == page_num and r_item.get("bbox") and len(r_item["bbox"]) == 4:
                                 table_bboxes.append(tuple(r_item["bbox"]))
                                 added_prov = True
                     except Exception:
