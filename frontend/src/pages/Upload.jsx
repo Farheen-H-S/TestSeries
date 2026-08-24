@@ -121,7 +121,7 @@ const Upload = () => {
     setFile(selectedFile);
     if (generalError) setGeneralError(null);
 
-    // Auto-detect Month, Year, Doc Type, Subject from filename if not already selected
+    // Auto-detect Month and Year from filename
     if (!fileError) {
       const nameLower = selectedFile.name.toLowerCase();
       setFormData((prev) => {
@@ -144,22 +144,6 @@ const Upload = () => {
         // 2. Detect Year
         const yearMatch = nameLower.match(/\b(20\d\d)\b/);
         if (yearMatch) next.paper_year = Number(yearMatch[1]);
-
-        // 3. Detect Document Type
-        if (/\brtp\b/i.test(nameLower)) next.document_type = 'RTP';
-        else if (/\b(mtp|mock)\b/i.test(nameLower)) next.document_type = 'MOCK';
-        else if (/\b(pyq|past)\b/i.test(nameLower)) next.document_type = 'PYQ';
-
-        // 4. Detect Subject
-        if (subjects && subjects.length > 0) {
-          if (/\b(fr|financial\s*reporting)\b/i.test(nameLower)) {
-            const frSub = subjects.find((s) => /financial\s*reporting/i.test(s.name) || /fr/i.test(s.code || ''));
-            if (frSub) next.subject = frSub.subject_id;
-          } else if (/\b(dt|direct\s*tax|direct\s*taxes)\b/i.test(nameLower)) {
-            const dtSub = subjects.find((s) => /direct\s*tax/i.test(s.name) || /dt/i.test(s.code || ''));
-            if (dtSub) next.subject = dtSub.subject_id;
-          }
-        }
 
         return next;
       });
