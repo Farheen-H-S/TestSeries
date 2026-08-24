@@ -22,16 +22,17 @@ MCQ_ANSWER_SECTION_PATTERNS = [
 ]
 
 WORKING_NOTE_SECTION_PATTERNS = [
-    r"(?i)^[ \t]*Working\s+Notes?(?:\s*[:\-–—])?",
-    r"(?i)^[ \t]*W\.?N\.?\s*(?:\d+|[:\-–—])",
-    r"(?i)^[ \t]*Illustrations?(?:\s*[:\-–—])?",
-    r"(?i)^[ \t]*Annexures?(?:\s*[:\-–—])?",
-    r"(?i)^[ \t]*Appendix(?:\s*[:\-–—])?",
+    r"(?i)(?:^[ \t]*|\b)Working\s+Notes?(?:\s*[:\-–—])?",
+    r"(?i)(?:^[ \t]*|\b)W\.?N\.?\s*(?:\d+|[:\-–—])",
+    r"(?i)(?:^[ \t]*|\b)Illustrations?(?:\s*[:\-–—])?",
+    r"(?i)(?:^[ \t]*|\b)Annexures?(?:\s*[:\-–—])?",
+    r"(?i)(?:^[ \t]*|\b)Appendix(?:\s*[:\-–—])?",
 ]
 
 
 WORKING_NOTE_HEADER_PATTERNS = [
     r"(?i)^[ \t]*(?:Working\s+Note|W\.?N\.?)\s*(\d+)(?:\s*[:\-–—\.]?\s*(.*?))?$",
+    r"(?i)^[ \t]*(?:\d+\.\s*)?(?:Computation|Calculation|Analysis|Apportionment|Shareholding|Non-Controlling\s+Interest|Retained\s+Earnings\s+for\s+CBS|Net\s+Inventory\s+for\s+CBS|Trade\s+Receivables\s+for\s+CBS|Inventory\s+to\s+be\s+shown\s+in\s+CBS)\b",
 ]
 
 KNOWN_SUBJECT_PATTERNS = [

@@ -145,16 +145,15 @@ class HeaderValidator:
                 return ValidationResult(False, "alpha label found without parent main number")
 
         # Main level sequence check: prevent regression and unrealistic forward jumps
-        if candidate_level == "main":
+        if candidate_level == "main" and len(new_path) == 1:
             c_main, _, _ = HierarchyUtils.decompose_path(current_stack)
             n_main, _, _ = HierarchyUtils.decompose_path(new_path)
             if c_main and n_main and c_main.isdigit() and n_main.isdigit():
                 c_num = int(c_main)
                 n_num = int(n_main)
-                is_expected_question = bool(valid_question_paths and any(p and p[0] == str(n_num) for p in valid_question_paths))
-                if n_num < c_num and (c_num - n_num) > 1 and not is_expected_question:
-                    return ValidationResult(False, f"out of order main question regression: {n_num} < {c_num}")
-                if n_num > c_num + 3 and not self.is_strong_header(raw_header) and not is_expected_question:
+                if n_num <= c_num:
+                    return ValidationResult(False, f"out of order main question regression: {n_num} <= {c_num}")
+                if n_num > c_num + 3 and not self.is_strong_header(raw_header) and not (valid_question_paths and any(p and p[0] == str(n_num) for p in valid_question_paths)):
                     return ValidationResult(False, f"unrealistic forward main question jump: {c_num} -> {n_num}")
 
         return ValidationResult(True)

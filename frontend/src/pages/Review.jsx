@@ -19,11 +19,16 @@ const stripHtml = (htmlString) => {
   }
 };
 
-// Helper to check if HTML contains meaningful text content
+// Helper to check if HTML contains meaningful content (including images, tables, formulas)
 const hasMeaningfulHtml = (html) => {
   if (!html) return false;
-  const text = stripHtml(html).trim();
-  return text.length > 0;
+  try {
+    const doc = new DOMParser().parseFromString(html, 'text/html');
+    if (doc.querySelector('img, table, .table-container, .formula-container, svg')) return true;
+    return (doc.body.textContent || '').trim().length > 0;
+  } catch (e) {
+    return html.trim().length > 0;
+  }
 };
 
 // Helper to extract table HTML block from parsed content
@@ -38,10 +43,12 @@ const extractTableHtml = (htmlString) => {
   }
 };
 
-// Helper to ensure media table crop URLs start with a leading slash /media/
+// Helper to ensure media crop URLs start with a leading slash /media/
 const fixMediaUrls = (htmlString) => {
   if (!htmlString) return '';
-  return htmlString.replace(/src=["'](?:(?!\/media\/)media\/table_crops\/)/g, 'src="/media/table_crops/');
+  return htmlString
+    .replace(/src=["'](?:(?!\/media\/)media\/(table|formula)_crops\/)/g, 'src="/media/$1_crops/')
+    .replace(/\[STRUCTURED_START\]|\[STRUCTURED_END\]/g, '');
 };
 
 const Review = () => {

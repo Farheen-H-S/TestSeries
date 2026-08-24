@@ -1190,6 +1190,7 @@ class TableProcessor:
             # --- SAME-PAGE DIAGRAM / TABLE REGION GROUPING ---
             # Group nearby visual tables on the same page (gap <= 60pt) so diagrams with multiple boxes
             # (such as flowcharts or multi-part structures) are captured together in a single full-width visual crop.
+            # Never group tables across question/answer boundaries or major section headers.
             groups = []
             for t in valid_tables:
                 if not groups:
@@ -1198,7 +1199,21 @@ class TableProcessor:
                     last_group = groups[-1]
                     last_t_y1 = max(float(x.bbox[3]) for x in last_group)
                     cur_t_y0 = float(t.bbox[1])
-                    if cur_t_y0 <= last_t_y1 + 60.0:
+                    
+                    has_header_in_gap = False
+                    if hasattr(page, 'get_text'):
+                        gap_text = []
+                        for b in page.get_text('blocks'):
+                            if len(b) >= 7 and b[6] == 0:  # text block
+                                if (last_t_y1 - 5.0 <= b[1] <= cur_t_y0 + 5.0) or (last_t_y1 - 5.0 <= b[3] <= cur_t_y0 + 5.0):
+                                    gap_text.append(b[4])
+                        gap_str = " ".join(gap_text).strip()
+                        if (re.search(r'(?i)\b(?:Question|Answer|Ans|Sol|Solution)\s*\d+', gap_str) or 
+                            re.search(r'(?i)(?:^|\n)\s*\d+\.\s+[A-Za-z]', gap_str) or 
+                            re.search(r'(?i)\bInd\s+AS\b|\bWorking\s+Notes?\b', gap_str)):
+                            has_header_in_gap = True
+
+                    if cur_t_y0 <= last_t_y1 + 60.0 and not has_header_in_gap:
                         last_group.append(t)
                     else:
                         groups.append([t])

@@ -135,9 +135,33 @@ class AnswerParser:
             known_children=known_children
         )
 
+        # Identify tight margin number artifacts (e.g. "5.\n6.\n7." or "8.\n9.\n10." extracted without body text)
+        is_margin_stack = [False] * len(all_potential_matches)
+        for i in range(len(all_potential_matches) - 1):
+            m1 = all_potential_matches[i]
+            m2 = all_potential_matches[i+1]
+            raw1 = text[m1.start():m1.end()].strip()
+            raw2 = text[m2.start():m2.end()].strip()
+            gap = text[m1.end():m2.start()].strip()
+            if len(gap) == 0 and re.match(r'^\d+\.?$', raw1) and re.match(r'^\d+\.?$', raw2):
+                is_margin_stack[i] = True
+                post_m2 = text[m2.end():m2.end()+80].strip()
+                if re.match(r'^(?:(?:FINAL EXAMINATION|FINANCIAL REPORTING|\d+)\s*)*\[STRUCTURED_START\]', post_m2):
+                    is_margin_stack[i+1] = True
+
         for idx, match in enumerate(all_potential_matches):
             raw_header = text[match.start():match.end()]
             normalized_header = match.group(0)
+
+            # 0. Skip dense margin stack artifacts
+            if is_margin_stack[idx] and not self.validator.is_strong_header(raw_header):
+                logger.info("Answer candidate rejected | candidate=%r | reason=margin stack artifact | start_offset=%d", raw_header, match.start())
+                diagnostics.rejected_headers.append({
+                    "header": raw_header,
+                    "reason": "margin stack artifact"
+                })
+                prev_match_end = match.end()
+                continue
 
             # 1. Check if Working Notes section marker appears in gap between previous match end and current match start
             gap_text = normalized_text[prev_match_end:match.start()]
@@ -147,8 +171,19 @@ class AnswerParser:
                 last_working_note_offset = match.start()
                 last_working_note_num = 0
 
-            # 2. Skip matches that are explicit Working Note headers (e.g. "Working Note 1", "W.N. 1")
-            if any(re.search(pat, raw_header) for pat in WORKING_NOTE_HEADER_PATTERNS):
+            path = self.normalizer.normalize_header(normalized_header)
+            c_main, _, _ = HierarchyUtils.decompose_path(path)
+            c_num = int(c_main) if c_main and c_main.isdigit() else 0
+
+            # 2. Skip matches that are explicit Working Note headers (e.g. "Working Note 1", "W.N. 1", "7. Computation of Goodwill")
+            post_header_text = normalized_text[match.start():match.start()+150].strip()
+
+            if any(re.search(pat, raw_header) or re.search(pat, post_header_text) for pat in WORKING_NOTE_HEADER_PATTERNS):
+                parser_state = ParserState.WORKING_NOTES
+                working_notes_start_offset = match.start()
+                last_working_note_offset = match.start()
+                if c_num > 0:
+                    last_working_note_num = c_num
                 logger.info("Answer candidate rejected | candidate=%r | reason=explicit Working Note header | start_offset=%d", raw_header, match.start())
                 diagnostics.rejected_headers.append({
                     "header": raw_header,
@@ -158,24 +193,22 @@ class AnswerParser:
                 continue
 
             # 3. Handle Working Notes zone state transitions & self-healing recovery
-            path = self.normalizer.normalize_header(normalized_header)
-
             if parser_state == ParserState.WORKING_NOTES:
                 is_strong = self.validator.is_strong_header(raw_header)
-                c_main, _, _ = HierarchyUtils.decompose_path(path)
                 s_main, _, _ = HierarchyUtils.decompose_path(hierarchy_stack)
-                c_num = int(c_main) if c_main and c_main.isdigit() else 0
                 s_num = int(s_main) if s_main and s_main.isdigit() else 0
 
-                is_working_note = False
-                if c_num > 0:
-                    is_working_note = (c_num <= s_num) or (last_working_note_num > 0 and c_num == last_working_note_num + 1) or (last_working_note_num == 0 and c_num == 1)
+                is_consecutive_wn = (last_working_note_num > 0 and c_num == last_working_note_num + 1)
+                is_internal_num = (c_num > 0 and c_num <= s_num)
+                is_working_note = is_consecutive_wn or is_internal_num
+
+                is_next_expected_question = (s_num > 0 and c_num == s_num + 1 and not is_consecutive_wn)
 
                 # Self-healing recovery if character distance threshold from last working note exceeded
                 ref_offset = last_working_note_offset if last_working_note_offset > 0 else working_notes_start_offset
                 distance_exceeded = (match.start() - ref_offset) > max_wn_len
 
-                if is_strong or distance_exceeded or not is_working_note:
+                if is_strong or is_next_expected_question or distance_exceeded or not is_working_note:
                     parser_state = ParserState.DEFAULT
                     working_notes_start_offset = 0
                     last_working_note_offset = 0
