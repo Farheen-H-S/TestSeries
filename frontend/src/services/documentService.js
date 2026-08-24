@@ -61,6 +61,17 @@ const documentService = {
   },
 
   /**
+   * Update document metadata (title, exam_month, paper_year, document_type, subject)
+   * @param {number|string} documentId - ID of the document
+   * @param {Object} data - Updated fields
+   * @returns {Promise<Object>} Updated document metadata
+   */
+  updateDocument: async (documentId, data) => {
+    const response = await api.patch(`/documents/${documentId}/`, data);
+    return response.data;
+  },
+
+  /**
    * Delete a document and all associated extracted questions and logs
    * @param {number|string} documentId - ID of the document
    * @returns {Promise<void>}

@@ -96,7 +96,7 @@ const Upload = () => {
     if (generalError) setGeneralError(null);
   };
 
-  // File handler
+  // File handler with smart metadata auto-detection
   const handleFile = (selectedFile) => {
     if (!selectedFile) return;
 
@@ -120,6 +120,50 @@ const Upload = () => {
 
     setFile(selectedFile);
     if (generalError) setGeneralError(null);
+
+    // Auto-detect Month, Year, Doc Type, Subject from filename if not already selected
+    if (!fileError) {
+      const nameLower = selectedFile.name.toLowerCase();
+      setFormData((prev) => {
+        const next = { ...prev };
+
+        // 1. Detect Month
+        if (/\b(jan|january)\b/i.test(nameLower)) next.exam_month = 'January';
+        else if (/\b(feb|february)\b/i.test(nameLower)) next.exam_month = 'February';
+        else if (/\b(mar|march)\b/i.test(nameLower)) next.exam_month = 'March';
+        else if (/\b(apr|april)\b/i.test(nameLower)) next.exam_month = 'April';
+        else if (/\b(may)\b/i.test(nameLower)) next.exam_month = 'May';
+        else if (/\b(jun|june)\b/i.test(nameLower)) next.exam_month = 'June';
+        else if (/\b(jul|july)\b/i.test(nameLower)) next.exam_month = 'July';
+        else if (/\b(aug|august)\b/i.test(nameLower)) next.exam_month = 'August';
+        else if (/\b(sep|sept|september)\b/i.test(nameLower)) next.exam_month = 'September';
+        else if (/\b(oct|october)\b/i.test(nameLower)) next.exam_month = 'October';
+        else if (/\b(nov|november)\b/i.test(nameLower)) next.exam_month = 'November';
+        else if (/\b(dec|december)\b/i.test(nameLower)) next.exam_month = 'December';
+
+        // 2. Detect Year
+        const yearMatch = nameLower.match(/\b(20\d\d)\b/);
+        if (yearMatch) next.paper_year = Number(yearMatch[1]);
+
+        // 3. Detect Document Type
+        if (/\brtp\b/i.test(nameLower)) next.document_type = 'RTP';
+        else if (/\b(mtp|mock)\b/i.test(nameLower)) next.document_type = 'MOCK';
+        else if (/\b(pyq|past)\b/i.test(nameLower)) next.document_type = 'PYQ';
+
+        // 4. Detect Subject
+        if (subjects && subjects.length > 0) {
+          if (/\b(fr|financial\s*reporting)\b/i.test(nameLower)) {
+            const frSub = subjects.find((s) => /financial\s*reporting/i.test(s.name) || /fr/i.test(s.code || ''));
+            if (frSub) next.subject = frSub.subject_id;
+          } else if (/\b(dt|direct\s*tax|direct\s*taxes)\b/i.test(nameLower)) {
+            const dtSub = subjects.find((s) => /direct\s*tax/i.test(s.name) || /dt/i.test(s.code || ''));
+            if (dtSub) next.subject = dtSub.subject_id;
+          }
+        }
+
+        return next;
+      });
+    }
   };
 
   const handleFileChange = (e) => {

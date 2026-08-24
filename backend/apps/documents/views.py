@@ -7,7 +7,7 @@ from rest_framework import status
 from django.db import transaction
 from django.core.files.storage import default_storage
 from .models import Document
-from .serializers import DocumentUploadSerializer, DocumentListSerializer
+from .serializers import DocumentUploadSerializer, DocumentListSerializer, DocumentUpdateSerializer
 
 logger = logging.getLogger(__name__)
 
@@ -110,13 +110,17 @@ class DocumentListView(generics.ListAPIView):
         return queryset
 
 
-class DocumentDetailView(generics.RetrieveDestroyAPIView):
+class DocumentDetailView(generics.RetrieveUpdateDestroyAPIView):
     """
-    Retrieve document detail and current status, or delete a specific uploaded document.
+    Retrieve document detail and current status, update metadata, or delete a specific uploaded document.
     """
     queryset = Document.objects.all()
-    serializer_class = DocumentListSerializer
     permission_classes = [AllowAny]
+
+    def get_serializer_class(self):
+        if self.request.method in ['PUT', 'PATCH']:
+            return DocumentUpdateSerializer
+        return DocumentListSerializer
 
     def destroy(self, request, *args, **kwargs):
         """

@@ -309,6 +309,16 @@
   font-size: 0.825rem;
 }
 
+.paper-card-actions .edit-btn {
+  color: var(--primary-color);
+  border-color: var(--border-color);
+}
+
+.paper-card-actions .edit-btn:hover {
+  background-color: rgba(37, 99, 235, 0.08);
+  border-color: var(--primary-color);
+}
+
 .paper-card-actions .delete-btn {
   color: var(--status-failed-text);
   border-color: var(--border-color);
@@ -345,6 +355,22 @@
   flex-direction: column;
   overflow: hidden;
   animation: slideUp 0.25s ease-out;
+}
+
+.edit-modal-card {
+  max-width: 520px;
+}
+
+.form-grid-two-cols {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1rem;
+}
+
+@media (max-width: 500px) {
+  .form-grid-two-cols {
+    grid-template-columns: 1fr;
+  }
 }
 
 .modal-header {

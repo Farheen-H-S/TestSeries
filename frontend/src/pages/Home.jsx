@@ -5,6 +5,8 @@ import Card from '../components/common/Card';
 import Badge from '../components/common/Badge';
 import EmptyState from '../components/common/EmptyState';
 import LoadingSpinner from '../components/common/LoadingSpinner';
+import Input from '../components/common/Input';
+import Select from '../components/common/Select';
 import documentService from '../services/documentService';
 import subjectService from '../services/subjectService';
 import { DOCUMENT_TYPES, EXAM_MONTHS } from '../constants/documentConstants';
@@ -32,6 +34,61 @@ const Home = () => {
   const [deleteStats, setDeleteStats] = useState(null);
   const [isDeleting, setIsDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState(null);
+
+  // Edit paper metadata modal state
+  const [editingDoc, setEditingDoc] = useState(null);
+  const [editFormData, setEditFormData] = useState({
+    title: '',
+    subject: '',
+    document_type: '',
+    paper_year: '',
+    exam_month: '',
+  });
+  const [isSavingEdit, setIsSavingEdit] = useState(false);
+  const [editError, setEditError] = useState(null);
+
+  const openEditModal = (doc) => {
+    setEditingDoc(doc);
+    setEditFormData({
+      title: doc.title || '',
+      subject: doc.subject?.subject_id || '',
+      document_type: doc.document_type || 'RTP',
+      paper_year: doc.paper_year || new Date().getFullYear(),
+      exam_month: doc.exam_month || 'May',
+    });
+    setEditError(null);
+  };
+
+  const handleEditInputChange = (e) => {
+    const { name, value } = e.target;
+    setEditFormData((prev) => ({ ...prev, [name]: value }));
+  };
+
+  const handleSaveEdit = async (e) => {
+    e.preventDefault();
+    if (!editingDoc) return;
+    setIsSavingEdit(true);
+    setEditError(null);
+    try {
+      const payload = {
+        title: editFormData.title.trim(),
+        subject: Number(editFormData.subject),
+        document_type: editFormData.document_type,
+        paper_year: Number(editFormData.paper_year),
+        exam_month: editFormData.exam_month,
+      };
+      await documentService.updateDocument(editingDoc.document_id, payload);
+      // Refresh documents
+      const docsData = await documentService.getDocuments();
+      setDocuments(docsData);
+      setEditingDoc(null);
+    } catch (err) {
+      console.error('Failed to update paper metadata:', err);
+      setEditError(err.response?.data?.title?.[0] || err.response?.data?.detail || 'Failed to save changes.');
+    } finally {
+      setIsSavingEdit(false);
+    }
+  };
 
   // Fetch documents and active subjects on mount
   useEffect(() => {
@@ -433,6 +490,13 @@ const Home = () => {
                     </Button>
                     <Button
                       variant="outline"
+                      onClick={() => openEditModal(doc)}
+                      className="action-btn edit-btn"
+                    >
+                      Edit
+                    </Button>
+                    <Button
+                      variant="outline"
                       onClick={() => openDeleteModal(doc)}
                       className="action-btn delete-btn"
                     >
@@ -445,6 +509,100 @@ const Home = () => {
           </div>
         )}
       </section>
+
+      {/* Edit Paper Details Modal */}
+      {editingDoc && (
+        <div className="modal-backdrop">
+          <div className="modal-card edit-modal-card">
+            <div className="modal-header">
+              <h3>Edit Paper Details</h3>
+              <button
+                className="close-modal-btn"
+                onClick={() => setEditingDoc(null)}
+                disabled={isSavingEdit}
+              >
+                &times;
+              </button>
+            </div>
+            <form onSubmit={handleSaveEdit}>
+              <div className="modal-body">
+                {editError && <div className="modal-error-message">{editError}</div>}
+
+                <Input
+                  label="Paper Title"
+                  id="edit_title"
+                  name="title"
+                  value={editFormData.title}
+                  onChange={handleEditInputChange}
+                  placeholder="e.g. FR Jan 2026"
+                  required
+                />
+
+                <Select
+                  label="Subject"
+                  id="edit_subject"
+                  name="subject"
+                  value={editFormData.subject}
+                  onChange={handleEditInputChange}
+                  options={subjects.map((s) => ({ value: s.subject_id, label: s.name }))}
+                  required
+                />
+
+                <div className="form-grid-two-cols">
+                  <Select
+                    label="Document Type"
+                    id="edit_document_type"
+                    name="document_type"
+                    value={editFormData.document_type}
+                    onChange={handleEditInputChange}
+                    options={DOCUMENT_TYPES}
+                    required
+                  />
+
+                  <Select
+                    label="Exam Month"
+                    id="edit_exam_month"
+                    name="exam_month"
+                    value={editFormData.exam_month}
+                    onChange={handleEditInputChange}
+                    options={EXAM_MONTHS}
+                    required
+                  />
+                </div>
+
+                <Input
+                  label="Paper Year"
+                  id="edit_paper_year"
+                  name="paper_year"
+                  type="number"
+                  value={editFormData.paper_year}
+                  onChange={handleEditInputChange}
+                  min="1900"
+                  max="2100"
+                  required
+                />
+              </div>
+              <div className="modal-footer">
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => setEditingDoc(null)}
+                  disabled={isSavingEdit}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  type="submit"
+                  variant="primary"
+                  disabled={isSavingEdit}
+                >
+                  {isSavingEdit ? 'Saving...' : 'Save Changes'}
+                </Button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
 
       {/* Double-Confirmation Delete Paper Modal */}
       {deletingDoc && (

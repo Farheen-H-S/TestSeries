@@ -6,6 +6,23 @@ from apps.syllabus.models import Subject
 from apps.syllabus.serializers import SubjectSerializer
 import os
 
+import re
+
+MONTH_MAP = {
+    'january': Document.ExamMonth.JANUARY, 'jan': Document.ExamMonth.JANUARY,
+    'february': Document.ExamMonth.FEBRUARY, 'feb': Document.ExamMonth.FEBRUARY,
+    'march': Document.ExamMonth.MARCH, 'mar': Document.ExamMonth.MARCH,
+    'april': Document.ExamMonth.APRIL, 'apr': Document.ExamMonth.APRIL,
+    'may': Document.ExamMonth.MAY,
+    'june': Document.ExamMonth.JUNE, 'jun': Document.ExamMonth.JUNE,
+    'july': Document.ExamMonth.JULY, 'jul': Document.ExamMonth.JULY,
+    'august': Document.ExamMonth.AUGUST, 'aug': Document.ExamMonth.AUGUST,
+    'september': Document.ExamMonth.SEPTEMBER, 'sept': Document.ExamMonth.SEPTEMBER, 'sep': Document.ExamMonth.SEPTEMBER,
+    'october': Document.ExamMonth.OCTOBER, 'oct': Document.ExamMonth.OCTOBER,
+    'november': Document.ExamMonth.NOVEMBER, 'nov': Document.ExamMonth.NOVEMBER,
+    'december': Document.ExamMonth.DECEMBER, 'dec': Document.ExamMonth.DECEMBER,
+}
+
 class DocumentUploadSerializer(serializers.ModelSerializer):
     subject = serializers.PrimaryKeyRelatedField(queryset=Subject.objects.filter(is_active=True))
     exam_month = serializers.ChoiceField(choices=Document.ExamMonth.choices)
@@ -29,6 +46,14 @@ class DocumentUploadSerializer(serializers.ModelSerializer):
             target_title = f"{subject.name} - {document_type} - {exam_month} {paper_year}"
         else:
             target_title = title.strip()
+            # Smart alignment: if title explicitly mentions a specific month keyword, ensure exam_month aligns
+            t_lower = target_title.lower()
+            for kw, m_enum in MONTH_MAP.items():
+                if re.search(rf'\b{kw}\b', t_lower):
+                    if exam_month != m_enum:
+                        attrs['exam_month'] = m_enum
+                        exam_month = m_enum
+                    break
             
         # Case-insensitive title uniqueness validation
         if Document.objects.filter(title__iexact=target_title).exists():
@@ -66,6 +91,18 @@ class DocumentUploadSerializer(serializers.ModelSerializer):
             )
             
         return value
+
+
+class DocumentUpdateSerializer(serializers.ModelSerializer):
+    subject = serializers.PrimaryKeyRelatedField(queryset=Subject.objects.filter(is_active=True), required=False)
+    exam_month = serializers.ChoiceField(choices=Document.ExamMonth.choices, required=False)
+    title = serializers.CharField(required=False, allow_blank=True)
+    paper_year = serializers.IntegerField(required=False)
+    document_type = serializers.ChoiceField(choices=Document.DocumentType.choices, required=False)
+
+    class Meta:
+        model = Document
+        fields = ['subject', 'title', 'document_type', 'paper_year', 'exam_month']
 
 
 class DocumentListSerializer(serializers.ModelSerializer):
