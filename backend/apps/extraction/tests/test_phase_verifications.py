@@ -158,6 +158,41 @@ class Phase4VerificationTests(TestCase):
 
         self.assertEqual(mapped, ch1, "Topic title matching must take precedence over generic Chapter 2 cross-reference")
 
+    def test_find_chapter_for_question_context_case_scenario_vs_header(self):
+        """Verify that case scenarios without chapter headers return None, while explicit headers map correctly."""
+        from apps.extraction.services.chapter_mapper import find_chapter_for_question_context
+        subject = Subject.objects.create(name="FR Test", exam_level=Subject.ExamLevel.FINAL)
+        ch1 = Chapter.objects.create(subject=subject, chapter_order=1, chapter_name="Ind AS 1: Presentation of Financial Statements")
+        ch2 = Chapter.objects.create(subject=subject, chapter_order=2, chapter_name="Ind AS 115: Revenue from Contracts with Customers")
+
+        prepared = get_prepared_chapters(subject)
+
+        # 1. Case Scenario prompt lines before Q1: must return None (not falsely map to Ind AS 1)
+        lines_scenario = [
+            "Case Scenario I",
+            "Based on the facts given above, choose the most appropriate answer to",
+            "Questions 1 to 5 below as per the relevant Ind AS."
+        ]
+        res_scenario = find_chapter_for_question_context(lines_scenario, prepared)
+        self.assertIsNone(res_scenario, "Case scenario prompt must not falsely match Ind AS 1")
+
+        # 2. MCQ option lines before Q8: must return None (not falsely map to Ind AS 115 from option text)
+        lines_mcq_opt = [
+            "(c) The modification in the contract will be accounted for as two separate contract for 3 years each",
+            "(d) The modification in the contract does not fall under the purview of Ind AS 115"
+        ]
+        res_opt = find_chapter_for_question_context(lines_mcq_opt, prepared)
+        self.assertIsNone(res_opt, "MCQ option text containing standard name must not become chapter header")
+
+        # 3. Explicit chapter heading line: must map to matching chapter
+        lines_header = [
+            "Required:",
+            "Draw the revised Statement of Profit and Loss.",
+            "Ind AS 115: Revenue from Contracts with Customers"
+        ]
+        res_header = find_chapter_for_question_context(lines_header, prepared)
+        self.assertEqual(res_header, ch2, "Explicit heading must map to Ind AS 115")
+
     def test_e2e_html_mcq_table_extraction(self):
         """Verify that HTML structured MCQ tables are parsed into MCQ ParsedAnswers."""
         from apps.extraction.services.answer_parser import AnswerParser

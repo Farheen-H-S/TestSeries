@@ -10,7 +10,7 @@ from apps.papers.models import Question
 from .pdf_loader import load_pdf
 from .text_extractor import extract_text
 from .html_formatter import format_question_content, format_answer_content, clean_stored_html_tables, clean_metadata_text
-from .chapter_mapper import map_question_to_chapter, get_prepared_chapters
+from .chapter_mapper import map_question_to_chapter, get_prepared_chapters, find_chapter_for_question_context
 
 
 # Phase 3D Services
@@ -269,38 +269,22 @@ def extract_document(document: Document, temp_file_path: str = None):
             
             prepared_chapters = get_prepared_chapters(document.subject)
             subj_name = document.subject.name if (document and document.subject) else None
-            active_chapter = None
 
             for idx, (q_key, pqs) in enumerate(grouped_questions.items()):
                 first_pq = pqs[0]
                 last_pq = pqs[-1]
 
-                # 7.1 Sequential Chapter Mapping
-                candidate_header_text = ""
-                if idx > 0:
-                    prev_pqs = list(grouped_questions.values())[idx-1]
-                    prev_last_pq = prev_pqs[-1]
-                    gap_text = q_part[prev_last_pq.end_offset:first_pq.start_offset].strip()
-                    trailing_prev = prev_last_pq.text[-250:] if prev_last_pq.text else ""
-                    candidate_header_text = gap_text + "\n" + trailing_prev
-                else:
-                    candidate_header_text = q_part[max(0, first_pq.start_offset - 500):first_pq.start_offset].strip()
-
-                if candidate_header_text:
-                    temp_chapter = None
-                    try:
-                        temp_chapter = map_question_to_chapter(
-                            candidate_header_text,
-                            prepared_chapters=prepared_chapters
-                        )
-                    except Exception:
-                        logger.exception("Sequential chapter mapping failed at index %d", idx)
-                    
-                    if temp_chapter:
-                        active_chapter = temp_chapter
-                        logger.info("Sequential chapter state updated | chapter=%s | index=%d", active_chapter.chapter_name, idx)
-
-                matched_chapter = active_chapter
+                # 7.1 Chapter Mapping (Direct preceding heading identification)
+                matched_chapter = None
+                try:
+                    start_pos = first_pq.start_offset
+                    snippet = full_text[max(0, start_pos - 400):start_pos]
+                    lines_before = [l.strip() for l in snippet.splitlines() if l.strip()]
+                    matched_chapter = find_chapter_for_question_context(lines_before, prepared_chapters)
+                    if matched_chapter:
+                        logger.info("Question mapped to chapter | question=%s | chapter=%s", q_key, matched_chapter.chapter_name)
+                except Exception:
+                    logger.exception("Chapter mapping failed for question %s", q_key)
 
                 # 7.2 Consolidate Question Text and HTML Content
                 q_text_parts = []

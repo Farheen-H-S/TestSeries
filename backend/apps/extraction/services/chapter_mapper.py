@@ -142,10 +142,50 @@ def map_question_to_chapter(
                 best_chapter = item["chapter"]
                 best_match_len = current_max_len
                 is_tie = False
-            elif current_max_len == best_match_len:
-                is_tie = True
-            
     if max_score >= MINIMUM_MAPPING_SCORE and not is_tie:
         return best_chapter
         
+    return None
+
+CHAPTER_HEADING_LINE_PATTERNS = [
+    re.compile(r'(?i)^[ \t]*(?:Ind\s*AS|AS|SA|CARO|Chapter|Section|Module|Paper|Topic)\s*\d+[\s\-–—:]', re.IGNORECASE),
+    re.compile(r'(?i)^[ \t]*(?:Ind\s*AS|AS|SA|CARO)\s*\d+\b', re.IGNORECASE),
+    re.compile(r'(?i)^[ \t]*Chapter\s*[-–—:]?\s*\d+\b', re.IGNORECASE),
+]
+
+def find_chapter_for_question_context(
+    lines_before: Sequence[str],
+    prepared_chapters: Sequence[dict]
+) -> Optional[Chapter]:
+    """
+    Identifies if a true chapter heading explicitly precedes a question block.
+    If no valid heading exists (e.g. for Case Scenario questions or un-headed questions), returns None.
+    """
+    if not prepared_chapters or not lines_before:
+        return None
+
+    for line in reversed(lines_before[-6:]):
+        line_clean = line.strip()
+        if not line_clean:
+            continue
+        # Exclude MCQ options or scenario prompt sentences
+        if re.match(r'(?i)^\s*(?:\([a-eA-E]\)|Option\b|Ans\.?|Choice|Key)', line_clean):
+            continue
+        if re.search(r'(?i)\b(?:choose|answer to Questions?|Based on the facts|given above|Read the following|Answer all|Answer any)\b', line_clean):
+            continue
+        
+        is_explicit_heading = any(pat.match(line_clean) for pat in CHAPTER_HEADING_LINE_PATTERNS)
+        if is_explicit_heading:
+            ch = map_question_to_chapter(line_clean, prepared_chapters)
+            if ch:
+                return ch
+            # Explicit standard header not present in current syllabus -> None
+            return None
+        
+        # Standalone short chapter title line
+        if len(line_clean) < 80 and not line_clean.endswith(('.', '?', '!', ';')):
+            ch = map_question_to_chapter(line_clean, prepared_chapters)
+            if ch and ch.chapter_name and (line_clean.lower() in ch.chapter_name.lower() or ch.chapter_name.lower() in line_clean.lower()):
+                return ch
+
     return None
