@@ -543,6 +543,36 @@ details.optional-filters[open] .optional-filters-summary::after {
   flex-shrink: 0;
 }
 
+.checkbox-group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.checkbox-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.9rem;
+  font-weight: 500;
+  color: var(--text-primary);
+  cursor: pointer;
+  user-select: none;
+}
+
+.checkbox-label.disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.checkbox-label.disabled input {
+  cursor: not-allowed;
+}
+
+.checkbox-text {
+  font-weight: 600;
+}
+
 /* ─── Right Panel: Preview ─────────────────────────────────────────────────── */
 
 .generate-preview {

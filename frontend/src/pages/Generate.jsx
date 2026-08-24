@@ -512,17 +512,24 @@ const Generate = () => {
                 </div>
 
                 {/* Show Chapter */}
-                <div className="form-group checkbox-group">
-                  <label className="checkbox-label" htmlFor="show-chapter">
+                <div className={`form-group checkbox-group ${(!selectedSubject || chapters.length === 0) ? 'disabled' : ''}`}>
+                  <label className={`checkbox-label ${(!selectedSubject || chapters.length === 0) ? 'disabled' : ''}`} htmlFor="show-chapter">
                     <input
                       type="checkbox"
                       id="show-chapter"
-                      checked={showChapter}
+                      checked={showChapter && Boolean(selectedSubject && chapters.length > 0)}
+                      disabled={!selectedSubject || chapters.length === 0}
                       onChange={e => setShowChapter(e.target.checked)}
                     />
                     <span className="checkbox-text">Show Chapter</span>
                   </label>
-                  <span className="form-hint">Display chapter name under each question</span>
+                  <span className="form-hint">
+                    {!selectedSubject
+                      ? 'Select a subject first'
+                      : chapters.length === 0
+                        ? 'No chapters available for this subject'
+                        : 'Display chapter name under each question'}
+                  </span>
                 </div>
 
               </div>
