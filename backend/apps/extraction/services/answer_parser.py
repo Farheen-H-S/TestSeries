@@ -736,6 +736,15 @@ class AnswerParser:
                 if potential_path in context.valid_question_paths:
                     return PromotionEvaluation(True, PromotionReason.ACCEPT_QUESTION_STRUCTURE)
 
+        # 1.5 MCQ Option Check: If preceding non-empty line right before (a)/(b)/(c)/(d) is a Roman numeral (e.g. 'V\n(a)' or 'III\n(a)'),
+        # it is an MCQ option selection belonging to that Roman numeral item, NOT a sub-question header!
+        if c_alpha in ('a', 'b', 'c', 'd'):
+            pre_lines = [l.strip() for l in text[:match.start()].splitlines() if l.strip()]
+            if pre_lines:
+                last_line = pre_lines[-1].strip()
+                if re.match(r'^(?:[IVXLCDM]+|[1-9]\d?)$', last_line):
+                    return PromotionEvaluation(False, PromotionReason.REJECT_QUESTION_STRUCTURE)
+
         # 2. Sequence Rule (Only when entering a new depth)
         if c_alpha and s_alpha is None:
             if c_alpha != 'a':
