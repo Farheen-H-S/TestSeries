@@ -45,8 +45,15 @@ class HeaderValidator:
     def _is_hyphen_continuation(self, idx: int, text: str) -> bool:
         if idx == 0:
             return False
+        # If there are multiple newlines or paragraph breaks before idx, it's NOT a hyphenated word continuation
+        gap = text[max(0, idx - 10):idx]
+        if '\n\n' in gap or '\r\n\r\n' in gap:
+            return False
         pre = text[:idx].rstrip()
-        return pre.endswith(('-', '–', '—', '/', '\\'))
+        if pre.endswith(('/-', '\\-')):
+            return False
+        # Only true hyphenated word continuation: e.g. "re-\n" or "inter-\n" (alpha char immediately before hyphen)
+        return bool(re.search(r'[a-zA-Z][\-\–\—]$', pre))
 
     def _is_start_of_line(self, idx: int, text: str) -> bool:
         if idx == 0:

@@ -122,6 +122,8 @@ ANSWER_HEADER_PATTERNS = [
     r"(?i)^\s*Solution\s*(\d+)(?:\(([a-z])\))?",                                     # Solution 1(a)
     r"(?i)^\s*(?:Question|Q\.?)\s*(?:No\.\s*)?(\d+)(?:\(([a-z])\))?",                # Question 1 or Q1
     r"^\s*(\d{1,2})[.)](?!\d)(?:\s*\(([a-z])\))?",                                   # 1. or 1.(a)
+    r"^\s*(\d{1,2})\s*(?:\r?\n\s*)?\(([a-zA-Z])\)",                                  # 14(a) or 14\n(a)
+    r"^\s*(\d{1,2})\s*(?:\r?\n\s*)?\(([ivxIVX]+)\)",                                 # 6(i) or 6\n(i)
     r"^\s*\(([a-zA-Z])\)",                                                           # (a)
     r"^\s*\(([ivxIVX]+)\)(?!\s*e\.)",                                                # (i), (ii), (iv)
 ]

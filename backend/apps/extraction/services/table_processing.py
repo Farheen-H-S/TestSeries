@@ -1024,12 +1024,13 @@ MCQ_OPTION_PATTERN = re.compile(
     r'|'
     r'\([a-eA-E]\)'
     r'|'
-    r'^\s*\(?[a-eA-E]\)[\.\:\-]'
+    r'^\s*\(?[a-eA-E]\)[\.\:\-]?'
     r')'
 )
 
 MCQ_COMBINED_PATTERN = re.compile(
-    r'^\s*(?:Q\.?\s*(?:No\.?)?\s*|MCQ\s*(?:No\.?)?\s*)?([1-9]\d?)\.?\s+'
+    r'^\s*(?:Q\.?\s*(?:No\.?)?\s*|MCQ\s*(?:No\.?)?\s*)?(?:[1-9]\d?\s*[\.\)]\s*)?'
+    r'(?:[IVXLCDM]+|[1-9]\d?|\([a-z]\)|\([0-9]+\))\s*[\.\)]?\s+'
     r'(?:'
     r'\bOption\b(?:\s*[:\-]|\s*\(?[a-eA-E]\)?)'
     r'|'
@@ -1041,7 +1042,8 @@ MCQ_COMBINED_PATTERN = re.compile(
 )
 
 MCQ_QNUM_CELL_PATTERN = re.compile(
-    r'^\s*(?:Q\.?\s*(?:No\.?)?\s*|MCQ\s*(?:No\.?)?\s*)?([1-9]\d?)\.?\s*$',
+    r'^\s*(?:Q\.?\s*(?:No\.?)?\s*|MCQ\s*(?:No\.?)?\s*)?(?:[1-9]\d?\s*[\.\)]\s*)?'
+    r'(?:[IVXLCDM]+|[1-9]\d?|\([a-z]\)|\([0-9]+\))\s*[\.\)]?\s*$',
     re.IGNORECASE
 )
 
@@ -1060,9 +1062,11 @@ def is_mcq_answer_key_table(raw_grid: List[List[Any]]) -> bool:
         return False
         
     header_text = ' '.join(str(c or '') for c in raw_grid[:2] for c in (c if isinstance(c, list) else [c]))
-    has_mcq_header = bool(re.search(r'(?i)\b(?:MCQ\s*No\.?|Most\s+Appropriate\s+Answer|Answer\s+Key|Answer\s+to\s+Multiple\s+Choice\s+Questions?)\b', header_text))
+    has_mcq_header = bool(re.search(r'(?i)\b(?:MCQ\s*No\.?|Most\s+Appropriate\s+Answer|Answer\s+Key|Answer\s+to\s+Multiple\s+Choice\s+Questions?|(?:Question\s*No\.?.*Answer))\b', header_text))
     if has_mcq_header:
-        return True
+        # Verify it has at least one option match
+        if any(MCQ_OPTION_PATTERN.search(str(c)) for row in raw_grid for c in row if c):
+            return True
         
     mcq_pairs = 0
     q_num_rows = 0
@@ -1095,7 +1099,29 @@ def is_mcq_answer_key_table(raw_grid: List[List[Any]]) -> bool:
                 mcq_pairs += 1
 
     min_pairs_required = 1 if has_mcq_header else 2
-    return q_num_rows > 0 and mcq_pairs >= min_pairs_required and (mcq_pairs >= q_num_rows * 0.5)
+    return q_num_rows > 0 and mcq_pairs >= min_pairs_required and (mcq_pairs >= q_num_rows * 0.4)
+
+
+def serialize_mcq_key_to_text(raw_grid: List[List[Any]]) -> str:
+    """
+    Converts an MCQ answer key table (e.g. [['Question No.', 'Answer'], ['1. I', '(b)'], ...])
+    into structured text lines that AnswerParser / QuestionParser can parse cleanly.
+    """
+    lines = []
+    for row in raw_grid:
+        non_empty = [str(c).strip() for c in row if c and str(c).strip()]
+        if not non_empty:
+            continue
+        if any(re.search(r'(?i)\b(?:Question\s*No\.?|MCQ|Most\s+Appropriate|Answer)\b', c) for c in non_empty):
+            continue
+        line = ' '.join(non_empty)
+        m = re.match(r'^\s*([1-9]\d?)\.\s*(.+)$', line)
+        if m:
+            lines.append(f"\n{m.group(1)}.")
+            lines.append(m.group(2))
+        else:
+            lines.append(line)
+    return '\n'.join(lines)
 
 
 class TableProcessor:
@@ -1209,8 +1235,9 @@ class TableProcessor:
                                     gap_text.append(b[4])
                         gap_str = " ".join(gap_text).strip()
                         if (re.search(r'(?i)\b(?:Question|Answer|Ans|Sol|Solution)\s*\d+', gap_str) or 
-                            re.search(r'(?i)(?:^|\n)\s*\d+\.\s+[A-Za-z]', gap_str) or 
-                            re.search(r'(?i)\bInd\s+AS\b|\bWorking\s+Notes?\b', gap_str)):
+                            re.search(r'(?i)(?:^|\n)\s*\d+\.?(?:\s*\([ivxa-dIVXA-D0-9]+\))?\s+[A-Za-z]', gap_str) or 
+                            re.search(r'(?i)(?:^|\n)\s*\([ivxa-dIVXA-D0-9]+\)', gap_str) or
+                            re.search(r'(?i)\bInd\s+AS\b|\bWorking\s+Notes?\b|\bCalculation\b|\bAlternatively\b', gap_str)):
                             has_header_in_gap = True
 
                     if cur_t_y0 <= last_t_y1 + 60.0 and not has_header_in_gap:
@@ -1239,7 +1266,7 @@ class TableProcessor:
                 is_complex = not is_mcq_table
                 
                 crop_path_rel = None
-                if hasattr(page, 'get_pixmap'):
+                if is_complex and hasattr(page, 'get_pixmap'):
                     try:
                         import pymupdf as fitz
                         import os
@@ -1299,9 +1326,14 @@ class TableProcessor:
                 # Child chunk: render nothing on this page (merged into root)
                 table_lookup[key] = ""
             else:
-                # Root table: serialize full table HTML
-                md = self.render_to_html(table)
-                table_lookup[key] = md
+                # Root table:
+                if is_mcq_answer_key_table(table.original_grid):
+                    table_lookup[key] = serialize_mcq_key_to_text(table.original_grid)
+                else:
+                    md = self.render_to_html(table)
+                    table_lookup[key] = md
+                
+        return table_lookup
                 
         return table_lookup
 

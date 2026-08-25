@@ -729,7 +729,7 @@ class AnswerParser:
                     if children:
                         if potential_path in children:
                             return PromotionEvaluation(True, PromotionReason.ACCEPT_QUESTION_STRUCTURE)
-                        else:
+                        elif not c_main:
                             return PromotionEvaluation(False, PromotionReason.REJECT_QUESTION_STRUCTURE)
             else:
                 # Top-level main question (e.g. ('2',), ('6',))

@@ -147,6 +147,8 @@ def find_standalone_equation_regions(page: fitz.Page, table_bboxes: List[Any]) -
                 
                 if not above_str or not below_str:
                     continue
+                if re.search(r'(?i)\b(?:Reserves?|Surplus|Equity|Stock|Shares?|Capital|Particulars?|Total|Debit|Credit|Lakhs?|Crores?|Millions?|Billion)\b', above_str + ' ' + below_str):
+                    continue
                 
                 has_math_sig = any(c in (above_str + ' ' + below_str) for c in ['=', '+', '-', '×', '/', '÷', '±', '∑', '√', '^', '%', 'σ', 'β', 'μ', 'ρ', 'λ', 'θ', 'XABC', 'Cov', 'Po', 'EPS', 'Ke', 'DPS', 'WACC', 'Rf', 'Rm', 'NPV', 'IRR'])
                 has_digits = bool(re.search(r'\d', above_str) and re.search(r'\d', below_str))
@@ -226,7 +228,7 @@ def find_standalone_equation_regions(page: fitz.Page, table_bboxes: List[Any]) -
         r = d['rect']
         merged_c = False
         for c in clusters:
-            if not (r.y0 > c['max_y'] + 35 or r.y1 < c['min_y'] - 35):
+            if not (r.y0 > c['max_y'] + 20 or r.y1 < c['min_y'] - 20):
                 c['min_x'] = min(c['min_x'], r.x0)
                 c['max_x'] = max(c['max_x'], r.x1)
                 c['min_y'] = min(c['min_y'], r.y0)
@@ -293,7 +295,15 @@ def find_standalone_equation_regions(page: fitz.Page, table_bboxes: List[Any]) -
             merged.append(list(r))
         else:
             prev = merged[-1]
-            v_overlap = (r[1] <= prev[3] + 12) and (r[3] >= prev[1] - 12)
+            has_header_between = False
+            if hasattr(page, 'get_text'):
+                for b in page.get_text('blocks'):
+                    if (prev[1] - 2.0 <= b[1] <= r[3] + 2.0):
+                        b_text = b[4].strip()
+                        if re.search(r'(?i)(?:^|\n)\s*(?:[1-9]\d?\.|\([a-z]\)|\([ivx]+\))\s+[A-Za-z]', b_text):
+                            has_header_between = True
+                            break
+            v_overlap = (r[1] <= prev[3] + 8) and (r[3] >= prev[1] - 8) and not has_header_between
             if v_overlap:
                 prev[0] = min(prev[0], r[0])
                 prev[1] = min(prev[1], r[1])
@@ -338,37 +348,48 @@ def extract_text(doc: fitz.Document, document_id: Any = None) -> List[Dict[str, 
         page_tables = page.find_tables().tables
         blocks = page.get_text("blocks")
         items = []
+        from .table_processing import is_mcq_answer_key_table
         valid_page_tables = [t for t in page_tables if (page_num, round(t.bbox[0], 1), round(t.bbox[1], 1)) in table_lookup]
         table_bboxes = [t.bbox for t in page_tables]
+        all_table_bboxes = [t.bbox for t in page_tables]
         
         # Add tables and extract effective visual region bboxes
         for t in valid_page_tables:
             key = (page_num, round(t.bbox[0], 1), round(t.bbox[1], 1))
             md_content = table_lookup.get(key, "")
+            is_mcq = is_mcq_answer_key_table(t.extract())
             if md_content:
-                items.append({
-                    "type": "table",
-                    "y0": t.bbox[1],
-                    "x0": t.bbox[0],
-                    "content": md_content
-                })
-                m_prov = re.search(r'data-table-provenance="([^"]+)"', md_content)
-                added_prov = False
-                if m_prov:
-                    try:
-                        import json, html as html_lib
-                        prov_dict = json.loads(html_lib.unescape(m_prov.group(1)))
-                        for r_item in prov_dict.get("regions", []):
-                            if r_item.get("page_number") == page_num and r_item.get("bbox") and len(r_item["bbox"]) == 4:
-                                table_bboxes.append(tuple(r_item["bbox"]))
-                                added_prov = True
-                    except Exception:
-                        pass
-                if not added_prov:
-                    table_bboxes.append(t.bbox)
+                if is_mcq:
+                    items.append({
+                        "type": "text",
+                        "y0": t.bbox[1],
+                        "x0": t.bbox[0],
+                        "content": md_content
+                    })
+                else:
+                    items.append({
+                        "type": "table",
+                        "y0": t.bbox[1],
+                        "x0": t.bbox[0],
+                        "content": md_content
+                    })
+                    m_prov = re.search(r'data-table-provenance="([^"]+)"', md_content)
+                    added_prov = False
+                    if m_prov:
+                        try:
+                            import json, html as html_lib
+                            prov_dict = json.loads(html_lib.unescape(m_prov.group(1)))
+                            for r_item in prov_dict.get("regions", []):
+                                if r_item.get("page_number") == page_num and r_item.get("bbox") and len(r_item["bbox"]) == 4:
+                                    table_bboxes.append(tuple(r_item["bbox"]))
+                                    added_prov = True
+                        except Exception:
+                            pass
+                    if not added_prov:
+                        table_bboxes.append(t.bbox)
 
         # Add standalone formula / equation visual crops
-        formula_regions = find_standalone_equation_regions(page, table_bboxes)
+        formula_regions = find_standalone_equation_regions(page, all_table_bboxes)
         for f_idx, f_box in enumerate(formula_regions):
             doc_prefix = f"doc{document_id}" if document_id else "doc"
             crop_filename = f"{doc_prefix}_p{page_num}_formula_y{int(f_box[1])}.png"
@@ -424,11 +445,18 @@ def extract_text(doc: fitz.Document, document_id: Any = None) -> List[Dict[str, 
             cx = (bx0 + bx1) / 2
             cy = (by0 + by1) / 2
             
+            # Never suppress blocks that start with a question or subquestion header
+            is_question_header_block = False
+            b_first_line = text_val.strip().split('\n')[0].strip()
+            if re.match(r'^(?:Question\s+(?:No\.\s*)?\d+|Q\.?\s*\d+|\d{1,2}\.\s+[A-Za-z]|\d{1,2}\.\s*\([a-zA-ZivxIVX]+\)|\d{1,2}\.\s*$|\d{1,2}\s*\([a-zA-ZivxIVX]+\)|\([a-zA-ZivxIVX]+\)\s+[A-Za-z])', b_first_line):
+                is_question_header_block = True
+
             inside_visual = False
-            for tx0, ty0, tx1, ty1 in table_bboxes + formula_regions:
-                if (ty0 - 2.0 <= cy <= ty1 + 2.0):
-                    inside_visual = True
-                    break
+            if not is_question_header_block:
+                for tx0, ty0, tx1, ty1 in table_bboxes + formula_regions:
+                    if (tx0 - 4.0 <= cx <= tx1 + 4.0) and (ty0 - 2.0 <= cy <= ty1 + 2.0):
+                        inside_visual = True
+                        break
 
             if not inside_visual:
                 items.append({
