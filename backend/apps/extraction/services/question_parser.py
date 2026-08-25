@@ -169,6 +169,35 @@ class QuestionParser:
             if has_case_heading and candidate_level != "main":
                 i += 1
                 continue
+
+            # Main question monotonicity check across whole document:
+            # Prevent regressions (e.g. 1. 2. 3. inside Case Scenario II preamble after Question 6)
+            if candidate_level == "main" and len(path) == 1 and path[0].isdigit():
+                validated_mains = [int(p[0]) for _, p in validated_matches if p and len(p) >= 1 and p[0].isdigit()]
+                if validated_mains:
+                    highest_main_num = max(validated_mains)
+                    cand_num = int(path[0])
+                    if cand_num <= highest_main_num:
+                        diagnostics.rejected_headers.append({
+                            "header": text[match.start():match.end()],
+                            "reason": f"regression of main question number ({cand_num} <= {highest_main_num}) inside narrative/case scenario"
+                        })
+                        i += 1
+                        continue
+
+            # Reject introductory notes bullets before Question 1 (e.g. Notes - (A), (B), (C) before 1.)
+            if candidate_level == "alpha" and not hierarchy_stack:
+                has_digit_main_later = any(
+                    self.validator._get_candidate_level(self.normalizer.normalize_header(m.group(0))) == "main"
+                    for m in all_potential_matches[i+1:]
+                )
+                if has_digit_main_later:
+                    diagnostics.rejected_headers.append({
+                        "header": text[match.start():match.end()],
+                        "reason": "introductory notes/bullet before Question 1"
+                    })
+                    i += 1
+                    continue
                 
             # Decompose path to check levels
             main_num, alpha, roman = HierarchyUtils.decompose_path(path)

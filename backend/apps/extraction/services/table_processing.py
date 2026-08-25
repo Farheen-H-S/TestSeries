@@ -1060,18 +1060,21 @@ def is_mcq_answer_key_table(raw_grid: List[List[Any]]) -> bool:
         return False
         
     full_text = ' '.join(str(c or '') for row in raw_grid for c in row)
+    header_text = ' '.join(str(c or '') for c in raw_grid[:3] for c in (c if isinstance(c, list) else [c]))
     
-    # If table contains computation/accounting statement keywords, it's NOT an answer key
-    if re.search(r'(?i)\b(?:Net\s+profit|Income\s+from|Statement\s+of\s+profit|Debit|Credit|Balance\s+Sheet|Assessee|Tax\s+payable|Tax\s+liability|Amount\s+in\s+[₹`])\b', full_text):
+    # 1. Primary check: Explicit MCQ table header (e.g. Question No. | Answer / Most Appropriate Answer / Option)
+    has_mcq_header = bool(re.search(
+        r'(?i)\b(?:MCQ\s*No\.?|Most\s+Appropriate\s+Answer|Answer\s+Key|Answers?\s+to\s+Multiple\s+Choice\s+Questions?|Question\s*(?:No\.?)?[\s\S]*?(?:Answer|Option))\b',
+        header_text
+    ))
+    has_opt = any(MCQ_OPTION_PATTERN.search(str(c)) for row in raw_grid for c in row if c)
+    if has_mcq_header and has_opt:
+        return True
+        
+    # If table contains balance sheet or journal debit/credit statement keywords, it's NOT an answer key
+    if re.search(r'(?i)\b(?:Statement\s+of\s+profit|Debit\s+and\s+Credit|Balance\s+Sheet|Particulars\s+.*\s+(?:Debit|Credit|Amount))\b', full_text):
         return False
-        
-    header_text = ' '.join(str(c or '') for c in raw_grid[:2] for c in (c if isinstance(c, list) else [c]))
-    has_mcq_header = bool(re.search(r'(?i)\b(?:MCQ\s*No\.?|Most\s+Appropriate\s+Answer|Answer\s+Key|Answer\s+to\s+Multiple\s+Choice\s+Questions?|(?:Question\s*No\.?.*Answer))\b', header_text))
-    if has_mcq_header:
-        # Verify it has at least one option match
-        if any(MCQ_OPTION_PATTERN.search(str(c)) for row in raw_grid for c in row if c):
-            return True
-        
+
     mcq_pairs = 0
     q_num_rows = 0
     for row in raw_grid:
@@ -1094,12 +1097,12 @@ def is_mcq_answer_key_table(raw_grid: List[List[Any]]) -> bool:
         
         if q_idx != -1:
             q_num_rows += 1
-            has_opt = False
+            row_has_opt = False
             for cell in non_empty[q_idx + 1:]:
                 if MCQ_OPTION_PATTERN.search(cell):
-                    has_opt = True
+                    row_has_opt = True
                     break
-            if has_opt:
+            if row_has_opt:
                 mcq_pairs += 1
 
     min_pairs_required = 1 if has_mcq_header else 2
@@ -1118,8 +1121,18 @@ def serialize_mcq_key_to_text(raw_grid: List[List[Any]]) -> str:
             continue
         if any(re.search(r'(?i)\b(?:Question\s*No\.?|MCQ|Most\s+Appropriate|Answer)\b', c) for c in non_empty):
             continue
-        line = ' '.join(non_empty)
-        m = re.match(r'^\s*([1-9]\d?)\.\s*(.+)$', line)
+        dedup = []
+        for tok in non_empty:
+            sub_toks = tok.split()
+            sub_dedup = []
+            for st in sub_toks:
+                if not sub_dedup or st != sub_dedup[-1]:
+                    sub_dedup.append(st)
+            cleaned_tok = ' '.join(sub_dedup)
+            if not dedup or cleaned_tok != dedup[-1]:
+                dedup.append(cleaned_tok)
+        line = ' '.join(dedup)
+        m = re.match(r'^\s*(?:Q\.?\s*(?:No\.?)?\s*|MCQ\s*(?:No\.?)?\s*)?([1-9]\d?)[.)]?[ \t]+(\([a-zA-Z]\).*)', line)
         if m:
             lines.append(f"\n{m.group(1)}.")
             lines.append(m.group(2))
@@ -1325,19 +1338,19 @@ class TableProcessor:
             table = pt.table
             key = (table.page_number, round(table.bbox[0], 1), round(table.bbox[1], 1))
             
+            # MCQ answer key tables should always serialize to text on their respective pages
+            if is_mcq_answer_key_table(table.original_grid):
+                table_lookup[key] = serialize_mcq_key_to_text(table.original_grid)
+                continue
+                
             parent_id = table.properties.get("merged_into")
             if parent_id is not None:
                 # Child chunk: render nothing on this page (merged into root)
                 table_lookup[key] = ""
             else:
                 # Root table:
-                if is_mcq_answer_key_table(table.original_grid):
-                    table_lookup[key] = serialize_mcq_key_to_text(table.original_grid)
-                else:
-                    md = self.render_to_html(table)
-                    table_lookup[key] = md
-                
-        return table_lookup
+                md = self.render_to_html(table)
+                table_lookup[key] = md
                 
         return table_lookup
 
