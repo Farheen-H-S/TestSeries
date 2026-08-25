@@ -445,20 +445,30 @@ def extract_text(doc: fitz.Document, document_id: Any = None) -> List[Dict[str, 
             cx = (bx0 + bx1) / 2
             cy = (by0 + by1) / 2
             
-            # Never suppress blocks that start with a question or subquestion header
+            # 1. Blocks inside tables are ALWAYS suppressed because tables are extracted/serialized by table_lookup
+            inside_table = False
+            for tx0, ty0, tx1, ty1 in table_bboxes:
+                if (tx0 - 4.0 <= cx <= tx1 + 4.0) and (ty0 - 2.0 <= cy <= ty1 + 2.0):
+                    inside_table = True
+                    break
+
+            if inside_table:
+                continue
+
+            # 2. Blocks inside formula crops are suppressed UNLESS they start with a question/subquestion header
             is_question_header_block = False
             b_first_line = text_val.strip().split('\n')[0].strip()
-            if re.match(r'^(?:Question\s+(?:No\.\s*)?\d+|Q\.?\s*\d+|\d{1,2}\.\s+[A-Za-z]|\d{1,2}\.\s*\([a-zA-ZivxIVX]+\)|\d{1,2}\.\s*$|\d{1,2}\s*\([a-zA-ZivxIVX]+\)|\([a-zA-ZivxIVX]+\)\s+[A-Za-z])', b_first_line):
+            if re.match(r'^(?:Question\s+(?:No\.\s*)?\d+|Q\.?\s*\d+|\d{1,2}\.\s+[A-Za-z]|\d{1,2}\.\s*\([a-zA-ZivxIVX]+\)|\d{1,2}\s*\([a-zA-ZivxIVX]+\)|\([a-zA-ZivxIVX]+\)\s+[A-Za-z])', b_first_line):
                 is_question_header_block = True
 
-            inside_visual = False
+            inside_formula = False
             if not is_question_header_block:
-                for tx0, ty0, tx1, ty1 in table_bboxes + formula_regions:
-                    if (tx0 - 4.0 <= cx <= tx1 + 4.0) and (ty0 - 2.0 <= cy <= ty1 + 2.0):
-                        inside_visual = True
+                for fx0, fy0, fx1, fy1 in formula_regions:
+                    if (fx0 - 4.0 <= cx <= fx1 + 4.0) and (fy0 - 2.0 <= cy <= fy1 + 2.0):
+                        inside_formula = True
                         break
 
-            if not inside_visual:
+            if not inside_formula:
                 items.append({
                     "type": "text",
                     "y0": by0,
