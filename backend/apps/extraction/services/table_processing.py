@@ -398,11 +398,16 @@ def is_narrative_text_box(grid: List[List[str]]) -> bool:
         
     # Check if table contains tabular financial/accounting headers, currencies, or column indicators
     has_table_signals = bool(re.search(
-        r'(?i)\b(?:Particulars|Amount|Debit|Credit|Date|Account|Balance|Assets?|Liabilities|`|₹|Rs\.|\$|Shares?|Ratio|TDS|TCS|GST|Total|Quantity|Rate|Units?|Ledger)\b',
+        r'(?i)(?:\b(?:Particulars|Amount|Debit|Credit|Date|Account|Balance|Assets?|Liabilities|Shares?|Ratio|TDS|TCS|GST|Total|Quantity|Rate|Units?|Ledger)\b|[`₹$]|Rs\.)',
         all_text
     ))
     if has_table_signals:
         return False
+
+    is_mcq_key = bool(re.search(r'(?i)\bOption\b|\bAns\.?\b|\bChoice\b|\bKey\b', all_text))
+    has_digits = bool(re.search(r'\d', all_text))
+    if not has_table_signals and not has_digits and not is_mcq_key:
+        return True
 
     total_non_empty_cells = 0
     non_empty_rows = 0
@@ -416,8 +421,7 @@ def is_narrative_text_box(grid: List[List[str]]) -> bool:
                 multi_cell_rows += 1
     if non_empty_rows == 0:
         return True
-        
-    is_mcq_key = bool(re.search(r'(?i)\bOption\b|\bAns\.?\b|\bChoice\b|\bKey\b', all_text))
+
     if multi_cell_rows == 0 and not is_mcq_key:
         return True
     if multi_cell_rows / non_empty_rows < 0.4 and not is_mcq_key:

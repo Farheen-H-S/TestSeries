@@ -350,8 +350,8 @@ def extract_text(doc: fitz.Document, document_id: Any = None) -> List[Dict[str, 
         items = []
         from .table_processing import is_mcq_answer_key_table
         valid_page_tables = [t for t in page_tables if (page_num, round(t.bbox[0], 1), round(t.bbox[1], 1)) in table_lookup]
-        table_bboxes = [t.bbox for t in page_tables]
-        all_table_bboxes = [t.bbox for t in page_tables]
+        table_bboxes = [t.bbox for t in valid_page_tables]
+        all_table_bboxes = [t.bbox for t in valid_page_tables]
         
         # Add tables and extract effective visual region bboxes
         for t in valid_page_tables:

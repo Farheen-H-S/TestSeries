@@ -41,7 +41,8 @@ KNOWN_SUBJECT_PATTERNS = [
     r"Advanced\s+Financial\s+Management",
     r"Strategic\s+Financial\s+Management",
     r"Advanced\s+Auditing(?:,\s*Assurance)?\s+and\s+Professional\s+Ethics",
-    r"Advanced\s+Auditing",
+    r"Advanced\s+Auditing(?:,\s*Assurance(?:\s+and)?)?",
+    r"(?:Assurance\s+and\s+)?Professional\s+Ethics",
     r"Corporate\s+(?:&|and)\s+Economic\s+Laws",
     r"Corporate\s+(?:&|and)\s+Other\s+Laws",
     r"Direct\s+Tax\s+Laws\s+(?:&|and)\s+International\s+Taxation",
@@ -71,6 +72,7 @@ KNOWN_SUBJECT_PATTERNS = [
 ]
 
 DOCUMENT_METADATA_PATTERNS = [
+    r"(?i)^[ \t]*(?:PART|SECTION)\s+[A-Z0-9IVX]+[-–—\s:]+.*$",
     r"(?i)^[ \t]*Part\s+[I|V|X\d]+[-–—\s]+(?:Questions|Multiple\s+Choice\s+Questions|Descriptive\s+Questions)(?:\s+and\s+Answers)?\s*$",
     r"(?i)^[ \t]*Part\s+[I|V|X\d]+[-–—\s]+Answers?\s*$",
     r"(?i)^[ \t]*QUESTIONS?\s*$",
@@ -117,15 +119,15 @@ QUESTION_HEADER_PATTERNS = [
 # Matches: Answer to Question 1, Ans. 1, Solution 1, 1.1, or just 1. in Answer section
 ANSWER_HEADER_PATTERNS = [
     r"^[ \t]*([1-9])\.([1-9]|1[0-5])[ \t]*$",                                         # 1.1, 1.2, 2.1
-    r"(?i)^\s*Answer\s+(?:to\s+)?(?:Question\s+)?(?:No\.\s*)?(\d+)(?:\(([a-z])\))?", # Answer to Question 1(a)
-    r"(?i)^\s*Ans\.?\s*(\d+)(?:\(([a-z])\))?",                                       # Ans. 1(a)
-    r"(?i)^\s*Solution\s*(\d+)(?:\(([a-z])\))?",                                     # Solution 1(a)
-    r"(?i)^\s*(?:Question|Q\.?)\s*(?:No\.\s*)?(\d+)(?:\(([a-z])\))?",                # Question 1 or Q1
-    r"^\s*(\d{1,2})[.)](?!\d)(?:\s*\(([a-z])\))?",                                   # 1. or 1.(a)
-    r"^\s*(\d{1,2})\s*(?:\r?\n\s*)?\(([a-zA-Z])\)",                                  # 14(a) or 14\n(a)
-    r"^\s*(\d{1,2})\s*(?:\r?\n\s*)?\(([ivxIVX]+)\)",                                 # 6(i) or 6\n(i)
-    r"^\s*\(([a-zA-Z])\)",                                                           # (a)
-    r"^\s*\(([ivxIVX]+)\)(?!\s*e\.)",                                                # (i), (ii), (iv)
+    r"(?i)^[ \t]*Answer\s+(?:to\s+)?(?:Question\s+)?(?:No\.\s*)?(\d+)(?:[ \t]*\(([a-z])\))?", # Answer to Question 1(a)
+    r"(?i)^[ \t]*Ans\.?\s*(\d+)(?:[ \t]*\(([a-z])\))?",                                       # Ans. 1(a)
+    r"(?i)^[ \t]*Solution\s*(\d+)(?:[ \t]*\(([a-z])\))?",                                     # Solution 1(a)
+    r"(?i)^[ \t]*(?:Question|Q\.?)\s*(?:No\.\s*)?(\d+)(?:[ \t]*\(([a-z])\))?",                # Question 1 or Q1
+    r"^[ \t]*(\d{1,2})[.)](?!\d)(?:[ \t]*\(([a-z])\))?",                                     # 1. or 1.(a)
+    r"^[ \t]*(\d{1,2})[.)]?[ \t]*\(([a-zA-Z])\)",                                            # 14(a) or 14.(a)
+    r"^[ \t]*(\d{1,2})[.)]?[ \t]*\(([ivxIVX]+)\)",                                           # 6(i) or 6.(i)
+    r"^[ \t]*\(([a-zA-Z])\)",                                                                # (a)
+    r"^[ \t]*\(([ivxIVX]+)\)(?!\s*e\.)",                                                     # (i), (ii), (iv)
 ]
 
 

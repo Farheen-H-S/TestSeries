@@ -742,7 +742,7 @@ class AnswerParser:
             pre_lines = [l.strip() for l in text[:match.start()].splitlines() if l.strip()]
             if pre_lines:
                 last_line = pre_lines[-1].strip()
-                if re.match(r'^(?:[IVXLCDM]+|[1-9]\d?)$', last_line):
+                if re.match(r'^(?:[IVXLCDM]+|[1-9]\d?\.?)$', last_line):
                     return PromotionEvaluation(False, PromotionReason.REJECT_QUESTION_STRUCTURE)
 
         # 2. Sequence Rule (Only when entering a new depth)
