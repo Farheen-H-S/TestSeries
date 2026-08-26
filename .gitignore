@@ -1,9 +1,54 @@
-.idea/
+# ==========================================
+# Python & Bytecode
+# ==========================================
 __pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# ==========================================
+# Virtual Environments
+# ==========================================
+.venv/
+venv/
+ENV/
+env/
+
+# ==========================================
+# Databases & Redis
+# ==========================================
 *.sqlite3
 backend/db.sqlite3
-.venv/
-backend/temp/
-.pytest_cache
-backend/media/
 dump.rdb
+
+# ==========================================
+# Testing & Caching
+# ==========================================
+.pytest_cache/
+backend/.pytest_cache/
+.coverage
+htmlcov/
+
+# ==========================================
+# Media & Temporary Storage
+# ==========================================
+backend/media/
+backend/temp/
+*.tmp
+*.log
+
+# ==========================================
+# Frontend & Build Outputs
+# ==========================================
+frontend/node_modules/
+frontend/dist/
+frontend/dist-ssr/
+
+# ==========================================
+# IDEs & OS Files
+# ==========================================
+.idea/
+.vscode/
+*.sw?
+.DS_Store
+Thumbs.db
