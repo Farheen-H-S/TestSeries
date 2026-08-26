@@ -1141,6 +1141,39 @@ def serialize_mcq_key_to_text(raw_grid: List[List[Any]]) -> str:
     return '\n'.join(lines)
 
 
+def is_narrative_text_box(grid: Any) -> bool:
+    """
+    Checks if a detected PyMuPDF table is actually just a box of narrative text,
+    a paragraph, or MCQ options with line wraps rather than a structured tabular dataset.
+    """
+    if not grid or not isinstance(grid, list):
+        return True
+    
+    # Clean rows: remove empty/whitespace-only/None cells
+    rows = []
+    for r in grid:
+        if isinstance(r, list):
+            cleaned = [str(c).strip() for c in r if c is not None and str(c).strip() != '']
+            if cleaned:
+                rows.append(cleaned)
+    
+    if len(rows) < 2:
+        return True
+        
+    # Check max non-empty columns across all rows
+    max_cols = max(len(r) for r in rows)
+    if max_cols <= 1:
+        return True
+        
+    # Check if rows are just line-wrapped sentences of prose
+    total_cells = sum(len(r) for r in rows)
+    prose_cells = sum(1 for r in rows for c in r if len(c.split()) > 7)
+    if prose_cells / max(1, total_cells) > 0.6 and max_cols <= 2:
+        return True
+            
+    return False
+
+
 class TableProcessor:
     def __init__(self, config: Optional[TableProcessingConfig] = None):
         self.config = config or TableProcessingConfig()

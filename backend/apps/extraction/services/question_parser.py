@@ -433,7 +433,7 @@ class QuestionParser:
                     current_context = cleaned
                     min_q_num = 1
                     inner_rng = re.search(range_regex_str, cleaned)
-                    max_q_num = int(inner_rng.group(2)) if inner_rng else None
+                    max_q_num = int(inner_rng.group(2)) if inner_rng else 6
                 else:
                     # Preamble without explicit range belongs to the first question
                     if parsed_questions:
@@ -471,7 +471,7 @@ class QuestionParser:
                             current_context = cleaned_context
                             min_q_num = main_num
                             inner_rng = re.search(range_regex_str, cleaned_context)
-                            max_q_num = int(inner_rng.group(2)) if inner_rng else None
+                            max_q_num = int(inner_rng.group(2)) if inner_rng else ((main_num + 5) if main_num is not None else 12)
                         else:
                             current_context = cleaned_context
                             min_q_num = main_num
@@ -485,6 +485,12 @@ class QuestionParser:
                     current_context = None
                     min_q_num = None
                     max_q_num = None
+
+            # Case scenarios never extend to descriptive questions (Q13+)
+            if main_num is not None and main_num > 12:
+                current_context = None
+                min_q_num = None
+                max_q_num = None
 
             if max_q_num is not None and main_num is not None and main_num > max_q_num:
                 current_context = None

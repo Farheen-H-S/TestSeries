@@ -96,12 +96,12 @@ def find_standalone_equation_regions(page: fitz.Page, table_bboxes: List[Any]) -
             pass
     for d in drawings:
         rect = d['rect']
-        # Genuine fraction line: width >= 10pt, height <= 3.0pt, within body area and not near any table
-        if rect.width >= 10 and rect.height <= 3.0 and top_margin_limit <= rect.y0 <= bottom_margin_limit:
+        # Genuine fraction line: width 15-250pt, height <= 2.5pt, within body area and not near any table
+        if 15 <= rect.width <= 250 and rect.height <= 2.5 and top_margin_limit <= rect.y0 <= bottom_margin_limit:
             if not is_near_table(rect, table_bboxes, margin=8):
                 # Ensure drawing is not part of a header banner
                 is_header_meta = any(
-                    re.search(r'(?i)\b(?:REVISION\s+TEST\s+PAPERS?|FINAL\s+EXAMINATION|DIRECT\s+TAX|FINANCIAL\s+MANAGEMENT|FINANCIAL\s+REPORTING|EXAMINATION)\b', s.get('text', ''))
+                    re.search(r'(?i)\b(?:REVISION\s+TEST\s+PAPERS?|FINAL\s+EXAMINATION|INTERMEDIATE|FOUNDATION|DIRECT\s+TAX|INDIRECT\s+TAX|FINANCIAL\s+MANAGEMENT|FINANCIAL\s+REPORTING|AUDITING|EXAMINATION|MAY\s+20\d\d|NOV\s+20\d\d|SEPT\s+20\d\d|JAN\s+20\d\d)\b', s.get('text', ''))
                     for b in page.get_text('dict')['blocks'] if 'lines' in b
                     for l in b['lines'] for s in l['spans']
                     if rect.y0 - 25 <= s['bbox'][1] <= rect.y0 + 25
@@ -137,9 +137,9 @@ def find_standalone_equation_regions(page: fitz.Page, table_bboxes: List[Any]) -
                         for l in b['lines']:
                             for s in l['spans']:
                                 sb = s['bbox']
-                                if rect.y0 - 16 <= sb[3] <= rect.y0 + 2:
+                                if rect.y0 - 18 <= sb[3] <= rect.y0 + 2:
                                     above_spans.append(s['text'].strip())
-                                if rect.y1 - 2 <= sb[1] <= rect.y1 + 16:
+                                if rect.y1 - 2 <= sb[1] <= rect.y1 + 18:
                                     below_spans.append(s['text'].strip())
                 
                 above_str = ' '.join([t for t in above_spans if t])
@@ -147,19 +147,19 @@ def find_standalone_equation_regions(page: fitz.Page, table_bboxes: List[Any]) -
                 
                 if not above_str or not below_str:
                     continue
-                if re.search(r'(?i)\b(?:Reserves?|Surplus|Equity|Stock|Shares?|Capital|Particulars?|Total|Debit|Credit|Lakhs?|Crores?|Millions?|Billion)\b', above_str + ' ' + below_str):
+                if len(above_str.split()) > 4 or len(below_str.split()) > 4:
+                    continue
+                combined = above_str + ' ' + below_str
+                if any(w in combined.lower() for w in ['question', 'test', 'examination', 'revised', 'final', 'course', 'marks', 'case', 'scenario', 'required', 'based on', 'particulars', 'reserves', 'surplus', 'equity', 'stock', 'share', 'capital', 'total', 'debit', 'credit']):
                     continue
                 
-                has_math_sig = any(c in (above_str + ' ' + below_str) for c in ['=', '+', '-', '×', '/', '÷', '±', '∑', '√', '^', '%', 'σ', 'β', 'μ', 'ρ', 'λ', 'θ', 'XABC', 'Cov', 'Po', 'EPS', 'Ke', 'DPS', 'WACC', 'Rf', 'Rm', 'NPV', 'IRR'])
+                has_math_sig = any(c in combined for c in ['=', '+', '-', '×', '/', '÷', '±', '∑', '√', '^', '%', 'σ', 'β', 'μ', 'ρ', 'λ', 'θ', 'XABC', 'Cov', 'Po', 'EPS', 'Ke', 'DPS', 'WACC', 'Rf', 'Rm', 'NPV', 'IRR'])
                 has_digits = bool(re.search(r'\d', above_str) and re.search(r'\d', below_str))
-                is_short_fraction = (len(above_str.split()) <= 4 and len(below_str.split()) <= 4)
                 
-                if not (has_math_sig or has_digits or is_short_fraction):
-                    continue
-                if len(above_str.split()) > 6 and not has_math_sig:
+                if not (has_math_sig or has_digits):
                     continue
 
-                # Find all text spans on this page within y0 - 15 to y1 + 15
+                # Find text spans within fraction bounds
                 line_spans = []
                 for b in page.get_text('dict')['blocks']:
                     if 'lines' in b:
@@ -176,9 +176,9 @@ def find_standalone_equation_regions(page: fitz.Page, table_bboxes: List[Any]) -
                 else:
                     raw_regions.append((
                         page_x0,
-                        max(0, rect.y0 - 18),
+                        max(0, rect.y0 - 15),
                         page_w,
-                        min(page_h, rect.y1 + 18)
+                        min(page_h, rect.y1 + 15)
                     ))
 
     # 2. Detect multi-line / complex math formula blocks (Greek symbols with powers, radicals, stacked lines)
@@ -193,97 +193,13 @@ def find_standalone_equation_regions(page: fitz.Page, table_bboxes: List[Any]) -
         text = ' '.join(lines)
         
         has_math_symbols = any(c in text for c in ['\uf073', 'σ', '\uf062', 'β', '\uf06d', 'μ', '\uf072', 'ρ', 'XABC', 'X_ABC', 'Cov.AX', 'Cov.', 'Po =', 'FCFE =', 'Ke =', 'EPS =', 'No. of Shares ='])
-        
-        height = bbox[3] - bbox[1]
-        density = len(lines) / max(1, height)
-        short_lines = [l for l in lines if len(l) <= 8]
-        short_ratio = len(short_lines) / max(1, len(lines))
-        
-        is_formula_block = (
-            (len(lines) >= 3 and density >= 0.25 and short_ratio >= 0.6) or
-            (len(lines) >= 8 and density >= 0.30) or
-            (has_math_symbols and ('=' in text or '(%)' in text or 'Cov' in text) and len(lines) >= 1)
-        )
-        if is_formula_block:
-            if len(text.split()) > 15 and not ('=' in text and any(c in text for c in ['\uf073', 'σ', 'β', 'Po', 'EPS'])):
-                continue
+        is_formula_stack = len(lines) >= 4 and all(len(l) <= 6 for l in lines) and (bbox[3] - bbox[1] <= 35) and any(c in text for c in ['AX', 'ov.', 'Cov', '∑', '√', '^', '-', '+', '/', '='])
+        if (has_math_symbols and len(text.split()) <= 15 and ('=' in text or 'Cov' in text)) or is_formula_stack:
             raw_regions.append((
                 page_x0,
                 max(0, bbox[1] - 4),
                 page_w,
                 min(page_h, bbox[3] + 4)
-            ))
-
-    # 3. Detect Diagram / Flowchart / Schema clusters from vector drawings
-    # If 3 or more drawings are clustered together within body area (e.g. flowcharts, organizational charts, accounting schema diagrams)
-    diag_drawings = [
-        d for d in drawings 
-        if (d['rect'].height > 2 or d['rect'].width > 5) 
-        and (top_margin_limit <= d['rect'].y0 and d['rect'].y1 <= bottom_margin_limit)
-        and not is_near_table(d['rect'], table_bboxes, margin=8)
-    ]
-    
-    clusters = []
-    for d in diag_drawings:
-        r = d['rect']
-        merged_c = False
-        for c in clusters:
-            if not (r.y0 > c['max_y'] + 20 or r.y1 < c['min_y'] - 20):
-                c['min_x'] = min(c['min_x'], r.x0)
-                c['max_x'] = max(c['max_x'], r.x1)
-                c['min_y'] = min(c['min_y'], r.y0)
-                c['max_y'] = max(c['max_y'], r.y1)
-                c['count'] += 1
-                merged_c = True
-                break
-        if not merged_c:
-            clusters.append({
-                'min_x': r.x0,
-                'max_x': r.x1,
-                'min_y': r.y0,
-                'max_y': r.y1,
-                'count': 1
-            })
-            
-    for c in clusters:
-        if c['count'] >= 3:
-            # Check if this cluster contains running header/footer banner text
-            is_header_meta = False
-            if hasattr(page, 'get_text'):
-                try:
-                    for b in page.get_text('dict')['blocks']:
-                        if 'lines' in b:
-                            for l in b['lines']:
-                                for s in l['spans']:
-                                    sy0, sy1 = s['bbox'][1], s['bbox'][3]
-                                    if (c['min_y'] - 15 <= sy0 <= c['max_y'] + 15) or (c['min_y'] - 15 <= sy1 <= c['max_y'] + 15):
-                                        if re.search(r'(?i)\b(?:REVISION\s+TEST\s+PAPERS?|MOCK\s+TEST|FINAL\s+EXAMINATION|INTERMEDIATE\s+EXAMINATION|FOUNDATION|EXAMINATION|MAY\s+20\d\d|NOV\s+20\d\d|SEPT\s+20\d\d|JAN\s+20\d\d)\b', s.get('text', '')):
-                                            is_header_meta = True
-                                            break
-                except Exception:
-                    pass
-            if is_header_meta:
-                continue
-
-            d_min_y = c['min_y']
-            d_max_y = c['max_y']
-            if hasattr(page, 'get_text'):
-                try:
-                    for b in page.get_text('dict')['blocks']:
-                        if 'lines' in b:
-                            for l in b['lines']:
-                                for s in l['spans']:
-                                    sx0, sy0, sx1, sy1 = s['bbox']
-                                    if (c['min_x'] - 10 <= sx0 and sx1 <= c['max_x'] + 10) and (c['min_y'] - 4 <= sy0 <= c['max_y'] + 4):
-                                        d_min_y = min(d_min_y, sy0)
-                                        d_max_y = max(d_max_y, sy1)
-                except Exception:
-                    pass
-            raw_regions.append((
-                page_x0,
-                max(0, d_min_y - 3),
-                page_w,
-                min(page_h, d_max_y + 3)
             ))
 
     if not raw_regions:
@@ -295,19 +211,8 @@ def find_standalone_equation_regions(page: fitz.Page, table_bboxes: List[Any]) -
             merged.append(list(r))
         else:
             prev = merged[-1]
-            has_header_between = False
-            if hasattr(page, 'get_text'):
-                for b in page.get_text('blocks'):
-                    if (prev[1] - 2.0 <= b[1] <= r[3] + 2.0):
-                        b_text = b[4].strip()
-                        if re.search(r'(?i)(?:^|\n)\s*(?:[1-9]\d?\.|\([a-z]\)|\([ivx]+\))\s+[A-Za-z]', b_text):
-                            has_header_between = True
-                            break
-            v_overlap = (r[1] <= prev[3] + 8) and (r[3] >= prev[1] - 8) and not has_header_between
-            if v_overlap:
-                prev[0] = min(prev[0], r[0])
+            if (r[1] <= prev[3] + 4) and (r[3] >= prev[1] - 4):
                 prev[1] = min(prev[1], r[1])
-                prev[2] = max(prev[2], r[2])
                 prev[3] = max(prev[3], r[3])
             else:
                 merged.append(list(r))

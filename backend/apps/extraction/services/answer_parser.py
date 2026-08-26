@@ -271,6 +271,45 @@ class AnswerParser:
 
 
 
+        # Recover un-numbered main answers (e.g. Question 2 Case Study MCQ answer key) if valid_question_paths expects main N between N-1 and N+1
+        if valid_question_paths:
+            expected_mains = sorted(list(set(int(p[0]) for p in valid_question_paths if p and p[0].isdigit())))
+            validated_mains = {}
+            for idx, (m, h_path) in enumerate(validated_matches):
+                if len(h_path) == 1 and h_path[0].isdigit():
+                    validated_mains[int(h_path[0])] = (idx, m)
+                    
+            for n in expected_mains:
+                if n not in validated_mains and (n - 1) in validated_mains and (n + 1) in validated_mains:
+                    prev_idx, prev_match = validated_mains[n - 1]
+                    next_idx, next_match = validated_mains[n + 1]
+                    
+                    prev_pos = prev_match.start()
+                    next_pos = next_match.start()
+                    region_text = text[prev_pos:next_pos]
+                    
+                    # Search for start of second Roman numeral sequence (e.g. '\nI (a)' or '\nI.' or '\n(i)')
+                    v_match = list(re.finditer(r'(?i)\bV\s*(?:\([a-d]\)|\.|\s*\([ivx]+\))', region_text))
+                    if v_match:
+                        v_end = v_match[0].end()
+                        second_i = re.search(r'(?i)(?:\n\s*|\s+)I\s*(?:\([a-d]\)|\.)', region_text[v_end:])
+                        if second_i:
+                            actual_pos = prev_pos + v_end + second_i.start()
+                            
+                            class SyntheticAnswerMatch:
+                                def __init__(self, pos, num_str):
+                                    self._pos = pos
+                                    self._num_str = num_str
+                                def start(self): return self._pos
+                                def end(self): return self._pos
+                                def group(self, g=0): return f"{self._num_str}."
+                                
+                            s_match = SyntheticAnswerMatch(actual_pos, str(n))
+                            validated_matches.append((s_match, [str(n)]))
+                            logger.info("Recovered un-numbered main answer %d at position %d", n, actual_pos)
+
+        validated_matches.sort(key=lambda x: x[0].start())
+
         logger.info(
             "Answer parsing stage 2 | potential=%d | validated=%d | rejected=%d",
             len(all_potential_matches), len(validated_matches), len(diagnostics.rejected_headers)
