@@ -136,8 +136,8 @@ class Normalizer:
 
         path = []
 
-        # Step 1: Check for decimal case-study style header (e.g. "1.1", "1.2", "2.1")
-        decimal_match = re.match(r'^([1-9])\.([1-9]|1[0-5])\b', header)
+        # Step 1: Check for decimal case-study style header (e.g. "1.1", "1.2", "1.5*", "2.1")
+        decimal_match = re.match(r'^([1-9])\.([1-9]|1[0-5])[\*#†‡]?(?!\d)', header)
         if decimal_match:
             path.extend([decimal_match.group(1), decimal_match.group(2)])
             current_pos = decimal_match.end()

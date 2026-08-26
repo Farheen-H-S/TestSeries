@@ -339,9 +339,10 @@ def extract_document(document: Document, temp_file_path: str = None):
                             if wn_str:
                                 answer_segments.append((ans.start_offset + 0.1 + wn_idx * 0.01, wn_str))
                                 
-                # Also check any child answers under this primary question key (e.g. answer key has (a), (b) under question 10)
+                # Also check any child answers under this primary question key (e.g. answer key has (a), (b) under question 10, or (i), (ii) under 1.8)
                 for p, ans in all_answers_lookup.items():
-                    if p and p[0] == q_key and p not in seen_ans_keys:
+                    ans_primary_key = f"{p[0]}.{p[1]}" if (len(p) >= 2 and p[0].isdigit() and p[1].isdigit()) else (p[0] if p else None)
+                    if p and ans_primary_key == q_key and p not in seen_ans_keys:
                         seen_ans_keys.add(p)
                         if ans.text and ans.text.strip():
                             answer_segments.append((ans.start_offset, ans.text.strip()))

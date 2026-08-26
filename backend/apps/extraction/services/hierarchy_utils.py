@@ -61,8 +61,10 @@ class HierarchyUtils:
                 if roman: stack.append(roman)
                 return
 
-            # Decimal Case Study parent (e.g. ['2', '3']) -> ['2', '3', 'a']
-            if len(stack) == 2 and stack[0].isdigit() and stack[1].isdigit():
+            # Decimal Case Study parent (e.g. ['2', '3'] -> ['2', '3', 'a'], or ['2', '3', 'a'] -> ['2', '3', 'b'])
+            if len(stack) >= 2 and stack[0].isdigit() and stack[1].isdigit():
+                while len(stack) > 2:
+                    stack.pop()
                 stack.append(alpha)
                 if roman: stack.append(roman)
                 return
@@ -78,6 +80,21 @@ class HierarchyUtils:
             # Transitioning to/within a SUB_SUB level (e.g. (a) -> (i), (i) -> (ii), or 16 -> (i))
             if len(stack) < 1:
                 return
+
+            # Decimal Case Study parent (e.g. ['2', '3'] or ['2', '3', 'a'])
+            if len(stack) >= 2 and stack[0].isdigit() and stack[1].isdigit():
+                if len(stack) == 2:
+                    stack.append(roman)
+                    return
+                elif len(stack) == 3 and HierarchyUtils.ROMAN_REGEX.match(stack[2]):
+                    stack[2] = roman
+                    return
+                elif len(stack) == 3:  # e.g. ['2', '3', 'a'] -> ['2', '3', 'a', 'i']
+                    stack.append(roman)
+                    return
+                elif len(stack) == 4 and HierarchyUtils.ROMAN_REGEX.match(stack[3]):
+                    stack[3] = roman
+                    return
 
             # If stack is mainless starting with alpha (e.g. ['a']), we can append roman
             if not stack[0].isdigit() and len(stack) == 1:

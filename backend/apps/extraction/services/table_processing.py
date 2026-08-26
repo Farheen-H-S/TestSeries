@@ -1285,7 +1285,7 @@ class TableProcessor:
                                     gap_text.append(b[4])
                         gap_str = " ".join(gap_text).strip()
                         if (re.search(r'(?i)\b(?:Question|Answer|Ans|Sol|Solution)\s*\d+', gap_str) or 
-                            re.search(r'(?i)(?:^|\n)\s*\d+\.?(?:\s*\([ivxa-dIVXA-D0-9]+\))?\s+[A-Za-z]', gap_str) or 
+                            re.search(r'(?i)(?:^|\n)\s*(?:[1-9]\.[1-9]|1[0-5]|\d{1,2})[.)]?(?:\s*\([ivxa-dIVXA-D0-9]+\))?', gap_str) or 
                             re.search(r'(?i)(?:^|\n)\s*\([ivxa-dIVXA-D0-9]+\)', gap_str) or
                             re.search(r'(?i)\bInd\s+AS\b|\bWorking\s+Notes?\b|\bCalculation\b|\bAlternatively\b', gap_str)):
                             has_header_in_gap = True

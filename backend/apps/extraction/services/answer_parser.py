@@ -135,6 +135,13 @@ class AnswerParser:
             known_children=known_children
         )
 
+        has_decimal_answers = any(
+            len(self.normalizer.normalize_header(m.group(0))) >= 2 and 
+            self.normalizer.normalize_header(m.group(0))[0].isdigit() and 
+            self.normalizer.normalize_header(m.group(0))[1].isdigit()
+            for m in all_potential_matches
+        ) or (valid_question_paths and any(len(p) >= 2 and p[0].isdigit() and p[1].isdigit() for p in valid_question_paths))
+
         for idx, match in enumerate(all_potential_matches):
             raw_header = text[match.start():match.end()]
             normalized_header = match.group(0)
@@ -150,6 +157,25 @@ class AnswerParser:
             path = self.normalizer.normalize_header(normalized_header)
             c_main, _, _ = HierarchyUtils.decompose_path(path)
             c_num = int(c_main) if c_main and c_main.isdigit() else 0
+
+            # If answer section uses decimal case study numbering (e.g. 1.1, 1.2, 2.1), reject single integers (e.g. 2., 3.) and non-decimal numbers (e.g. 40(a))
+            if has_decimal_answers:
+                if len(path) == 1 and path[0].isdigit():
+                    logger.info("Answer candidate rejected | candidate=%r | reason=isolated single-digit header in decimal case study document", raw_header)
+                    diagnostics.rejected_headers.append({
+                        "header": raw_header,
+                        "reason": "isolated single-digit header in decimal case study document"
+                    })
+                    prev_match_end = match.end()
+                    continue
+                if len(path) >= 2 and path[0].isdigit() and not path[1].isdigit():
+                    logger.info("Answer candidate rejected | candidate=%r | reason=non-decimal number in decimal case study document", raw_header)
+                    diagnostics.rejected_headers.append({
+                        "header": raw_header,
+                        "reason": "non-decimal number in decimal case study document"
+                    })
+                    prev_match_end = match.end()
+                    continue
 
             # 2. Skip matches that are explicit Working Note headers (e.g. "Working Note 1", "W.N. 1", "7. Computation of Goodwill")
             post_header_text = normalized_text[match.start():match.start()+150].strip()
@@ -179,6 +205,12 @@ class AnswerParser:
                 is_working_note = is_consecutive_wn or is_internal_num
 
                 is_next_expected_question = (s_num > 0 and c_num == s_num + 1 and not is_consecutive_wn)
+
+                # Explicit decimal headers or known valid question paths never stay stuck in Working Notes
+                is_decimal_header = (len(path) >= 2 and path[0].isdigit() and path[1].isdigit())
+                is_in_valid_paths = bool(valid_question_paths and (tuple(path) in valid_question_paths or tuple(path[:2]) in valid_question_paths))
+                if is_decimal_header or is_in_valid_paths:
+                    is_working_note = False
 
                 # Self-healing recovery if character distance threshold from last working note exceeded
                 ref_offset = last_working_note_offset if last_working_note_offset > 0 else working_notes_start_offset

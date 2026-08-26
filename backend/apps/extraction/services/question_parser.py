@@ -103,6 +103,13 @@ class QuestionParser:
         validated_matches = []
         
         context = context or ParsingContext()
+
+        has_decimal_questions = any(
+            len(self.normalizer.normalize_header(m.group(0))) >= 2 and 
+            self.normalizer.normalize_header(m.group(0))[0].isdigit() and 
+            self.normalizer.normalize_header(m.group(0))[1].isdigit()
+            for m in all_potential_matches
+        )
         
         i = 0
         while i < len(all_potential_matches):
@@ -167,6 +174,15 @@ class QuestionParser:
                 
             # If a new case scenario started and this candidate is a sub-item bullet point, ignore it as scenario narrative
             if has_case_heading and candidate_level != "main":
+                i += 1
+                continue
+
+            # If document uses decimal case study numbering (e.g. 1.1, 1.2, 2.1), reject isolated single-digit integers (e.g. 3., 8., 24.)
+            if has_decimal_questions and candidate_level == "main" and len(path) == 1 and path[0].isdigit():
+                diagnostics.rejected_headers.append({
+                    "header": text[match.start():match.end()],
+                    "reason": "isolated single-digit header in decimal case study document"
+                })
                 i += 1
                 continue
 
@@ -440,10 +456,14 @@ class QuestionParser:
                         parsed_questions[0].text = (cleaned + "\n" + parsed_questions[0].text).strip()
 
         for i, pq in enumerate(parsed_questions):
+            is_digit_main = (len(pq.hierarchy_path) == 1 and pq.hierarchy_path[0].isdigit())
+            is_decimal_main = (len(pq.hierarchy_path) >= 2 and pq.hierarchy_path[0].isdigit() and pq.hierarchy_path[1].isdigit())
+            prev_pq = parsed_questions[i-1] if i > 0 else None
+            is_new_case_group = is_decimal_main and prev_pq and (pq.hierarchy_path[0] != prev_pq.hierarchy_path[0] or pq.hierarchy_path[1] == '1')
             main_num = int(pq.hierarchy_path[0]) if (pq.hierarchy_path and pq.hierarchy_path[0].isdigit()) else None
             
-            # Check gap before main question i (where i > 0 and pq is a main question)
-            if i > 0 and len(pq.hierarchy_path) == 1:
+            # Check gap before main question i or new case study group
+            if i > 0 and (is_digit_main or is_new_case_group):
                 prev_match = validated_matches[i-1][0]
                 curr_match = validated_matches[i][0]
                 gap_raw = text[prev_match.end():curr_match.start()]
@@ -454,10 +474,9 @@ class QuestionParser:
                     gap_raw
                 )
                 if ctx_match:
-                    # Text before ctx_match belongs to previous question
+                    # Truncate previous question's text so it does not contain the next Case Study's background narrative
                     prev_extra = gap_raw[:ctx_match.start()].strip()
-                    if prev_extra:
-                        parsed_questions[i-1].text = (parsed_questions[i-1].text + "\n" + prev_extra).strip()
+                    parsed_questions[i-1].text = prev_extra
                     
                     raw_context = gap_raw[ctx_match.start():].strip()
                     cleaned_context = self._clean_document_metadata(raw_context)
@@ -471,7 +490,7 @@ class QuestionParser:
                             current_context = cleaned_context
                             min_q_num = main_num
                             inner_rng = re.search(range_regex_str, cleaned_context)
-                            max_q_num = int(inner_rng.group(2)) if inner_rng else ((main_num + 5) if main_num is not None else 12)
+                            max_q_num = int(inner_rng.group(2)) if inner_rng else ((main_num + 5) if (main_num is not None and not is_decimal_main) else None)
                         else:
                             current_context = cleaned_context
                             min_q_num = main_num
@@ -481,18 +500,18 @@ class QuestionParser:
                     current_context = None
                     min_q_num = None
                     max_q_num = None
-                elif max_q_num is not None and main_num is not None and main_num > max_q_num:
+                elif max_q_num is not None and main_num is not None and main_num > max_q_num and not is_decimal_main:
                     current_context = None
                     min_q_num = None
                     max_q_num = None
 
-            # Case scenarios never extend to descriptive questions (Q13+)
-            if main_num is not None and main_num > 12:
+            # For non-decimal documents, case scenarios never extend to descriptive questions (Q13+)
+            if not is_decimal_main and main_num is not None and main_num > 12:
                 current_context = None
                 min_q_num = None
                 max_q_num = None
 
-            if max_q_num is not None and main_num is not None and main_num > max_q_num:
+            if not is_decimal_main and max_q_num is not None and main_num is not None and main_num > max_q_num:
                 current_context = None
                 min_q_num = None
                 max_q_num = None
